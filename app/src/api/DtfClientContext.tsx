@@ -38,10 +38,21 @@ export function DtfClientProvider({ children }: { children: ReactNode }) {
       })
   }, [])
 
-  const client = useMemo(
+  const baseClient = useMemo(
     () => createDtfClient({ baseUrl: apiBaseUrl, fetch: tauriFetch as typeof fetch, loadCredentials: safeLoadCredentials }),
     [apiBaseUrl],
   )
+  // Bumped after the sign-in dialog succeeds. Queries key their effects on `client` and its
+  // methods, so handing out fresh wrappers makes everything that failed with "sign in" load again.
+  const [session, setSession] = useState(0)
+  const client = useMemo(() => {
+    void session
+    const fresh: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(baseClient)) {
+      fresh[k] = typeof v === 'function' ? (...args: unknown[]) => (v as (...a: unknown[]) => unknown)(...args) : v
+    }
+    return fresh as unknown as DtfClient
+  }, [baseClient, session])
 
   // On start (and when the server address changes): sign in silently, or ask.
   useEffect(() => {
@@ -72,7 +83,9 @@ export function DtfClientProvider({ children }: { children: ReactNode }) {
   return (
     <DtfClientContext.Provider value={value}>
       {children}
-      {loginOpen && <LoginDialog client={client} onClose={() => setLoginOpen(false)} />}
+      {loginOpen && (
+        <LoginDialog client={client} onSignedIn={() => setSession((s) => s + 1)} onClose={() => setLoginOpen(false)} />
+      )}
     </DtfClientContext.Provider>
   )
 }
