@@ -8,7 +8,10 @@ const PRN_PASSES_PER_LINE = 6
 const LINE_ALIGN_BYTES = 32
 
 export interface PreflightResult {
+  /** Sheet length: lowest design plus the bottom margin. */
   lengthMm: number
+  /** Length the PRN will print: the content trimmed to the designs, plus the lead-in (0 when empty). */
+  printedLengthMm: number
   itemCount: number
   orderIds: string[]
   low: SheetItem[]
@@ -27,7 +30,11 @@ export function preflight(sheet: Sheet, profile: PrinterProfile, t: DpiThreshold
   const bottom = Math.max(...bounds.map((b) => b.yMm + b.heightMm))
   const contentLengthMm = sheet.items.length ? bottom - top : 0
 
-  const lines = Math.ceil((contentLengthMm / MM_PER_INCH) * profile.yDpi)
+  // Lines as the engine counts them (render_prn): whole lines from the top design
+  // edge to the bottom one, plus the lead-in.
+  const dy = MM_PER_INCH / profile.yDpi
+  const leadLines = Math.ceil(Math.max(0, profile.leadInMm ?? 0) / dy)
+  const lines = sheet.items.length ? Math.ceil(bottom / dy) - Math.floor(top / dy) + leadLines : 0
   const widthPx = Math.floor((sheet.settings.widthMm / MM_PER_INCH) * profile.xDpi)
   const bytesPerLine = Math.ceil(Math.ceil((widthPx * 2) / 8) / LINE_ALIGN_BYTES) * LINE_ALIGN_BYTES
 
@@ -46,6 +53,7 @@ export function preflight(sheet: Sheet, profile: PrinterProfile, t: DpiThreshold
   const orderIds = [...new Set(sheet.items.map((i) => i.source.orderId).filter((o): o is string => !!o))]
   return {
     lengthMm: contentLengthMm ? bottom + sheet.settings.margins.bottomMm : 0,
+    printedLengthMm: lines * dy,
     itemCount: sheet.items.length,
     orderIds,
     low,

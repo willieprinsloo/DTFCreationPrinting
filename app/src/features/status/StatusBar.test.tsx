@@ -48,4 +48,15 @@ describe('StatusBar', () => {
     expect(screen.getByText('3 designs')).toBeInTheDocument()
     expect(screen.getByText('2 orders')).toBeInTheDocument()
   })
+
+  it('counts a PDF the engine has to print below full resolution like its badge', () => {
+    const pdf = { ...asset, path: '/a.pdf', kind: 'pdf' as const, widthMm: 600, heightMm: 1500 }
+    act(() => {
+      const s = getSheetStore().getState()
+      s.addItems([{ asset: pdf, source, widthMm: 590, heightMm: 1500, quantity: 1 }])
+      s.addItems([{ asset: { ...pdf, widthMm: 50, heightMm: 50 }, source, widthMm: 50, heightMm: 50, quantity: 1 }])
+    })
+    render(<StatusBar />)
+    expect(screen.getByText('⚠ 1 low-res')).toBeInTheDocument()
+  })
 })

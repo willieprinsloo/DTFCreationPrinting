@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_THRESHOLDS, MAX_PDF_RENDER_PX, dpiLabel, dpiStatus, effectiveDpi, nativeSizeMm, pdfBadge, pdfPrintedDpi, pdfRenderSize } from './dpi'
+import { DEFAULT_THRESHOLDS, MAX_PDF_RENDER_PX, dpiLabel, dpiStatus, effectiveDpi, itemQuality, nativeSizeMm, pdfBadge, pdfPrintedDpi, pdfRenderSize } from './dpi'
 
 const asset = (w: number, h: number) => ({ assetId: 'a', path: 'p', previewPath: 'pp', widthPx: w, heightPx: h })
 
@@ -76,5 +76,19 @@ describe('PDF print resolution (R13)', () => {
     // 600 x 1500 mm -> ~277 dpi
     expect(pdfBadge(pdfItem(600, 1500), grid)).toEqual({ label: 'Vector · printed at 277 dpi', status: 'low' })
     expect(pdfBadge(pdfItem(600, 6000), grid).status).toBe('bad')
+  })
+})
+
+describe('itemQuality', () => {
+  const profile = { xDpi: 720, yDpi: 1800 }
+  const pdfAsset = { ...asset(7087, 11811), kind: 'pdf' as const, widthMm: 600, heightMm: 1500 }
+  const item = (a: ReturnType<typeof asset> | typeof pdfAsset, widthMm: number, heightMm: number) => ({ asset: a, widthMm, heightMm, rotationDeg: 0 })
+  it('is the badge rule: raster by effective dpi and the thresholds, PDFs by the printed dpi', () => {
+    expect(itemQuality(item(asset(3000, 3000), 254, 254), profile)).toEqual({ label: '300 dpi', status: 'fine' })
+    expect(itemQuality(item(asset(1800, 1800), 254, 254), profile, { fine: 150, low: 100 })).toEqual({ label: '180 dpi', status: 'fine' })
+    expect(itemQuality(item(asset(1000, 1000), 254, 254), profile)).toEqual({ label: '100 dpi', status: 'bad' })
+    expect(itemQuality(item(pdfAsset, 70, 50), profile)).toEqual({ label: 'Vector', status: 'fine' })
+    expect(itemQuality(item(pdfAsset, 600, 1500), profile)).toEqual({ label: 'Vector · printed at 277 dpi', status: 'low' })
+    expect(itemQuality(item(pdfAsset, 600, 6000), profile).status).toBe('bad')
   })
 })

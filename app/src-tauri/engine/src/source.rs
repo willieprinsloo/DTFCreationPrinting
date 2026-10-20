@@ -42,7 +42,7 @@ pub fn decode(path: &Path) -> Result<image::DynamicImage, EngineError> {
 }
 
 /// Bytes per pixel held at once: RGBA16 copy (8) + 4 ink planes, white and alpha (12).
-const BYTES_PER_PX: u64 = 20;
+pub const BYTES_PER_PX: u64 = 20;
 /// Most pixels one prepared source may have.
 pub const MAX_PREPARED_PX: u64 = MAX_ALLOC / BYTES_PER_PX;
 

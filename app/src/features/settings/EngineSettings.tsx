@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { open, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { DotGain, EngineSettings as Engine, InkChannel, PrinterProfile } from '../../domain/types'
 import { curveFromThree, curveToThree, validateEngineSettings } from '../../domain/engineSettings'
@@ -29,6 +29,9 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [chartMsg, setChartMsg] = useState<string | null>(null)
+  const [charting, setCharting] = useState(false)
+  /** Set synchronously so a second click before the re-render cannot start another chart. */
+  const chartBusy = useRef(false)
   const touch = () => {
     setSaved(false)
     setError(null)
@@ -83,22 +86,29 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   }
 
   const makeChart = async (kind: 'colour' | 'white') => {
+    if (chartBusy.current) return
+    setError(null)
+    setChartMsg(null)
     const engine = build()
     if (typeof engine === 'string') return setError(engine)
-    setChartMsg(null)
+    chartBusy.current = true
+    setCharting(true)
     try {
       const out = await saveDialog({ defaultPath: `${kind}-chart.prn`, filters: [{ name: 'PRN file', extensions: ['prn'] }] })
       if (!out) return
       setChartMsg(`Creating the ${kind} chart…`)
       const { iccProfilePath: _old, ...rest } = profile
       await createChartPrn(kind, { ...rest, ...engine }, out)
-      setError(null)
       setChartMsg(`Saved ${out}`)
     } catch (e) {
       setChartMsg(null)
       setError(`Could not create the chart: ${errorText(e)}`)
+    } finally {
+      chartBusy.current = false
+      setCharting(false)
     }
   }
+
 
   const num = (label: string, value: string, set: (v: string) => void, help: string, step = 'any') => (
     <div>
@@ -187,8 +197,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
         <h3>Test charts</h3>
         <Help>Creates a chart PRN with the settings shown above (even before you save them), so you can print it and see the effect. Print the same chart again after each change.</Help>
         <div className="button-row">
-          <button type="button" onClick={() => void makeChart('colour')}>Create colour chart PRN</button>
-          <button type="button" onClick={() => void makeChart('white')}>Create white chart PRN</button>
+          <button type="button" disabled={charting} onClick={() => void makeChart('colour')}>Create colour chart PRN</button>
+          <button type="button" disabled={charting} onClick={() => void makeChart('white')}>Create white chart PRN</button>
           {chartMsg && <span>{chartMsg}</span>}
         </div>
       </section>

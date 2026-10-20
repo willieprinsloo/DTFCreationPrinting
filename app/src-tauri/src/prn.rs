@@ -1,7 +1,7 @@
 //! `create_prn`: turns the app's sheet + printer profile into an engine job,
 //! renders it off the UI thread and reports progress / honours cancel.
 use dtf_engine::profile::ProfileDto;
-use dtf_engine::{EngineError, EngineSettings, ItemSpec, JobSpec, render_prn};
+use dtf_engine::{EngineError, ItemSpec, JobSpec, render_prn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -192,12 +192,13 @@ pub async fn create_prn(
 /// Renders a calibration chart ("white" or "colour") with the printer profile's settings.
 pub fn chart_from_profile(kind: &str, profile_json: &str, out: &Path) -> Result<PrnStatsDto, String> {
     let profile: ProfileDto = serde_json::from_str(profile_json).map_err(failed)?;
+    let (x_dpi, y_dpi) = (profile.x_dpi, profile.y_dpi);
     let settings = profile.engine_settings();
     let started = std::time::Instant::now();
     let width = 600.0;
     let lines = match kind {
-        "white" => dtf_engine::charts::white_chart(out, width, &settings),
-        "colour" => dtf_engine::charts::colour_chart(out, None, width, &settings),
+        "white" => dtf_engine::charts::white_chart(out, width, x_dpi, y_dpi, &settings),
+        "colour" => dtf_engine::charts::colour_chart(out, None, width, x_dpi, y_dpi, &settings),
         other => return Err(failed(format!("unknown chart '{other}'"))),
     }
     .map_err(error_text)?
@@ -258,7 +259,6 @@ mod tests {
     use super::*;
     use dtf_engine::screen::Screening;
     use dtf_engine::EngineError;
-    use dtf_engine::profile::ProfileDto;
 
     const SHEET: &str = r#"{
       "id": "s1", "name": "Job", "profileId": "dtf-60",
@@ -445,6 +445,19 @@ mod tests {
         assert_ne!(std::fs::read(&a).unwrap(), std::fs::read(&b).unwrap());
         assert!(chart_from_profile("nope", &p(280), &a).unwrap_err().contains("unknown chart"));
         assert!(chart_from_profile("white", "not json", &a).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn chart_from_profile_uses_the_profile_resolution() {
+        let dir = std::env::temp_dir().join(format!("dtf-chart-dpi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for kind in ["white", "colour"] {
+            let out = dir.join(format!("{kind}.prn"));
+            chart_from_profile(kind, r#"{"xDpi":360,"yDpi":900}"#, &out).unwrap();
+            let h = dtf_engine::prn::PrnReader::open(&out).unwrap().header().clone();
+            assert_eq!((h.x_dpi, h.y_dpi), (360, 900), "{kind}");
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

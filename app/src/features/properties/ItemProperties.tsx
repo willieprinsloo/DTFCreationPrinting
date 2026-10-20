@@ -3,7 +3,7 @@ import { Copy, Lock, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { uiStore, useUi } from '../../state/uiStore'
 import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
-import { dpiLabel, dpiStatus, effectiveDpi, pdfBadge } from '../../domain/dpi'
+import { itemQuality } from '../../domain/dpi'
 import { MIN_PRINT_MM, heightForWidth, widthForHeight } from '../../domain/geometry'
 import type { SheetItem } from '../../domain/types'
 import { ONE_SIZE, resolveWidthMm, widthKey } from '../../domain/printSizes'
@@ -140,8 +140,7 @@ export function ItemProperties({ ids }: { ids: string[] }) {
   }
 
   const profile = profiles.find((p) => p.id === profileId) ?? DEFAULT_PROFILE
-  const dpi = effectiveDpi(item)
-  const badge = item.asset.kind === 'pdf' ? pdfBadge(item, profile) : { label: dpiLabel(dpi), status: dpiStatus(dpi, thresholds) }
+  const badge = itemQuality(item, profile, thresholds)
   const status = badge.status
   const setWidth = (cm: number) => {
     if (!(cm > 0)) return

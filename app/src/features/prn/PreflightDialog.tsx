@@ -8,7 +8,8 @@ import { InvalidSheetError } from '../../domain/geometry'
 import { createPrn, PrnCancelledError, revealInFolder, type PrnJob, type PrnStats } from '../../platform/tauri'
 import { defaultPrnName, folderOf } from '../sheets/sheetFiles'
 import { useDtfClient } from '../../api/DtfClientContext'
-import { AuthRequiredError } from '../../api/dtfClient'
+import { AuthRequiredError, type DtfClient } from '../../api/dtfClient'
+import { statusLabel } from '../library/format'
 import type { Sheet } from '../../domain/types'
 
 export function formatBytes(bytes: number): string {
@@ -22,26 +23,40 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path
 
 interface Done { path: string; stats: PrnStats }
 
+interface OrderUpdate {
+  /** Orders that should have moved but did not (one line each). */
+  failures: string[]
+  /** Orders left alone because they are already past Confirmed (one line each). */
+  skipped: string[]
+}
+
 /**
- * Sets each distinct order on the sheet to In production, skipping (and adding to)
- * `marked` so no order is sent twice; returns one line per order that failed.
+ * Sets each distinct order on the sheet that is still Confirmed to In production
+ * (orders never move backwards: any other status is left as it is), skipping (and
+ * adding to) `marked` so no order is checked or sent twice.
  */
 async function markOrdersInProduction(
   sheet: Sheet,
   orderIds: string[],
   marked: Set<string>,
-  setStatus: (orderId: string, status: string) => Promise<void>,
+  client: Pick<DtfClient, 'getOrderStatus' | 'setOrderStatus'>,
   requireLogin: () => void,
-): Promise<string[]> {
+): Promise<OrderUpdate> {
   const failures: string[] = []
+  const skipped: string[] = []
   let askedLogin = false
   for (const id of orderIds) {
     if (marked.has(id)) continue
+    const label = `Order ${sheet.items.find((i) => i.source.orderId === id)?.source.orderNumber || id}`
     try {
-      await setStatus(id, 'in_production')
+      const status = await client.getOrderStatus(id)
+      if (status === 'confirmed') {
+        await client.setOrderStatus(id, 'in_production')
+      } else {
+        skipped.push(`${label}: Already ${statusLabel(status).toLowerCase()} — not changed`)
+      }
       marked.add(id)
     } catch (e) {
-      const label = `Order ${sheet.items.find((i) => i.source.orderId === id)?.source.orderNumber || id}`
       if (e instanceof AuthRequiredError) {
         if (!askedLogin) requireLogin()
         askedLogin = true
@@ -51,7 +66,7 @@ async function markOrdersInProduction(
       }
     }
   }
-  return failures
+  return { failures, skipped }
 }
 
 export function PreflightDialog({ onClose }: { onClose(): void }) {
@@ -66,9 +81,10 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
   const [progress, setProgress] = useState<number | null>(null)
   const [markOrders, setMarkOrders] = useState(true)
   const [orderFailures, setOrderFailures] = useState<string[]>([])
+  const [ordersSkipped, setOrdersSkipped] = useState<string[]>([])
   const [updatingOrders, setUpdatingOrders] = useState(false)
   const job = useRef<PrnJob | null>(null)
-  /** Orders already set to In production from this dialog (never sent again). */
+  /** Orders already set to In production (or found past Confirmed) from this dialog (never sent again). */
   const markedOrders = useRef(new Set<string>())
   useEffect(() => () => job.current?.cancel(), [])
   const { client, requireLogin } = useDtfClient()
@@ -101,6 +117,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
     setError(null)
     setDone(null)
     setOrderFailures([])
+    setOrdersSkipped([])
     const folder = getSettingsStore().getState().lastPrnFolder
     const name = defaultPrnName(getSheetStore().getState().sheet.name)
     setBusy(true)
@@ -119,10 +136,11 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
       if (markOrders && result.orderIds.length > 0) {
         setUpdatingOrders(true)
         try {
-          const failures = await markOrdersInProduction(
-            sheet, result.orderIds, markedOrders.current, (id, st) => client.setOrderStatus(id, st), requireLogin,
+          const { failures, skipped } = await markOrdersInProduction(
+            sheet, result.orderIds, markedOrders.current, client, requireLogin,
           )
           setOrderFailures(failures)
+          setOrdersSkipped(skipped)
           if (failures.length === 0) setMarkOrders(false)
         } finally {
           setUpdatingOrders(false)
@@ -152,6 +170,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
           Length {(result.lengthMm / 10).toFixed(1)} cm · {result.itemCount} {result.itemCount === 1 ? 'design' : 'designs'} ·{' '}
           {result.orderIds.length} {result.orderIds.length === 1 ? 'order' : 'orders'}
         </p>
+        <p>Printed length: {(result.printedLengthMm / 10).toFixed(1)} cm</p>
         <p>Estimated file size: {formatBytes(result.estimatedPrnBytes)}</p>
         {result.itemCount === 0 && <p className="inline-error">Add at least one design first.</p>}
         {result.problems.length > 0 && (
@@ -210,6 +229,14 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
           </p>
         )}
         {updatingOrders && <p role="status">Updating orders in DTF Creations…</p>}
+        {ordersSkipped.length > 0 && (
+          <div>
+            <p>These orders are already past Confirmed, so they were left as they are:</p>
+            <ul aria-label="Orders not changed">
+              {ordersSkipped.map((f) => <li key={f}>{f}</li>)}
+            </ul>
+          </div>
+        )}
         {orderFailures.length > 0 && (
           <div>
             <p className="inline-error">The PRN was created, but these orders were not set to In production:</p>

@@ -5,7 +5,7 @@ use crate::colour::ColourSettings;
 use crate::prn::{CHANNELS, PrnHeader, PrnWriter, pack_levels};
 use crate::screen::{ErrorDiffuser, Screening, apply_curve, screen_row_blue_noise};
 use crate::pdf::is_pdf;
-use crate::source::{MAX_PREPARED_PX, Plane, PreparedSource, prepare, prepare_pdf};
+use crate::source::{BYTES_PER_PX, MAX_ALLOC, MAX_PREPARED_PX, Plane, PreparedSource, prepare, prepare_pdf};
 use crate::spec::{JobSpec, PrnStats};
 use crate::white::erode;
 use rayon::prelude::*;
@@ -34,6 +34,44 @@ pub fn ink_limit(t: [f32; 4], limit: f32) -> [f32; 4] {
     [k, c * s, m * s, y * s]
 }
 
+/// Most memory (bytes) all prepared sources may take at once before new ones
+/// are prepared one at a time instead of in parallel.
+pub const MEMORY_BUDGET: u64 = 4 << 30;
+/// Bytes a prepared source keeps after preparation (4 ink planes, white, alpha).
+const HELD_BYTES_PER_PX: u64 = 12;
+
+/// Prepares `keys` (results in key order): in parallel when the sources already
+/// held (`held` bytes) plus every key's estimated peak (`est`) fit `budget`,
+/// otherwise one at a time.
+fn prepare_batch<K: Sync, T: Send, E: Send>(
+    keys: &[K],
+    est: impl Fn(&K) -> u64,
+    held: u64,
+    budget: u64,
+    f: impl Fn(&K) -> Result<T, E> + Sync + Send,
+) -> Result<Vec<T>, E> {
+    let need = keys.iter().fold(held, |a, k| a.saturating_add(est(k)));
+    if need > budget {
+        keys.iter().map(f).collect()
+    } else {
+        keys.par_iter().map(f).collect()
+    }
+}
+
+/// Estimated peak bytes to prepare a source: its pixel count times what each
+/// pixel needs while preparing. Unreadable sizes count as the per-source maximum.
+fn prepare_estimate(k: &SrcKey) -> u64 {
+    let px = match k.2 {
+        Some((w, h)) => Some(w as u64 * h as u64),
+        None => image::ImageReader::open(&k.0)
+            .ok()
+            .and_then(|r| r.with_guessed_format().ok())
+            .and_then(|r| r.into_dimensions().ok())
+            .map(|(w, h)| w as u64 * h as u64),
+    };
+    px.map_or(MAX_ALLOC, |p| p.saturating_mul(BYTES_PER_PX))
+}
+
 /// Per logical channel (K, C, M, Y, W) blue-noise mask offset (x, y): steps
 /// of (73, 151) mod 256, so equal tones in different inks do not print
 /// dot-on-dot (R7).
@@ -59,7 +97,8 @@ fn panic_error(p: Box<dyn std::any::Any + Send>) -> EngineError {
     EngineError::Internal(msg)
 }
 
-/// PRN channel index -> logical channel index.
+/// PRN channel index -> logical channel index. The order must be a
+/// permutation of K, C, M, Y, W, W.
 fn channel_map(order: &[String; CHANNELS]) -> Result<[usize; CHANNELS], EngineError> {
     let mut map = [0; CHANNELS];
     for (m, name) in map.iter_mut().zip(order) {
@@ -67,6 +106,15 @@ fn channel_map(order: &[String; CHANNELS]) -> Result<[usize; CHANNELS], EngineEr
             .iter()
             .position(|n| n.eq_ignore_ascii_case(name.trim()))
             .ok_or_else(|| EngineError::BadSettings(format!("unknown ink channel \"{name}\"")))?;
+    }
+    // Each of K, C, M, Y exactly once and W exactly twice.
+    for (l, name) in NAMES.iter().enumerate() {
+        let want = if l == 4 { 2 } else { 1 };
+        if map.iter().filter(|&&m| m == l).count() != want {
+            return Err(EngineError::BadSettings(format!(
+                "the ink channel order must use K, C, M and Y once each and W twice (\"{name}\" is wrong)"
+            )));
+        }
     }
     Ok(map)
 }
@@ -272,6 +320,16 @@ pub fn render_prn(
     out: &Path,
     progress: &mut dyn FnMut(f32) -> bool,
 ) -> Result<PrnStats, EngineError> {
+    render_prn_with_budget(job, out, progress, MEMORY_BUDGET)
+}
+
+/// `render_prn` with `budget` bytes for prepared sources (see `MEMORY_BUDGET`).
+fn render_prn_with_budget(
+    job: &JobSpec,
+    out: &Path,
+    progress: &mut dyn FnMut(f32) -> bool,
+    budget: u64,
+) -> Result<PrnStats, EngineError> {
     let started = Instant::now();
     if job.items.is_empty() {
         return Err(EngineError::NothingToPrint);
@@ -398,16 +456,21 @@ pub fn render_prn(
                     .collect();
                 missing.sort();
                 missing.dedup();
-                let loaded: Vec<(SrcKey, PreparedSource)> = missing
-                    .par_iter()
-                    .map(|k| {
+                // Over the memory budget, prepare them one at a time.
+                let held: u64 = sources.values().map(|s| s.w as u64 * s.h as u64 * HELD_BYTES_PER_PX).sum();
+                let loaded: Vec<(SrcKey, PreparedSource)> = prepare_batch(
+                    &missing,
+                    |k| prepare_estimate(k),
+                    held,
+                    budget,
+                    |k| -> Result<_, EngineError> {
                         let src = match k.2 {
                             Some((w, h)) => prepare_pdf(&k.0, w, h, &colour, k.1)?,
                             None => prepare(&k.0, &colour, k.1)?,
                         };
                         Ok(((*k).clone(), src))
-                    })
-                    .collect::<Result<_, EngineError>>()?;
+                    },
+                )?;
                 sources.extend(loaded);
                 // Choke (R6): radii in source pixels, per item size (x from width, y from height).
                 let radius = |p: &Placed| -> (u32, u32) {
@@ -653,6 +716,85 @@ mod tests {
         assert_eq!(pdf_render_size(600.0, 1000.0, 0.0, 720, 1800, MAX_PREPARED_PX), (8026, 13377));
         assert_eq!(pdf_render_size(300.0, 300.0, 0.0, 720, 1800, MAX_PREPARED_PX), (8503, 12626));
         assert_eq!(pdf_render_size(300.0, 600.0, 90.0, 720, 1800, MAX_PREPARED_PX), (7327, 14654));
+    }
+
+    #[test]
+    fn channel_map_needs_each_ink_once_and_white_twice() {
+        let order = |o: [&str; 6]| o.map(String::from);
+        assert_eq!(channel_map(&order(["K", "C", "M", "Y", "W", "W"])).unwrap(), [0, 1, 2, 3, 4, 4]);
+        assert_eq!(channel_map(&order(["w", "y", " m", "W", "c", "k"])).unwrap(), [4, 3, 2, 4, 1, 0]);
+        for bad in [
+            ["K", "K", "M", "Y", "W", "W"],
+            ["K", "C", "M", "Y", "W", "K"],
+            ["K", "C", "M", "W", "W", "W"],
+            ["C", "C", "M", "Y", "W", "W"],
+            ["K", "C", "M", "Y", "Y", "W"],
+        ] {
+            let r = channel_map(&order(bad));
+            assert!(matches!(&r, Err(EngineError::BadSettings(_))), "{bad:?}: {r:?}");
+        }
+        assert!(matches!(channel_map(&order(["X", "C", "M", "Y", "W", "W"])), Err(EngineError::BadSettings(_))));
+    }
+
+    /// Runs `prepare_batch` over 4 slow keys and returns the most that ran at once.
+    fn max_parallel(est_each: u64, held: u64, budget: u64) -> usize {
+        use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+        let (now, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let keys = [1u32, 2, 3, 4];
+        let out = prepare_batch(&keys, |_| est_each, held, budget, |k| {
+            let n = now.fetch_add(1, SeqCst) + 1;
+            peak.fetch_max(n, SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            now.fetch_sub(1, SeqCst);
+            Ok::<_, EngineError>(*k * 10)
+        })
+        .unwrap();
+        assert_eq!(out, vec![10, 20, 30, 40]);
+        peak.load(SeqCst)
+    }
+
+    #[test]
+    fn sources_are_prepared_one_at_a_time_over_the_memory_budget() {
+        assert_eq!(MEMORY_BUDGET, 4 << 30);
+        // 4 x 100 fits a 1000 budget: parallel
+        assert!(max_parallel(100, 0, 1000) > 1);
+        // 4 x 300 does not: one at a time
+        assert_eq!(max_parallel(300, 0, 1000), 1);
+        // sources already held count against the budget
+        assert_eq!(max_parallel(100, 700, 1000), 1);
+    }
+
+    #[test]
+    fn a_small_memory_budget_does_not_change_the_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = |name: &str, c: [u8; 4]| {
+            let p = dir.path().join(name);
+            image::RgbaImage::from_pixel(40, 30, image::Rgba(c)).save(&p).unwrap();
+            p
+        };
+        let (a, b) = (png("a.png", [200, 30, 30, 255]), png("b.png", [30, 30, 200, 180]));
+        let item = |p: &PathBuf, x: f64, y: f64| crate::ItemSpec {
+            path: p.clone(),
+            x_mm: x,
+            y_mm: y,
+            width_mm: 20.0,
+            height_mm: 15.0,
+            rotation_deg: 0.0,
+            white_enabled: true,
+        };
+        let job = JobSpec {
+            width_mm: 100.0,
+            x_dpi: 360,
+            y_dpi: 360,
+            mirror: false,
+            white_enabled: true,
+            settings: crate::EngineSettings::default(),
+            items: vec![item(&a, 0.0, 0.0), item(&b, 30.0, 5.0), item(&a, 60.0, 40.0)],
+        };
+        let (big, small) = (dir.path().join("big.prn"), dir.path().join("small.prn"));
+        render_prn_with_budget(&job, &big, &mut |_| true, MEMORY_BUDGET).unwrap();
+        render_prn_with_budget(&job, &small, &mut |_| true, 1).unwrap();
+        assert_eq!(std::fs::read(&big).unwrap(), std::fs::read(&small).unwrap());
     }
 
     #[test]

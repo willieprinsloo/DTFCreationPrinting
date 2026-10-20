@@ -39,6 +39,8 @@ export interface DtfClient {
     dateFrom?: string
   }): Promise<Page<OrderSummary>>
   getOrderFiles(orderId: string): Promise<OrderFile[]>
+  /** The order's current status, e.g. 'confirmed' or 'in_production'. */
+  getOrderStatus(orderId: string): Promise<string>
   setOrderStatus(orderId: string, status: string): Promise<void>
   /** Resolves '/uploads/...' against the site origin. */
   absoluteUrl(pathOrUrl: string): string
@@ -272,6 +274,12 @@ export function createDtfClient(o: {
         productType: str(r.product_type),
         sizeLabel: str(r.size_label),
       }))
+    },
+    async getOrderStatus(orderId) {
+      const body = await request(`/orders/${encodeURIComponent(orderId)}/status`)
+      const status = str(body?.data?.status)
+      if (!status) throw new Error("DTF Creations did not say what status the order has")
+      return status
     },
     async setOrderStatus(orderId, status) {
       await request(`/orders/${encodeURIComponent(orderId)}/status`, {

@@ -40,6 +40,16 @@ describe('preflight', () => {
     expect(r.needsConfirm).toBe(false)
   })
 
+  it('gives the printed length: the trimmed content plus the lead-in, as the PRN will have it', () => {
+    const a = item('a', { yMm: 50 })
+    expect(run([a]).printedLengthMm).toBeCloseTo(100, 1)
+    expect(run([a]).lengthMm).toBeCloseTo(155)
+    const r = preflight(sheet([a]), { ...DEFAULT_PROFILE, leadInMm: 10 }, DEFAULT_THRESHOLDS)
+    // 1800 dpi down: ceil(150 mm) - floor(50 mm) + ceil(10 mm) lines = 7796 lines
+    expect(r.printedLengthMm).toBeCloseTo((7796 * 25.4) / 1800, 6)
+    expect(run([]).printedLengthMm).toBe(0)
+  })
+
   it('needs confirmation for a 100 dpi item and lists it as bad', () => {
     const r = run([item('a', {}, 394)])
     expect(r.bad.map((i) => i.id)).toEqual(['a'])

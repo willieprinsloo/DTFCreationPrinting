@@ -140,6 +140,20 @@ describe('dtfClient', () => {
     expect(init?.method).toBe('PATCH')
     expect(JSON.parse(init?.body as string)).toEqual({ status: 'printed' })
   })
+  it('getOrderStatus reads the order status', async () => {
+    const { client, fetchMock } = setup([
+      loginOk(),
+      json(200, { success: true, data: { id: 'o1', status: 'in_production', payment_status: 'paid' } }),
+    ])
+    await client.login({ email: 'a', password: 'b' })
+    expect(await client.getOrderStatus('o 1')).toBe('in_production')
+    expect(new URL(fetchMock.mock.calls[1][0] as string).pathname).toBe('/api/v1/orders/o%201/status')
+  })
+  it('getOrderStatus fails when the reply has no status', async () => {
+    const { client } = setup([loginOk(), json(200, { success: true, data: {} })])
+    await client.login({ email: 'a', password: 'b' })
+    await expect(client.getOrderStatus('o1')).rejects.toThrow()
+  })
   it('maps order customerId, delivery_name fallback and getCustomer', async () => {
     const { client, fetchMock } = setup([
       loginOk(),

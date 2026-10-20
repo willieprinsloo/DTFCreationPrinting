@@ -29,6 +29,17 @@ describe('sheetStore', () => {
     expect(sheet.profileId).toBe(DEFAULT_PROFILE.id)
   })
 
+  it('addItems always turns white on (white is always printed), even on an old sheet saved with it off', () => {
+    const store = fresh()
+    const { sheet } = store.getState()
+    store.getState().loadSheet({ ...sheet, settings: { ...sheet.settings, whiteEnabled: false } })
+    store.getState().addItems([mk(2)])
+    expect(store.getState().sheet.items.map((i) => i.whiteEnabled)).toEqual([true, true])
+    const id = store.getState().sheet.items[0].id
+    // @ts-expect-error white cannot be patched per item
+    store.getState().updateItem(id, { whiteEnabled: false })
+  })
+
   it('addItems with quantity creates non-overlapping items', () => {
     const store = fresh()
     store.getState().addItems([mk(3)])

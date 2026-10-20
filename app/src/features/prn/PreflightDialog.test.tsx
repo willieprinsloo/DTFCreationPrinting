@@ -80,6 +80,13 @@ describe('PreflightDialog', () => {
     expect(screen.getByText(/181 MB/)).toBeInTheDocument()
   })
 
+  it('shows the printed length next to the sheet length', () => {
+    addItem(3000)
+    renderDialog()
+    expect(screen.getByText(/Length 11\.0 cm/)).toBeInTheDocument()
+    expect(screen.getByText('Printed length: 10.0 cm')).toBeInTheDocument()
+  })
+
   it('sends the sheet and its profile to the engine and shows progress', async () => {
     const job = controlledJob()
     addItem(3000)
@@ -263,6 +270,49 @@ describe('PreflightDialog', () => {
     await waitFor(() => expect(setOrderStatus).toHaveBeenCalledTimes(3))
     expect(setOrderStatus.mock.calls.map((c) => c[0])).toEqual(['o1', 'o2', 'o2'])
     await waitFor(() => expect(screen.queryByRole('list', { name: 'Orders not updated' })).not.toBeInTheDocument())
+  })
+
+  it('only moves confirmed orders forward and lists the others as not changed', async () => {
+    const job = controlledJob()
+    addItem(3000, order('f1', 'o1', '1001'))
+    addItem(3000, order('f2', 'o2', '1002'))
+    addItem(3000, order('f3', 'o3', '1003'))
+    addItem(3000, order('f4', 'o4', '1004'))
+    const statuses: Record<string, string> = { o1: 'confirmed', o2: 'in_production', o3: 'shipped', o4: 'delivered' }
+    const getOrderStatus = vi.fn(async (id: string) => statuses[id])
+    const client = fakeClient({ getOrderStatus })
+    renderDialog(client)
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    const skipped = await screen.findByRole('list', { name: 'Orders not changed' })
+    expect(getOrderStatus).toHaveBeenCalledTimes(4)
+    expect(client.setOrderStatus).toHaveBeenCalledTimes(1)
+    expect(client.setOrderStatus).toHaveBeenCalledWith('o1', 'in_production')
+    expect(skipped).toHaveTextContent('Order 1002: Already in production — not changed')
+    expect(skipped).toHaveTextContent('Order 1003: Already shipped — not changed')
+    expect(skipped).toHaveTextContent('Order 1004: Already delivered — not changed')
+    expect(skipped).not.toHaveTextContent('1001')
+    expect(screen.queryByRole('list', { name: 'Orders not updated' })).not.toBeInTheDocument()
+  })
+
+  it('does not change an order whose status cannot be read, and lists it as a failure', async () => {
+    const job = controlledJob()
+    addItem(3000, order('f1', 'o1', '1001'))
+    addItem(3000, order('f2', 'o2', '1002'))
+    const getOrderStatus = vi.fn(async (id: string) => {
+      if (id === 'o2') throw new Error('Server busy')
+      return 'confirmed'
+    })
+    const client = fakeClient({ getOrderStatus })
+    renderDialog(client)
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    const failures = await screen.findByRole('list', { name: 'Orders not updated' })
+    expect(failures).toHaveTextContent('Order 1002: Server busy')
+    expect(client.setOrderStatus).toHaveBeenCalledTimes(1)
+    expect(client.setOrderStatus).toHaveBeenCalledWith('o1', 'in_production')
   })
 
   it('cancels a running job when the dialog closes', async () => {

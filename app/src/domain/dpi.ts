@@ -87,6 +87,20 @@ export function pdfBadge(item: PdfSized, profile: Pick<PrinterProfile, 'xDpi' | 
   return { label: `Vector · printed at ${Math.floor(n)} dpi`, status: dpiStatus(n, PDF_THRESHOLDS) }
 }
 
+/**
+ * Quality badge and status for any item — the one rule the properties badge, the canvas outline
+ * and the status bar share: raster designs by their effective dpi against `t`; PDFs by `pdfBadge`.
+ */
+export function itemQuality(
+  item: PdfSized,
+  profile: Pick<PrinterProfile, 'xDpi' | 'yDpi'>,
+  t: DpiThresholds = DEFAULT_THRESHOLDS,
+): { label: string; status: DpiStatus } {
+  if (isPdf(item.asset)) return pdfBadge(item, profile)
+  const dpi = effectiveDpi(item)
+  return { label: dpiLabel(dpi), status: dpiStatus(dpi, t) }
+}
+
 export function dpiStatus(dpi: number, t: DpiThresholds = DEFAULT_THRESHOLDS): DpiStatus {
   if (dpi >= t.fine) return 'fine'
   if (dpi >= t.low) return 'low'

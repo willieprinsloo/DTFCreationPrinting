@@ -14,7 +14,7 @@ export interface NewItem {
   quantity: number
 }
 
-export type ItemPatch = Partial<Pick<SheetItem, 'xMm' | 'yMm' | 'widthMm' | 'heightMm' | 'rotationDeg' | 'whiteEnabled'>>
+export type ItemPatch = Partial<Pick<SheetItem, 'xMm' | 'yMm' | 'widthMm' | 'heightMm' | 'rotationDeg'>>
 
 export interface SheetData {
   sheet: Sheet
@@ -143,7 +143,7 @@ export function createSheetStore() {
                 widthMm: n.widthMm,
                 heightMm: heightForWidth(n, n.widthMm),
                 rotationDeg: 0,
-                whiteEnabled: settings.whiteEnabled,
+                whiteEnabled: true, // white is always printed
               })),
             )
             const originYMm =

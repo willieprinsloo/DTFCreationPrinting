@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../state/persist', async (orig) => {
@@ -134,5 +134,28 @@ describe('Settings › Printer & ink', () => {
     expect(createChartPrn).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Create colour chart PRN' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('disk full')
+  })
+
+  it('disables both chart buttons while a chart is being made and clears the last error when starting again', async () => {
+    vi.mocked(save).mockResolvedValue('/out/c.prn')
+    vi.mocked(createChartPrn).mockRejectedValueOnce(new Error('disk full'))
+    page()
+    const colour = screen.getByRole('button', { name: 'Create colour chart PRN' })
+    const white = screen.getByRole('button', { name: 'Create white chart PRN' })
+    await userEvent.click(colour)
+    expect(await screen.findByRole('alert')).toHaveTextContent('disk full')
+
+    let finish!: (v: { lines: number; bytes: number; millis: number }) => void
+    vi.mocked(createChartPrn).mockImplementationOnce(() => new Promise((r) => (finish = r)))
+    await userEvent.click(white)
+    expect(await screen.findByText('Creating the white chart…')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(colour).toBeDisabled()
+    expect(white).toBeDisabled()
+    await userEvent.click(colour)
+    expect(createChartPrn).toHaveBeenCalledTimes(2)
+    act(() => finish({ lines: 1, bytes: 1, millis: 1 }))
+    await waitFor(() => expect(colour).toBeEnabled())
+    expect(white).toBeEnabled()
   })
 })

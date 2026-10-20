@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Layer, Rect, Shape, Stage, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
-import { useSettings } from '../../state/settingsStore'
+import { DEFAULT_PROFILE, useSettings } from '../../state/settingsStore'
 import { findProblems, itemBounds, printableArea, displayLengthMm, sizeAfterTransform } from '../../domain/geometry'
-import { dpiStatus, effectiveDpi } from '../../domain/dpi'
+import { itemQuality } from '../../domain/dpi'
 import { snapPosition } from '../../domain/snapping'
 import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/types'
 import { screenToSheet } from '../../domain/viewport'
@@ -71,6 +71,7 @@ export function SheetCanvas() {
   const sheet = useSheet((s) => s.sheet)
   const selectedIds = useSheet((s) => s.selectedIds)
   const thresholds = useSettings((s) => s.thresholds)
+  const profiles = useSettings((s) => s.profiles)
 
   const sheetW = sheet.settings.widthMm
   const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
@@ -217,8 +218,9 @@ export function SheetCanvas() {
     }
   }, [sheet.settings])
 
+  const profile = profiles.find((p) => p.id === sheet.profileId) ?? DEFAULT_PROFILE
   const outlineFor = (item: SheetItem) => {
-    const status: DpiStatus = dpiStatus(effectiveDpi(item), thresholds)
+    const status: DpiStatus = itemQuality(item, profile, thresholds).status
     return colors[status]
   }
 

@@ -252,3 +252,14 @@ fn colour_png_is_not_left_behind_without_flag() {
     let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
     assert_eq!(names.len(), 1, "{names:?}");
 }
+
+#[test]
+fn charts_use_the_profile_resolution() {
+    let prof = r#"{"xDpi":360,"yDpi":900}"#;
+    for kind in ["white", "colour", "channels"] {
+        let (_, out, _d) = chart_digest(kind, Some(prof), &[]);
+        let h = PrnReader::open(&out).unwrap().header().clone();
+        assert_eq!((h.x_dpi, h.y_dpi), (360, 900), "{kind} chart header");
+        assert_eq!(h.width_px, (600.0f64 / 25.4 * 360.0).floor() as u32, "{kind} chart width");
+    }
+}

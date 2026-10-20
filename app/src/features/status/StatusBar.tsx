@@ -1,6 +1,6 @@
 import { useSheet } from '../../state/sheetStore'
-import { useSettings } from '../../state/settingsStore'
-import { dpiStatus, effectiveDpi } from '../../domain/dpi'
+import { DEFAULT_PROFILE, useSettings } from '../../state/settingsStore'
+import { itemQuality } from '../../domain/dpi'
 import { findProblems, InvalidSheetError, sheetLengthMm } from '../../domain/geometry'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -8,6 +8,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function StatusBar() {
   const sheet = useSheet((s) => s.sheet)
   const thresholds = useSettings((s) => s.thresholds)
+  const profiles = useSettings((s) => s.profiles)
   const { settings, items } = sheet
 
   const lengthMm = sheetLengthMm(sheet)
@@ -16,7 +17,8 @@ export function StatusBar() {
   const itemArea = items.reduce((sum, it) => sum + it.widthMm * it.heightMm, 0)
   const used = printableW > 0 && usableH > 0 ? Math.min(100, Math.round((itemArea / (printableW * usableH)) * 100)) : 0
   const orders = new Set(items.map((i) => i.source.orderId).filter(Boolean)).size
-  const lowRes = items.filter((i) => dpiStatus(effectiveDpi(i), thresholds) !== 'fine').length
+  const profile = profiles.find((p) => p.id === sheet.profileId) ?? DEFAULT_PROFILE
+  const lowRes = items.filter((i) => itemQuality(i, profile, thresholds).status !== 'fine').length
   let problems = 0
   try {
     problems = findProblems(sheet).length

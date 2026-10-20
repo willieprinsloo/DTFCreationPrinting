@@ -15,6 +15,7 @@ export function fakeClient(over: Partial<DtfClient> = {}): DtfClient {
     getCustomer: vi.fn(async (id: string) => ({ id, name: '', email: '' })),
     listOrders: vi.fn(async () => ({ items: [], total: 0, page: 1, hasNext: false })),
     getOrderFiles: vi.fn(async () => []),
+    getOrderStatus: vi.fn(async () => 'confirmed'),
     setOrderStatus: vi.fn(async () => {}),
     absoluteUrl: (p: string) => `https://x.test${p}`,
     token: () => 'tok',

@@ -9,8 +9,6 @@ use image::{ImageEncoder, Rgb, RgbImage, Rgba, RgbaImage};
 use crate::prn::{PrnHeader, PrnReader, PrnWriter};
 use crate::{EngineError, EngineSettings, ItemSpec, JobSpec, render_prn};
 
-const X_DPI: u32 = 720;
-const Y_DPI: u32 = 1800;
 /// Chart artwork resolution: 20 px/mm = 508 dpi.
 pub const PX_PER_MM: u32 = 20;
 
@@ -77,23 +75,23 @@ fn white_cell_png(path: &Path, col: usize, row: usize) -> Result<(), EngineError
     img.save(path).map_err(|e| EngineError::Decode(e.to_string()))
 }
 
-/// Writes `white.prn` using the printer settings in `base` (its white density and choke
+/// Writes `white.prn` at `x_dpi` x `y_dpi` using the printer settings in `base` (its white density and choke
 /// are replaced per square): a grid of squares, rows = white density (60/80/100 %, top to
 /// bottom), columns = white choke (0/0.1/0.2/0.4 mm, left to right). Dots above each
 /// square count the column (top row of dots) and the row (second row of dots).
-pub fn white_chart(out: &Path, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
+pub fn white_chart(out: &Path, width_mm: f64, x_dpi: u32, y_dpi: u32, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     let need = WHITE_COL_X0_MM + 3.0 * WHITE_COL_PITCH_MM + CELL_W_MM + WHITE_COL_X0_MM;
     if width_mm < need {
         return Err(EngineError::BadSettings(format!("--width-mm must be at least {need}")));
     }
     ensure_parent(out)?;
     let dir = work_dir(out)?;
-    let result = white_chart_in(&dir, out, width_mm, base);
+    let result = white_chart_in(&dir, out, width_mm, x_dpi, y_dpi, base);
     let _ = std::fs::remove_dir_all(&dir);
     result
 }
 
-fn white_chart_in(dir: &Path, out: &Path, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
+fn white_chart_in(dir: &Path, out: &Path, width_mm: f64, x_dpi: u32, y_dpi: u32, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     let mut readers = Vec::new();
     for (r, &density) in WHITE_DENSITIES.iter().enumerate() {
         for (c, &choke) in WHITE_CHOKES.iter().enumerate() {
@@ -101,8 +99,8 @@ fn white_chart_in(dir: &Path, out: &Path, width_mm: f64, base: &EngineSettings) 
             white_cell_png(&png, c, r)?;
             let job = JobSpec {
                 width_mm: CELL_W_MM,
-                x_dpi: X_DPI,
-                y_dpi: Y_DPI,
+                x_dpi,
+                y_dpi,
                 mirror: false,
                 white_enabled: true,
                 settings: EngineSettings { white_density_pct: density, white_choke_mm: choke, ..base.clone() },
@@ -121,15 +119,15 @@ fn white_chart_in(dir: &Path, out: &Path, width_mm: f64, base: &EngineSettings) 
             readers.push(PrnReader::open(&prn)?);
         }
     }
-    let row_line = |r: usize| (r as f64 * WHITE_ROW_PITCH_MM / 25.4 * Y_DPI as f64).round() as u32;
+    let row_line = |r: usize| (r as f64 * WHITE_ROW_PITCH_MM / 25.4 * y_dpi as f64).round() as u32;
     let cell_lines = readers[0].header().lines;
     if readers.iter().any(|r| r.header().lines != cell_lines) {
         return Err(EngineError::Internal("the white chart squares came out different lengths".into()));
     }
     let lines = row_line(2) + cell_lines;
-    let header = PrnHeader::for_width(width_mm, X_DPI, Y_DPI, lines);
+    let header = PrnHeader::for_width(width_mm, x_dpi, y_dpi, lines);
     let w = header.width_px as usize;
-    let col_x = |c: usize| (((WHITE_COL_X0_MM + c as f64 * WHITE_COL_PITCH_MM) / 25.4) * X_DPI as f64).round() as usize;
+    let col_x = |c: usize| (((WHITE_COL_X0_MM + c as f64 * WHITE_COL_PITCH_MM) / 25.4) * x_dpi as f64).round() as usize;
 
     let mut part = out.as_os_str().to_owned();
     part.push(".part");
@@ -308,18 +306,18 @@ pub fn write_png_with_dpi(img: &RgbImage, path: &Path, px_per_m: u32) -> Result<
 
 /// Writes `colour.prn` (rendered by the real pipeline with `base`, white underbase on) and, when `png` is given, the same artwork as a PNG for printing
 /// through Maintop.
-pub fn colour_chart(out: &Path, png: Option<&Path>, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
+pub fn colour_chart(out: &Path, png: Option<&Path>, width_mm: f64, x_dpi: u32, y_dpi: u32, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     if width_mm < COLOUR_W_MM {
         return Err(EngineError::BadSettings(format!("--width-mm must be at least {COLOUR_W_MM}")));
     }
     ensure_parent(out)?;
     let dir = work_dir(out)?;
-    let result = colour_chart_in(&dir, out, png, width_mm, base);
+    let result = colour_chart_in(&dir, out, png, width_mm, x_dpi, y_dpi, base);
     let _ = std::fs::remove_dir_all(&dir);
     result
 }
 
-fn colour_chart_in(dir: &Path, out: &Path, png: Option<&Path>, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
+fn colour_chart_in(dir: &Path, out: &Path, png: Option<&Path>, width_mm: f64, x_dpi: u32, y_dpi: u32, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     let img = colour_chart_image();
     let tmp_png = dir.join("colour.png");
     write_png_with_dpi(&img, &tmp_png, PX_PER_MM * 1000)?;
@@ -329,8 +327,8 @@ fn colour_chart_in(dir: &Path, out: &Path, png: Option<&Path>, width_mm: f64, ba
     }
     let job = JobSpec {
         width_mm,
-        x_dpi: X_DPI,
-        y_dpi: Y_DPI,
+        x_dpi,
+        y_dpi,
         mirror: false,
         white_enabled: true,
         settings: base.clone(),
@@ -345,5 +343,5 @@ fn colour_chart_in(dir: &Path, out: &Path, png: Option<&Path>, width_mm: f64, ba
         }],
     };
     let st = render_prn(&job, out, &mut |_| true)?;
-    Ok((st.lines, PrnHeader::for_width(width_mm, X_DPI, Y_DPI, 1).width_px))
+    Ok((st.lines, PrnHeader::for_width(width_mm, x_dpi, y_dpi, 1).width_px))
 }
