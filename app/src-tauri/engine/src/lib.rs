@@ -1,4 +1,7 @@
+pub mod colour;
 pub mod prn;
+pub mod source;
+pub mod white;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -14,4 +17,8 @@ pub enum EngineError {
     LineOutOfRange { line: u32, lines: u32 },
     #[error("bad line data: {0}")]
     BadLine(String),
+    #[error("could not read the image: {0}")]
+    Decode(String),
+    #[error("colour profile problem: {0}")]
+    Icc(String),
 }

@@ -8,7 +8,9 @@ name = "dtf_engine"
 
 [dependencies]
 thiserror = "2"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff"] }
+rayon = "1"
+lcms2 = { version = "6.2.0", optional = true, features = ["static"] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -16,3 +18,7 @@ tempfile = "3"
 [[bin]]
 name = "prn-tool"
 path = "src/bin/prn-tool.rs"
+
+[features]
+default = ["icc"]
+icc = ["dep:lcms2"]
