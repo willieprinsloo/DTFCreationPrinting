@@ -14,6 +14,12 @@ import { getSettingsStore } from '../../state/settingsStore'
 const WHEEL_ZOOM_SPEED = 0.01
 const MAX_WHEEL_STEP = 0.5
 
+/** Zoom factor between two successive WebKit gesture scales (cumulative since gesturestart). */
+export function pinchFactor(prevScale: number, nextScale: number): number {
+  if (!(prevScale > 0) || !(nextScale > 0) || !Number.isFinite(prevScale) || !Number.isFinite(nextScale)) return 1
+  return nextScale / prevScale
+}
+
 export interface ViewportState {
   vp: Viewport
   viewW: number
@@ -28,6 +34,8 @@ export interface ViewportState {
   trueSize(): void
   /** Zooms around the centre of the view. */
   zoomBy(factor: number): void
+  /** Zooms by `factor`, keeping the sheet point under (screenX, screenY) fixed. */
+  zoomAtPoint(factor: number, screenX: number, screenY: number): void
   /** ⌘/Ctrl wheel (incl. trackpad pinch) zooms at the cursor; plain wheel scrolls; Shift scrolls sideways. */
   onWheel(e: { deltaX: number; deltaY: number; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }, screenX: number, screenY: number): void
 }
@@ -57,6 +65,9 @@ export function createViewportStore() {
     zoomBy(factor) {
       const { vp, viewW, viewH } = get()
       set({ vp: zoomAt(vp, factor, viewW / 2, viewH / 2) })
+    },
+    zoomAtPoint(factor, screenX, screenY) {
+      set({ vp: zoomAt(get().vp, factor, screenX, screenY) })
     },
     onWheel(e, screenX, screenY) {
       const { vp } = get()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Layer, Rect, Shape, Stage, Transformer } from 'react-konva'
 import type Konva from 'konva'
-import { useSheet, getSheetStore } from '../../state/sheetStore'
+import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
 import { findProblems, itemBounds, printableArea, sheetLengthMm } from '../../domain/geometry'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
@@ -10,7 +10,7 @@ import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/t
 import { screenToSheet } from '../../domain/viewport'
 import { ItemNode } from './ItemNode'
 import { shortcutFor } from './shortcuts'
-import { getViewportStore, useViewport } from './useViewport'
+import { getViewportStore, pinchFactor, useViewport } from './useViewport'
 
 const SNAP_THRESHOLD_MM = 2
 const GRID_STEP_MM = 10
@@ -98,6 +98,35 @@ export function SheetCanvas() {
     })
     ro.observe(el)
     return () => ro.disconnect()
+  }, [])
+
+  // macOS WKWebView delivers trackpad pinch as non-standard gesture* events, not ctrl+wheel.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    let lastScale = 1
+    type GestureLike = Event & { scale: number; clientX: number; clientY: number }
+    const onStart = (e: Event) => {
+      e.preventDefault()
+      lastScale = 1
+    }
+    const onChange = (e: Event) => {
+      e.preventDefault()
+      const g = e as GestureLike
+      const factor = pinchFactor(lastScale, g.scale)
+      lastScale = g.scale > 0 ? g.scale : lastScale
+      const r = el.getBoundingClientRect()
+      getViewportStore().getState().zoomAtPoint(factor, g.clientX - r.left, g.clientY - r.top)
+    }
+    const onEnd = (e: Event) => e.preventDefault()
+    el.addEventListener('gesturestart', onStart)
+    el.addEventListener('gesturechange', onChange)
+    el.addEventListener('gestureend', onEnd)
+    return () => {
+      el.removeEventListener('gesturestart', onStart)
+      el.removeEventListener('gesturechange', onChange)
+      el.removeEventListener('gestureend', onEnd)
+    }
   }, [])
 
   // Keyboard shortcuts + Space-to-pan.
@@ -198,26 +227,40 @@ export function SheetCanvas() {
     node.position({ x: node.x() + snapped.xMm - bounds.xMm, y: node.y() + snapped.yMm - bounds.yMm })
   }, [])
 
+  // Konva fires dragend/transformend once per node, synchronously, at the end of one gesture.
+  // Collect them and commit on a microtask so a multi-item gesture is a single undo step.
+  const pendingRef = useRef<Array<{ id: string; patch: ItemPatch }>>([])
+  const queuePatch = useCallback((id: string, patch: ItemPatch) => {
+    const pending = pendingRef.current
+    pending.push({ id, patch })
+    if (pending.length > 1) return
+    queueMicrotask(() => {
+      const batch = pendingRef.current
+      pendingRef.current = []
+      getSheetStore().getState().updateItems(batch)
+    })
+  }, [])
+
   const onDragEnd = useCallback((item: SheetItem, node: Konva.Group) => {
-    getSheetStore().getState().updateItem(item.id, {
+    queuePatch(item.id, {
       xMm: node.x() - item.widthMm / 2,
       yMm: node.y() - item.heightMm / 2,
     })
-  }, [])
+  }, [queuePatch])
 
   const onTransformEnd = useCallback((item: SheetItem, node: Konva.Group) => {
     const widthMm = item.widthMm * Math.abs(node.scaleX())
     const heightMm = item.heightMm * Math.abs(node.scaleY())
     node.scale({ x: 1, y: 1 })
     const rotationDeg = ((node.rotation() % 360) + 360) % 360
-    getSheetStore().getState().updateItem(item.id, {
+    queuePatch(item.id, {
       widthMm,
       heightMm,
       rotationDeg,
       xMm: node.x() - widthMm / 2,
       yMm: node.y() - heightMm / 2,
     })
-  }, [])
+  }, [queuePatch])
 
   const pointer = (stage: Konva.Stage | null) => stage?.getPointerPosition() ?? null
 

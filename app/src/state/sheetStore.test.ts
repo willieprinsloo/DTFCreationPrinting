@@ -146,6 +146,22 @@ describe('sheetStore', () => {
     expect(store.getState().sheet.items[0].xMm).toBe(123)
   })
 
+  it('updateItems applies all patches as one undo step', () => {
+    const store = fresh()
+    store.getState().addItems([mk(2)])
+    const [a, b] = store.getState().sheet.items
+    store.getState().updateItems([
+      { id: a.id, patch: { xMm: 200, yMm: 300 } },
+      { id: b.id, patch: { xMm: 250, rotationDeg: 90 } },
+    ])
+    const [a2, b2] = store.getState().sheet.items
+    expect([a2.xMm, a2.yMm, b2.xMm, b2.rotationDeg]).toEqual([200, 300, 250, 90])
+    store.getState().undo()
+    const [a3, b3] = store.getState().sheet.items
+    expect(a3).toEqual(a)
+    expect(b3).toEqual(b)
+  })
+
   it('loadSheet clears history', () => {
     const store = fresh()
     store.getState().addItems([mk(1)])

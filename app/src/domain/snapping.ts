@@ -1,17 +1,12 @@
 import type { Rect } from './types'
 
-/** Smallest offset that moves one of `edges` onto one of `targets`, if within threshold. */
-function bestDelta(edges: number[], targets: number[], thresholdMm: number): number {
-  let best = 0
-  let bestAbs = Infinity
+/** Smallest offset that moves one of `edges` onto one of `targets` within threshold; null when none. */
+function bestDelta(edges: number[], targets: number[], thresholdMm: number): number | null {
+  let best: number | null = null
   for (const e of edges) {
     for (const t of targets) {
       const d = t - e
-      const abs = Math.abs(d)
-      if (abs <= thresholdMm && abs < bestAbs) {
-        best = d
-        bestAbs = abs
-      }
+      if (Math.abs(d) <= thresholdMm && (best === null || Math.abs(d) < Math.abs(best))) best = d
     }
   }
   return best
@@ -59,9 +54,9 @@ export function snapPosition(
   }
 }
 
-/** 0 means "no snap"; otherwise prefer the smaller adjustment. */
-function pickNearest(a: number, b: number): number {
-  if (a === 0) return b
-  if (b === 0) return a
+/** Any match (including an exact 0 alignment) beats no match; otherwise the smaller adjustment wins. */
+function pickNearest(a: number | null, b: number | null): number {
+  if (a === null) return b ?? 0
+  if (b === null) return a
   return Math.abs(a) <= Math.abs(b) ? a : b
 }

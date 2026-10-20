@@ -41,4 +41,9 @@ describe('snapPosition', () => {
     const other = rect(100, 300) // right edge 150, + gap 3 = 153
     expect(snapPosition(rect(152.5, 500), [other], printable, 2, 3)).toEqual({ xMm: 153, yMm: 500 })
   })
+
+  it('keeps an exact alignment instead of snapping away to a nearby target', () => {
+    const other = rect(56.5, 300) // left edge 1.5 mm from the moving rect's right edge (55)
+    expect(snapPosition(rect(5, 100), [other], printable, 2)).toEqual({ xMm: 5, yMm: 100 })
+  })
 })

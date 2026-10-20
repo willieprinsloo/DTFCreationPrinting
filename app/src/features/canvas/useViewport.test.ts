@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createViewportStore } from './useViewport'
+import { createViewportStore, pinchFactor } from './useViewport'
 import { screenToSheet } from '../../domain/viewport'
 
 const wheel = (deltaY: number, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; deltaX: number }> = {}) => ({
@@ -48,5 +48,17 @@ describe('viewport store', () => {
     s.getState().fit()
     const { vp } = s.getState()
     expect(vp.scale).toBeCloseTo((600 - 48) / 1000)
+  })
+})
+
+describe('pinchFactor', () => {
+  it('is the ratio of the new gesture scale to the previous one', () => {
+    expect(pinchFactor(1, 1.5)).toBeCloseTo(1.5)
+    expect(pinchFactor(1.5, 0.75)).toBeCloseTo(0.5)
+  })
+  it('is 1 for a non-positive or non-finite previous scale', () => {
+    expect(pinchFactor(0, 2)).toBe(1)
+    expect(pinchFactor(NaN, 2)).toBe(1)
+    expect(pinchFactor(1, 0)).toBe(1)
   })
 })

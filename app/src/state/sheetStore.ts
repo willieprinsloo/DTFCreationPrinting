@@ -25,6 +25,8 @@ export interface SheetActions {
   loadSheet(sheet: Sheet): void
   addItems(items: NewItem[]): void
   updateItem(id: string, patch: ItemPatch): void
+  /** Applies several patches as a single undo step. */
+  updateItems(patches: Array<{ id: string; patch: ItemPatch }>): void
   resizeItem(id: string, widthMm: number, keepAspect?: boolean): void
   removeItems(ids: string[]): void
   duplicateItems(ids: string[]): void
@@ -141,6 +143,15 @@ export function createSheetStore() {
           },
           updateItem(id, patch) {
             mapItems((it) => (it.id === id ? { ...it, ...patch } : it))
+          },
+          updateItems(patches) {
+            if (patches.length === 0) return
+            const byId = new Map<string, ItemPatch>()
+            for (const { id, patch } of patches) byId.set(id, { ...byId.get(id), ...patch })
+            mapItems((it) => {
+              const patch = byId.get(it.id)
+              return patch ? { ...it, ...patch } : it
+            })
           },
           resizeItem(id, widthMm, keepAspect = true) {
             mapItems((it) =>
