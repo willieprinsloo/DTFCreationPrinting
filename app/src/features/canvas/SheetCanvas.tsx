@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Layer, Rect, Shape, Stage, Transformer } from 'react-konva'
+import { Layer, Line, Rect, Shape, Stage, Text, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, useSettings } from '../../state/settingsStore'
@@ -9,6 +9,7 @@ import { snapPosition } from '../../domain/snapping'
 import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/types'
 import { screenToSheet } from '../../domain/viewport'
 import { ItemNode } from './ItemNode'
+import { Rulers } from './Rulers'
 import { stepItemSize } from '../properties/changeSize'
 import { shortcutFor } from './shortcuts'
 import { getViewportStore, pinchFactor, shouldAutoFit, useViewport, type FitInputs } from './useViewport'
@@ -218,6 +219,15 @@ export function SheetCanvas() {
     }
   }, [sheet.settings])
 
+  // Where the lowest design ends: how much film the sheet is actually using.
+  const usedMm = useMemo(
+    () => sheet.items.reduce((max, it) => {
+      const b = itemBounds(it)
+      return Math.max(max, b.yMm + b.heightMm)
+    }, 0),
+    [sheet.items],
+  )
+
   const profile = profiles.find((p) => p.id === sheet.profileId) ?? DEFAULT_PROFILE
   const outlineFor = (item: SheetItem) => {
     const status: DpiStatus = itemQuality(item, profile, thresholds).status
@@ -393,6 +403,28 @@ export function SheetCanvas() {
               fill="rgba(28,35,48,0.08)"
             />
             {!printable && <Rect x={0} y={0} width={sheetW} height={sheetH} fill="rgba(239,68,68,0.15)" />}
+            {usedMm > 0 && (
+              <>
+                <Line
+                  points={[0, usedMm, sheetW, usedMm]}
+                  stroke={colors.accent}
+                  strokeWidth={1}
+                  strokeScaleEnabled={false}
+                  dash={[6 / vp.scale, 4 / vp.scale]}
+                />
+                <Text
+                  x={sheetW}
+                  y={usedMm}
+                  offsetX={70 / vp.scale}
+                  offsetY={-4 / vp.scale}
+                  width={66 / vp.scale}
+                  align="right"
+                  text={`${(usedMm / 10).toFixed(1)} cm`}
+                  fontSize={11 / vp.scale}
+                  fill={colors.accent}
+                />
+              </>
+            )}
           </Layer>
           <Layer>
             {sheet.items.map((item) => (
@@ -437,6 +469,9 @@ export function SheetCanvas() {
             )}
           </Layer>
         </Stage>
+      )}
+      {view.w > 0 && view.h > 0 && (
+        <Rulers vp={vp} viewW={view.w} viewH={view.h} sheetW={sheetW} sheetH={sheetH} usedMm={usedMm} />
       )}
     </div>
   )
