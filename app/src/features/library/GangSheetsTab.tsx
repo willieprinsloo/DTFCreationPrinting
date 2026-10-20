@@ -8,6 +8,55 @@ import { Thumb } from './Thumb'
 import { beginLibraryDrag } from './dragAdd'
 import { useDebounced } from './useDebounced'
 
+const MAX_FILE_REQUESTS = 4
+
+const formatDate = (iso: string) => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+interface CardProps {
+  order: OrderSummary
+  name: string | undefined
+  files: OrderFile[] | undefined
+  thumbSrc: string | undefined
+  expanded: boolean
+  onVisible(): void
+  onClick(): void
+}
+
+function OrderCard({ order, name, files, thumbSrc, expanded, onVisible, onClick }: CardProps) {
+  const ref = useRef<HTMLButtonElement>(null)
+  const visibleRef = useRef(onVisible)
+  visibleRef.current = onVisible
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      visibleRef.current()
+      return
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        visibleRef.current()
+        io.disconnect()
+      }
+    })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  const date = formatDate(order.createdAt)
+  return (
+    <button ref={ref} type="button" className="order-card" aria-expanded={expanded} onClick={onClick}>
+      <span className="order-card-thumb">{thumbSrc && <img src={thumbSrc} alt="" loading="lazy" draggable={false} />}</span>
+      <strong>{order.orderNumber}</strong>
+      <span className="muted">{name || order.customerName || 'Unknown customer'}</span>
+      {date && <span className="muted">{date}</span>}
+      <span className="muted">{order.status}</span>
+      {files && <span className="muted">{files.length === 1 ? '1 file' : `${files.length} files`}</span>}
+    </button>
+  )
+}
+
 export function GangSheetsTab() {
   const { client, requireLogin } = useDtfClient()
   const [search, setSearch] = useState('')
@@ -21,9 +70,13 @@ export function GangSheetsTab() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [files, setFiles] = useState<Record<string, OrderFile[]>>({})
   const [selected, setSelected] = useState<string[]>([])
+  const [customers, setCustomers] = useState<Record<string, string>>({})
   const generation = useRef(0)
-  const stateRef = useRef({ orders, files, selected })
-  stateRef.current = { orders, files, selected }
+  const customerReqs = useRef(new Map<string, Promise<void>>())
+  const fileReqs = useRef(new Map<string, Promise<OrderFile[]>>())
+  const slots = useRef({ active: 0, waiting: [] as Array<() => void> })
+  const stateRef = useRef({ orders, files, selected, customers })
+  stateRef.current = { orders, files, selected, customers }
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
@@ -64,6 +117,49 @@ export function GangSheetsTab() {
     void loadPage(1, true)
   }, [loadPage])
 
+  const withSlot = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    const s = slots.current
+    if (s.active >= MAX_FILE_REQUESTS) await new Promise<void>((r) => s.waiting.push(r))
+    s.active++
+    try {
+      return await fn()
+    } finally {
+      s.active--
+      s.waiting.shift()?.()
+    }
+  }
+
+  const loadFiles = (orderId: string): Promise<OrderFile[]> => {
+    let p = fileReqs.current.get(orderId)
+    if (!p) {
+      p = withSlot(() => client.getOrderFiles(orderId)).then((list) => {
+        setFiles((cur) => ({ ...cur, [orderId]: list }))
+        return list
+      })
+      p.catch(() => fileReqs.current.delete(orderId))
+      fileReqs.current.set(orderId, p)
+    }
+    return p
+  }
+
+  const loadCustomer = (customerId: string | undefined) => {
+    if (!customerId || customerReqs.current.has(customerId)) return
+    customerReqs.current.set(
+      customerId,
+      client.getCustomer(customerId).then(
+        (c) => {
+          if (c.name) setCustomers((cur) => ({ ...cur, [customerId]: c.name }))
+        },
+        () => {},
+      ),
+    )
+  }
+
+  const onCardVisible = (o: OrderSummary) => {
+    loadCustomer(o.customerId)
+    void loadFiles(o.id).catch(() => {})
+  }
+
   const expand = async (order: OrderSummary) => {
     if (expanded === order.id) {
       setExpanded(null)
@@ -72,8 +168,7 @@ export function GangSheetsTab() {
     setExpanded(order.id)
     if (files[order.id]) return
     try {
-      const list = await client.getOrderFiles(order.id)
-      setFiles((cur) => ({ ...cur, [order.id]: list }))
+      await loadFiles(order.id)
     } catch (e) {
       fail(e)
     }
@@ -82,7 +177,7 @@ export function GangSheetsTab() {
   const keyOf = (orderId: string, f: OrderFile) => `${orderId}:${f.itemId}`
 
   const addSelected = async (keys: string[]) => {
-    const { orders: os, files: fs } = stateRef.current
+    const { orders: os, files: fs, customers: cs } = stateRef.current
     const items: NewItem[] = []
     const done: string[] = []
     setError(null)
@@ -101,7 +196,7 @@ export function GangSheetsTab() {
               label: `${o.orderNumber} ${f.sizeLabel}`,
               orderId: o.id,
               orderNumber: o.orderNumber,
-              customerName: o.customerName,
+              customerName: (o.customerId && cs[o.customerId]) || o.customerName,
             },
             widthMm: (asset.widthPx / 300) * 25.4,
             heightMm: (asset.heightPx / 300) * 25.4,
@@ -142,11 +237,15 @@ export function GangSheetsTab() {
       <div className="thumb-strip" onScroll={onScroll}>
         {orders.map((o) => (
           <div className="order-group" key={o.id}>
-            <button type="button" className="order-card" aria-expanded={expanded === o.id} onClick={() => void expand(o)}>
-              <strong>{o.orderNumber}</strong>
-              <span className="muted">{o.customerName}</span>
-              <span className="muted">{o.status}</span>
-            </button>
+            <OrderCard
+              order={o}
+              name={o.customerId ? customers[o.customerId] : undefined}
+              files={files[o.id]}
+              thumbSrc={files[o.id]?.[0] ? client.absoluteUrl(files[o.id][0].printFileUrl) : undefined}
+              expanded={expanded === o.id}
+              onVisible={() => onCardVisible(o)}
+              onClick={() => void expand(o)}
+            />
             {expanded === o.id &&
               (files[o.id] ?? []).map((f) => {
                 const k = keyOf(o.id, f)

@@ -140,6 +140,18 @@ describe('dtfClient', () => {
     expect(init?.method).toBe('PATCH')
     expect(JSON.parse(init?.body as string)).toEqual({ status: 'printed' })
   })
+  it('maps order customerId, delivery_name fallback and getCustomer', async () => {
+    const { client, fetchMock } = setup([
+      loginOk(),
+      json(200, { success: true, data: [{ id: 'o1', order_number: 'D1', status: 'confirmed', customer_id: 'c1', delivery_name: 'Dee Livery', created_at: 'z' }], meta: { total: 1, page: 1, has_next_page: false } }),
+      json(200, { success: true, data: { id: 'c1', name: 'Ann', surname: 'Lee', email: 'a@l.c' } }),
+    ])
+    await client.login({ email: 'a', password: 'b' })
+    const o = (await client.listOrders({ status: 'confirmed' })).items[0]
+    expect(o).toMatchObject({ customerId: 'c1', customerName: 'Dee Livery' })
+    expect(await client.getCustomer('c1')).toEqual({ id: 'c1', name: 'Ann Lee', email: 'a@l.c' })
+    expect(new URL(fetchMock.mock.calls[2][0] as string).pathname).toBe('/api/v1/customers/c1')
+  })
   describe('products', () => {
     it('listProductCategories maps id and name', async () => {
       const { client, fetchMock } = setup([loginOk(), json(200, { success: true, data: [{ id: 3, name: 'T-Shirts', slug: 't' }] })])

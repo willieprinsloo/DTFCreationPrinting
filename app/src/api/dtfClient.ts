@@ -24,6 +24,7 @@ export interface DtfClient {
   listProducts(q: { search?: string; categoryId?: string; page?: number; limit?: number }): Promise<Page<ProductSummary>>
   getProductPrintSource(id: string): Promise<ProductPrintSource>
   listCustomers(search?: string): Promise<Customer[]>
+  getCustomer(id: string): Promise<Customer>
   listOrders(q: { status?: string; search?: string; page?: number }): Promise<Page<OrderSummary>>
   getOrderFiles(orderId: string): Promise<OrderFile[]>
   setOrderStatus(orderId: string, status: string): Promise<void>
@@ -43,7 +44,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' 
 
 function fullName(o: Json): string {
   if (!o || typeof o !== 'object') return ''
-  const direct = str(o.name).trim()
+  const direct = [o.name, o.surname].map(str).map((x) => x.trim()).filter(Boolean).join(' ')
   if (direct) return direct
   const joined = [o.first_name, o.last_name].map(str).join(' ').trim()
   return joined || str(o.company).trim() || str(o.company_name).trim() || str(o.email).trim()
@@ -213,13 +214,19 @@ export function createDtfClient(o: {
         email: str(r.email),
       }))
     },
+    async getCustomer(id) {
+      const body = await request(`/customers/${encodeURIComponent(id)}`)
+      const r: Json = body?.data ?? {}
+      return { id: str(r.id) || id, name: fullName(r), email: str(r.email) }
+    },
     async listOrders(q) {
       const body = await request(`/orders${query({ status: q.status, search: q.search, page: q.page })}`)
       return toPage(body, (r): OrderSummary => ({
         id: str(r.id),
         orderNumber: str(r.order_number),
         status: str(r.status),
-        customerName: fullName(r.customer) || str(r.customer_name),
+        customerId: r.customer_id ? str(r.customer_id) : undefined,
+        customerName: fullName(r.customer) || str(r.customer_name) || str(r.delivery_name).trim(),
         createdAt: str(r.created_at),
       }))
     },

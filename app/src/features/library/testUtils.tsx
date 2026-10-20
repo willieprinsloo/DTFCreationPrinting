@@ -12,6 +12,7 @@ export function fakeClient(over: Partial<DtfClient> = {}): DtfClient {
     listProducts: vi.fn(async () => ({ items: [], total: 0, page: 1, hasNext: false })),
     getProductPrintSource: vi.fn(async () => ({ designUrl: null, sizes: [] })),
     listCustomers: vi.fn(async () => []),
+    getCustomer: vi.fn(async (id: string) => ({ id, name: '', email: '' })),
     listOrders: vi.fn(async () => ({ items: [], total: 0, page: 1, hasNext: false })),
     getOrderFiles: vi.fn(async () => []),
     setOrderStatus: vi.fn(async () => {}),
