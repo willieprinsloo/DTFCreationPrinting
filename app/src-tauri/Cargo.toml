@@ -29,6 +29,7 @@ sha2 = "0.10"
 tauri-plugin-http = "2"
 tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
+dtf-engine = { path = "engine" }
 
 [dev-dependencies]
 tempfile = "3"
@@ -41,3 +42,6 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[workspace]
+members = ["engine"]
