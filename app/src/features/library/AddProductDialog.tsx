@@ -25,6 +25,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const sources = useProductSources()
   const thresholds = useSettings((s) => s.thresholds)
   const table = useSettings((s) => s.printSizes.byType)
+  const oneSizeOnly = useSettings((s) => !!s.printSizes.oneSizeOnly[product.categoryId])
   const settings = useSheet((s) => s.sheet.settings)
   const [designUrl, setDesignUrl] = useState<string | null | undefined>(undefined)
   const [sizes, setSizes] = useState<string[]>([])
@@ -100,7 +101,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const widthCmOf = (size: string | null): number | null => {
     const key = size ?? ONE_SIZE
     if (key in widthsCm) return widthsCm[key]
-    const mm = defaultWidthMm(table, product.categoryId, size)
+    const mm = defaultWidthMm(table, product.categoryId, oneSizeOnly ? null : size)
     return mm !== undefined ? mm / 10 : nativeCm
   }
   const rows = (sizes.length > 0 ? sizes.map((s) => ({ size: s as string | null, qty: quantities[s] ?? 0 })) : [{ size: null, qty: single }]).map(

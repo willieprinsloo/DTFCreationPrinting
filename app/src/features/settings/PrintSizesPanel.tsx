@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDtfClient } from '../../api/DtfClientContext'
-import { ONE_SIZE, STANDARD_SIZES, type PrintSizeTable } from '../../domain/printSizes'
+import { ONE_SIZE, STANDARD_SIZES } from '../../domain/printSizes'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import { useLookup } from '../library/queries/useLookup'
 import { useErrorHandler } from '../library/useErrorHandler'
@@ -8,7 +8,6 @@ import { useErrorHandler } from '../library/useErrorHandler'
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const COLUMNS = [...STANDARD_SIZES, ONE_SIZE]
 const cellKey = (categoryId: string, size: string) => `${categoryId}|${size}`
-const isOneSizeOnly = (row: Record<string, number> | undefined) => !!row && Object.keys(row).length > 0 && Object.keys(row).every((k) => k === ONE_SIZE)
 const toCm = (mm: number | undefined) => (mm === undefined ? '' : String(Math.round(mm) / 10))
 
 /** Settings › Print sizes: default garment size and the width table per product type × size. */
@@ -19,7 +18,6 @@ export function PrintSizesPanel() {
   const printSizes = useSettings((s) => s.printSizes)
   const printerWidthMm = useSettings((s) => s.profiles.find((p) => p.id === s.activeProfileId)?.widthMm ?? Infinity)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [oneSizeOnly, setOneSizeOnly] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
 
   const store = () => getSettingsStore().getState()
@@ -45,23 +43,13 @@ export function PrintSizesPanel() {
     void run(store().setPrintWidth(categoryId, size, mm))
   }
 
-  const toggleOneSize = (categoryId: string, on: boolean) => {
-    setOneSizeOnly((cur) => ({ ...cur, [categoryId]: on }))
-    if (!on) return
-    // A one-size type has no per-size widths: drop them so the choice survives reopening.
-    const row = printSizes.byType[categoryId]
-    if (!row || isOneSizeOnly(row)) return
-    const byType: PrintSizeTable = { ...printSizes.byType, [categoryId]: row[ONE_SIZE] !== undefined ? { [ONE_SIZE]: row[ONE_SIZE] } : {} }
-    void run(store().setPrintSizes({ ...printSizes, byType }))
-  }
-
   return (
     <section className="settings-section">
       <h3>Print sizes</h3>
       <p className="muted">Width the design is printed at for each garment size. Height follows the design.</p>
       <label className="dialog-field">
         Default size
-        <select value={printSizes.defaultSize} onChange={(e) => void run(store().setPrintSizes({ ...printSizes, defaultSize: e.target.value }))}>
+        <select value={printSizes.defaultSize} onChange={(e) => void run(store().setPrintSizes({ defaultSize: e.target.value }))}>
           {STANDARD_SIZES.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -89,12 +77,12 @@ export function PrintSizesPanel() {
           </thead>
           <tbody>
             {categories.map((c) => {
-              const only = oneSizeOnly[c.id] ?? isOneSizeOnly(printSizes.byType[c.id])
+              const only = !!printSizes.oneSizeOnly[c.id]
               return (
                 <tr key={c.id}>
                   <th scope="row">{c.name}</th>
                   <td>
-                    <input type="checkbox" aria-label={`${c.name}: One size only`} checked={only} onChange={(e) => toggleOneSize(c.id, e.target.checked)} />
+                    <input type="checkbox" aria-label={`${c.name}: One size only`} checked={only} onChange={(e) => void run(store().setOneSizeOnly(c.id, e.target.checked))} />
                   </td>
                   {COLUMNS.map((s) => (
                     <td key={s}>

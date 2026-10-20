@@ -34,11 +34,15 @@ describe('sanitizePrintSizes', () => {
   it('keeps only positive finite widths and a standard default size', () => {
     expect(
       sanitizePrintSizes({ defaultSize: 'XXL', byType: { '3': { M: 280, L: -1, XL: 'x', S: 0, XS: Infinity }, '4': {}, '5': 'bad' } }),
-    ).toEqual({ defaultSize: 'M', byType: { '3': { M: 280 } } })
+    ).toEqual({ defaultSize: 'M', byType: { '3': { M: 280 } }, oneSizeOnly: {} })
   })
   it('returns the defaults for junk', () => {
     expect(sanitizePrintSizes(undefined)).toEqual(DEFAULT_PRINT_SIZES)
     expect(sanitizePrintSizes('nope')).toEqual(DEFAULT_PRINT_SIZES)
-    expect(sanitizePrintSizes({ defaultSize: 'L' })).toEqual({ defaultSize: 'L', byType: {} })
+    expect(sanitizePrintSizes({ defaultSize: 'L' })).toEqual({ defaultSize: 'L', byType: {}, oneSizeOnly: {} })
+  })
+  it('keeps only true oneSizeOnly flags', () => {
+    expect(sanitizePrintSizes({ oneSizeOnly: { '3': true, '4': false, '5': 'yes' } }).oneSizeOnly).toEqual({ '3': true })
+    expect(sanitizePrintSizes({ oneSizeOnly: 'bad' }).oneSizeOnly).toEqual({})
   })
 })

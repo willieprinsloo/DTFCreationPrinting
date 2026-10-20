@@ -3,6 +3,7 @@ import { useDtfClient } from '../../../api/DtfClientContext'
 import type { ProductSummary } from '../../../api/types'
 import { DEFAULT_PRODUCT_PREFS, type ProductPrefs, type ProductSort } from '../../../state/libraryPrefs'
 import { AddProductDialog } from '../AddProductDialog'
+import { getViewportStore } from '../../canvas/useViewport'
 import { formatDate } from '../format'
 import { useQuickAdd } from '../quickAdd'
 import { useLookup } from '../queries/useLookup'
@@ -68,13 +69,18 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
     const missing = all.filter((p) => sources.hasNoDesign(p.id))
     setNotice(missing.length > 0 ? `No design file for ${missing.map((p) => p.name).join(', ')}` : null)
     const picked = all.filter((p) => !missing.includes(p))
-    if (options) return dialogs.start(picked)
-    if (picked.length === 0) return
+    if (options || picked.length === 0) return dialogs.start(picked)
     setAdding(true)
     try {
       const res = await quickAdd(picked)
+      selection.remove(res.addedIds)
+      // Close only when everything went in; otherwise stay open with the reason and the rest still selected.
+      if (!res.error && missing.length === 0) {
+        if (res.addedIds.length > 0) onAdded()
+        return
+      }
       if (res.error) setNotice((cur) => (cur ? `${cur}. ${res.error}` : res.error))
-      if (res.added > 0) onAdded()
+      if (res.addedIds.length > 0) getViewportStore().getState().fit()
     } finally {
       setAdding(false)
     }

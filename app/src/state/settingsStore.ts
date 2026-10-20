@@ -60,8 +60,10 @@ export interface SettingsActions {
   setLastPrnFolder(folder: string): Promise<void>
   /** Merged over the current prefs (per tab). */
   setLibraryPrefs(patch: LibraryPrefsPatch): Promise<void>
-  /** Replaces the whole print-size table; invalid widths are dropped. */
-  setPrintSizes(next: PrintSizes): Promise<void>
+  /** Merged over the current print sizes (top-level fields replaced); invalid widths are dropped. */
+  setPrintSizes(patch: Partial<PrintSizes>): Promise<void>
+  /** Shows only the One size column for a type and prints it at that width; per-size widths are kept. */
+  setOneSizeOnly(categoryId: string, on: boolean): Promise<void>
   /** Sets one cell (`size` null = One size); a null or non-positive width clears it. */
   setPrintWidth(categoryId: string, size: string | null, widthMm: number | null): Promise<void>
 }
@@ -135,7 +137,11 @@ export function createSettingsStore(kv: KeyValueStore) {
         commit({ recentSheets: [path, ...get().recentSheets.filter((p) => p !== path)].slice(0, MAX_RECENT_SHEETS) }),
       setLastPrnFolder: (folder) => commit({ lastPrnFolder: folder }),
       setLibraryPrefs: (patch) => commit({ libraryPrefs: mergeLibraryPrefs(get().libraryPrefs, patch) }),
-      setPrintSizes: (next) => commit({ printSizes: sanitizePrintSizes(next) }),
+      setPrintSizes: (patch) => commit({ printSizes: sanitizePrintSizes({ ...get().printSizes, ...patch }) }),
+      setOneSizeOnly(categoryId, on) {
+        const { printSizes } = get()
+        return commit({ printSizes: sanitizePrintSizes({ ...printSizes, oneSizeOnly: { ...printSizes.oneSizeOnly, [categoryId]: on } }) })
+      },
       setPrintWidth(categoryId, size, widthMm) {
         const { printSizes } = get()
         const row = { ...printSizes.byType[categoryId] }

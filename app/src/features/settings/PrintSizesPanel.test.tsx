@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../state/persist', async (orig) => {
@@ -20,7 +20,7 @@ function openPage() {
 }
 
 beforeEach(async () => {
-  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { L: 300 } } })
+  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { L: 300 } }, oneSizeOnly: {} })
 })
 
 describe('Settings › Print sizes', () => {
@@ -70,16 +70,23 @@ describe('Settings › Print sizes', () => {
     await userEvent.type(within(row).getByLabelText('Mugs One size width (cm)'), '9')
     await userEvent.tab()
     expect(getSettingsStore().getState().printSizes.byType['4']).toEqual({ 'One size': 90 })
+    expect(getSettingsStore().getState().printSizes.oneSizeOnly).toEqual({ '4': true })
   })
 
-  it('remembers "One size only" on reopen, and turning it on clears that type\'s per-size widths', async () => {
-    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { L: 300, 'One size': 250 }, '4': { 'One size': 90 } } })
+  it('"One size only" is remembered and only hides the per-size widths, which come back when turned off', async () => {
+    await getSettingsStore().getState().setPrintSizes({ byType: { '3': { L: 300, 'One size': 250 }, '4': { M: 100, 'One size': 90 } }, oneSizeOnly: { '4': true } })
     openPage()
     const mugs = (await screen.findByRole('rowheader', { name: 'Mugs' })).closest('tr')!
-    await waitFor(() => expect(within(mugs).getByRole('checkbox', { name: 'Mugs: One size only' })).toBeChecked())
+    expect(within(mugs).getByRole('checkbox', { name: 'Mugs: One size only' })).toBeChecked()
     expect(within(mugs).getAllByRole('spinbutton')).toHaveLength(1)
     const tees = screen.getByRole('rowheader', { name: 'T-Shirts' }).closest('tr')!
-    await userEvent.click(within(tees).getByRole('checkbox', { name: 'T-Shirts: One size only' }))
-    expect(getSettingsStore().getState().printSizes.byType['3']).toEqual({ 'One size': 250 })
+    const toggle = within(tees).getByRole('checkbox', { name: 'T-Shirts: One size only' })
+    await userEvent.click(toggle)
+    expect(within(tees).queryByLabelText('T-Shirts L width (cm)')).toBeNull()
+    expect(getSettingsStore().getState().printSizes.byType['3']).toEqual({ L: 300, 'One size': 250 })
+    expect(getSettingsStore().getState().printSizes.oneSizeOnly).toEqual({ '3': true, '4': true })
+    await userEvent.click(toggle)
+    expect(within(tees).getByLabelText('T-Shirts L width (cm)')).toHaveValue(30)
+    expect(getSettingsStore().getState().printSizes.oneSizeOnly).toEqual({ '4': true })
   })
 })

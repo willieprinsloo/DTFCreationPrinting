@@ -33,7 +33,7 @@ beforeEach(async () => {
   vi.clearAllMocks()
   getSheetStore().getState().newSheet(DEFAULT_PROFILE)
   uiStore.setState({ printSizeNotice: null, settingsTab: null })
-  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 280, L: 300 } } })
+  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 280, L: 300 } }, oneSizeOnly: {} })
 })
 
 describe('ProductsTab', () => {
@@ -191,5 +191,32 @@ describe('ProductsTab', () => {
     await waitFor(() => expect(items()).toHaveLength(2))
     expect(items().map((i) => i.source.label)).toEqual(['Tee — M', 'Hoodie — M'])
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a one-size-only type uses its One size width whatever the garment sizes, with size null', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    await getSettingsStore().getState().setPrintWidth('3', null, 250)
+    await getSettingsStore().getState().setOneSizeOnly('3', true)
+    render(<ProductsTab />, { wrapper: withClient(fakeClient(sized())) })
+    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(items()).toHaveLength(1))
+    expect(items()[0].widthMm).toBe(250)
+    expect(items()[0].source).toMatchObject({ size: null, sizes: ['S', 'M', 'L'], label: 'Tee' })
+  })
+
+  it('a partly failed quick add deselects only the added products and asks for sign-in once', async () => {
+    vi.mocked(cacheAsset).mockResolvedValueOnce(asset).mockRejectedValueOnce(new AuthRequiredError()).mockRejectedValueOnce(new AuthRequiredError())
+    const requireLogin = vi.fn()
+    const three = [{ ...tee, sizes: ['M'] }, { ...tee, id: 'p2', name: 'Hoodie', sizes: ['M'] }, { ...tee, id: 'p4', name: 'Cap', sizes: ['M'] }]
+    render(<ProductsTab />, { wrapper: withClient(fakeClient({ ...sized(), listProducts: list(three) }), requireLogin) })
+    for (const n of ['Tee', 'Hoodie', 'Cap']) await userEvent.click(await screen.findByRole('button', { name: n }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(await screen.findByText('Couldn\'t download "Hoodie", "Cap" — try again')).toBeInTheDocument()
+    expect(items()).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Tee' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Hoodie' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Cap' })).toHaveAttribute('aria-pressed', 'true')
+    expect(requireLogin).toHaveBeenCalledTimes(1)
   })
 })

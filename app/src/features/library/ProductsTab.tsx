@@ -48,8 +48,8 @@ export function ProductsTab() {
     try {
       const res = await latest.current.quickAdd(picked)
       if (res.error) setNotice((cur) => (cur ? `${cur}. ${res.error}` : res.error))
-      const done = new Set(picked.map((d) => d.id))
-      if (res.added > 0) setSelected((cur) => cur.filter((id) => !done.has(id)))
+      const done = new Set(res.addedIds)
+      setSelected((cur) => cur.filter((id) => !done.has(id)))
     } finally {
       setAdding(false)
     }

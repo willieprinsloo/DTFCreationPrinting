@@ -290,7 +290,7 @@ describe('LibraryBrowser', () => {
     beforeEach(async () => {
       vi.mocked(cacheAsset).mockResolvedValue(asset)
       uiStore.setState({ printSizeNotice: null, settingsTab: null })
-      await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 280 } } })
+      await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 280 } }, oneSizeOnly: {} })
     })
 
     it('Add puts 1 × M of each selected product at the table width and closes', async () => {
@@ -309,7 +309,7 @@ describe('LibraryBrowser', () => {
     })
 
     it('missing default: adds anyway and the drawer shows the Print sizes notice', async () => {
-      await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { S: 250 } } })
+      await getSettingsStore().getState().setPrintSizes({ byType: { '3': { S: 250 } } })
       open(client())
       const dlg = await popOut()
       await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
@@ -333,6 +333,22 @@ describe('LibraryBrowser', () => {
       await userEvent.click(within(dlg).getByRole('button', { name: 'Add with options…' }))
       expect(await screen.findByRole('dialog', { name: 'Add Tee' })).toBeInTheDocument()
       expect(getSheetStore().getState().sheet.items).toHaveLength(0)
+    })
+
+    it('a partly failed add keeps the panel open with the error, deselects only what went in, and fits', async () => {
+      const fit = vi.spyOn(getViewportStore().getState(), 'fit')
+      vi.mocked(cacheAsset).mockReset().mockResolvedValueOnce(asset).mockRejectedValueOnce(new Error('boom'))
+      open(client())
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Cap' }))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add 2 to sheet' }))
+      expect(await within(dlg).findByRole('alert')).toHaveTextContent('Couldn\'t download "Cap" — try again')
+      expect(screen.getByRole('dialog', { name: 'Library browser' })).toBeInTheDocument()
+      expect(getSheetStore().getState().sheet.items.map((i) => i.source.label)).toEqual(['Tee — M'])
+      expect(within(dlg).getByText('1 selected')).toBeInTheDocument()
+      expect(within(dlg).getByRole('checkbox', { name: 'Cap' })).toHaveAttribute('aria-checked', 'true')
+      expect(fit).toHaveBeenCalled()
     })
   })
 })

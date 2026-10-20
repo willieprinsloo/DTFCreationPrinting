@@ -11,9 +11,11 @@ export interface PrintSizes {
   /** Garment size quick add picks (from STANDARD_SIZES). */
   defaultSize: string
   byType: PrintSizeTable
+  /** Types printed at their One size width whatever the garment size; their per-size widths stay stored. */
+  oneSizeOnly: Record<string, boolean>
 }
 
-export const DEFAULT_PRINT_SIZES: PrintSizes = { defaultSize: 'M', byType: {} }
+export const DEFAULT_PRINT_SIZES: PrintSizes = { defaultSize: 'M', byType: {}, oneSizeOnly: {} }
 
 const standardIndex = (size: string) => STANDARD_SIZES.findIndex((s) => s.toLowerCase() === size.trim().toLowerCase())
 
@@ -66,5 +68,9 @@ export function sanitizePrintSizes(raw: unknown): PrintSizes {
       if (Object.keys(row).length > 0) byType[cat] = row
     }
   }
-  return { defaultSize, byType }
+  const oneSizeOnly: Record<string, boolean> = {}
+  if (isObject(raw.oneSizeOnly)) {
+    for (const [cat, on] of Object.entries(raw.oneSizeOnly)) if (on === true) oneSizeOnly[cat] = true
+  }
+  return { defaultSize, byType, oneSizeOnly }
 }

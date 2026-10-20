@@ -13,7 +13,8 @@ import { useProductSources } from './queries/useProductSources'
 const NATIVE_DPI = 300
 
 export interface QuickAddResult {
-  added: number
+  /** Ids of the products that went onto the sheet. */
+  addedIds: string[]
   /** Products skipped (no design file / download failed), in plain English; null when all went in. */
   error: string | null
 }
@@ -36,6 +37,8 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
       // No printable width: leave the native width uncapped.
     }
     const items: NewItem[] = []
+    const addedIds: string[] = []
+    let authFailed = false
     const unset = new Set<string>()
     const noDesign: string[] = []
     const failed: string[] = []
@@ -49,7 +52,8 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
         }
         const url = client.absoluteUrl(src.designUrl)
         const asset = await cacheAsset(url, client.bearerFor(url))
-        const size = pickSize(src.sizes, printSizes.defaultSize)
+        // A one-size-only type is printed at its One size width whatever garment sizes it comes in.
+        const size = printSizes.oneSizeOnly[p.categoryId] ? null : pickSize(src.sizes, printSizes.defaultSize)
         const tableWidth = defaultWidthMm(printSizes.byType, p.categoryId, size)
         if (tableWidth === undefined) unset.add(`${typeName(p.categoryId) || 'this type'} · ${size ?? ONE_SIZE}`)
         const widthMm = tableWidth ?? Math.min((asset.widthPx / NATIVE_DPI) * 25.4, maxWidthMm)
@@ -63,11 +67,13 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
           label: size ? `${p.name} — ${size}` : p.name,
         }
         items.push({ asset, source, widthMm, heightMm: (widthMm * asset.heightPx) / asset.widthPx, quantity: 1 })
+        addedIds.push(p.id)
       } catch (e) {
-        if (e instanceof AuthRequiredError) requireLogin()
+        if (e instanceof AuthRequiredError) authFailed = true
         failed.push(p.name)
       }
     }
+    if (authFailed) requireLogin()
 
     if (items.length > 0) getSheetStore().getState().addItems(items)
     uiStore
@@ -77,6 +83,6 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
       noDesign.length > 0 && `No design file for ${noDesign.join(', ')}`,
       failed.length > 0 && `Couldn't download ${failed.map((n) => `"${n}"`).join(', ')} — try again`,
     ].filter((x): x is string => !!x)
-    return { added: items.length, error: errors.length > 0 ? errors.join('. ') : null }
+    return { addedIds, error: errors.length > 0 ? errors.join('. ') : null }
   }
 }
