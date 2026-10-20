@@ -123,29 +123,12 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   return (
     <>
       <section className="settings-section">
-        <h3>Ink channels</h3>
-        <Help>Which ink the printer expects on each of its six channels. Use black, cyan, magenta and yellow once each and white twice. Check this with the channel test print.</Help>
-        <div className="field-grid">
-          {order.map((c, i) => (
-            <label key={i} className="dialog-field">
-              {`Channel ${i} ink`}
-              <select value={c} onChange={(e) => { setOrder(order.map((o, j) => (j === i ? (e.target.value as InkChannel) : o))); touch() }}>
-                {INKS.map((k) => (
-                  <option key={k} value={k}>{INK_NAMES[k]}</option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
-      </section>
-
-      <section className="settings-section">
         <h3>Ink and white</h3>
         <div className="field-grid">
           {num('Ink limit (%)', ink, setInk, 'Most ink allowed on any spot, from 100 to 400. Lower it if dark areas look wet or crack.')}
           {num('White density (%)', density, setDensity, 'How solid the white under the design is, from 0 to 100. Lower white makes colours look duller on dark garments.')}
           {num('White choke (mm)', choke, setChoke, 'Pulls the white in from the edge of the design, from 0 to 2 mm. Raise it if you see a white halo around the colour.', '0.05')}
-          {num('Lead-in (mm)', leadIn, setLeadIn, 'Blank film added before the first design, from 0 to 1000 mm.')}
+          {num('Blank film before first design (mm)', leadIn, setLeadIn, 'Empty film fed before printing starts, from 0 to 1000 mm. Usually 0.')}
           <div>
             <label className="dialog-field">
               Screening
@@ -160,8 +143,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       </section>
 
       <section className="settings-section">
-        <h3>Colour profile (ICC file from Maintop or ink supplier)</h3>
-        <Help>Optional. Load the ICC file to match Maintop's colours. Without one, a built-in colour model is used.</Help>
+        <h3>Colour profile</h3>
+        <Help>Optional. Load the ICC file from Maintop or your ink supplier to match their colours. Without one, a built-in colour model is used.</Help>
         <p>{icc ?? 'No colour profile — the built-in colour model is used'}</p>
         <div className="button-row">
           <button type="button" onClick={() => void pickIcc()}>Choose colour profile…</button>
@@ -172,30 +155,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       </section>
 
       <section className="settings-section">
-        <h3>Ink curves</h3>
-        <Help>How strongly each ink prints at 25, 50 and 75 % (0 to 100). Straight-through is 25, 50, 75. Raise a value to print that ink darker at that level.</Help>
-        <div className="field-grid">
-          {INKS.map((k) =>
-            POINTS.map((p, i) => (
-              <label key={`${k}${p}`} className="dialog-field">
-                {`${INK_NAMES[k]} curve at ${p} %`}
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="any"
-                  value={curves[k][i]}
-                  onChange={(e) => { setCurves({ ...curves, [k]: curves[k].map((v, j) => (j === i ? e.target.value : v)) }); touch() }}
-                />
-              </label>
-            )),
-          )}
-        </div>
-      </section>
-
-      <section className="settings-section">
         <h3>Test charts</h3>
-        <Help>Creates a chart PRN with the settings shown above (even before you save them), so you can print it and see the effect. Print the same chart again after each change.</Help>
+        <Help>Creates a chart PRN with the settings on this page (even before you save them). Print it, change a setting, and print it again to compare.</Help>
         <div className="button-row">
           <button type="button" disabled={charting} onClick={() => void makeChart('colour')}>Create colour chart PRN</button>
           <button type="button" disabled={charting} onClick={() => void makeChart('white')}>Create white chart PRN</button>
@@ -203,9 +164,55 @@ function Editor({ profile }: { profile: PrinterProfile }) {
         </div>
       </section>
 
+      <details className="settings-advanced">
+        <summary>Advanced: ink channels and curves</summary>
+        <p className="muted">Set these once when setting up a printer. Most people never need to change them.</p>
+
+        <section className="settings-section">
+          <h3>Ink channels</h3>
+          <Help>Which ink the printer expects on each of its six channels, numbered as on the channel test print. Use black, cyan, magenta and yellow once each and white twice.</Help>
+          <div className="field-grid">
+            {order.map((c, i) => (
+              <label key={i} className="dialog-field">
+                {`Channel ${i} ink`}
+                <select value={c} onChange={(e) => { setOrder(order.map((o, j) => (j === i ? (e.target.value as InkChannel) : o))); touch() }}>
+                  {INKS.map((k) => (
+                    <option key={k} value={k}>{INK_NAMES[k]}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>Ink curves</h3>
+          <Help>How strongly each ink prints at 25, 50 and 75 % (0 to 100). Leave them at 25, 50, 75 for no change. Raise a value to print that ink darker at that level.</Help>
+          <div className="curve-grid">
+            <span />
+            {POINTS.map((p) => <span key={p} className="curve-head">{p} %</span>)}
+            {INKS.map((k) => [
+              <span key={k} className="curve-ink">{INK_NAMES[k]}</span>,
+              ...POINTS.map((p, i) => (
+                <input
+                  key={`${k}${p}`}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="any"
+                  aria-label={`${INK_NAMES[k]} curve at ${p} %`}
+                  value={curves[k][i]}
+                  onChange={(e) => { setCurves({ ...curves, [k]: curves[k].map((v, j) => (j === i ? e.target.value : v)) }); touch() }}
+                />
+              )),
+            ])}
+          </div>
+        </section>
+      </details>
+
       {error && <p className="inline-error" role="alert">{error}</p>}
       <div className="button-row">
-        <button type="button" className="primary" onClick={() => void save()}>Save printer & ink settings</button>
+        <button type="button" className="primary" onClick={() => void save()}>Save ink & colour settings</button>
         {saved && <span role="status">Saved</span>}
       </div>
     </>
@@ -221,7 +228,7 @@ export function EngineSettings() {
     <>
       {profiles.length > 1 && (
         <label className="dialog-field">
-          Printer
+          Settings for printer
           <select value={profile.id} onChange={(e) => setPickedId(e.target.value)}>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>

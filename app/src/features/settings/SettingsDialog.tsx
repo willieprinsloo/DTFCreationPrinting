@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { PrinterProfile } from '../../domain/types'
 import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
-import { getSettingsStore, useSettings } from '../../state/settingsStore'
+import { MIN_PREVIEW_LENGTH_FLOOR_MM, getSettingsStore, useSettings } from '../../state/settingsStore'
 import type { SettingsTab } from '../../state/uiStore'
 import { EngineSettings } from './EngineSettings'
 import { PrintSizesPanel } from './PrintSizesPanel'
@@ -15,10 +15,15 @@ interface Props {
 }
 
 const TABS: Array<[SettingsTab, string]> = [
-  ['general', 'General'],
+  ['printers', 'Printers'],
+  ['printer-ink', 'Ink & colour'],
   ['print-sizes', 'Print sizes'],
-  ['printer-ink', 'Printer & ink'],
+  ['general', 'General'],
 ]
+
+function Help({ children }: { children: string }) {
+  return <p className="field-help">{children}</p>
+}
 
 function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile; canRemove: boolean; onDone(): void }) {
   const [p, setP] = useState(profile)
@@ -30,10 +35,10 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
   const save = async () => {
     const m = p.defaultMargins
     if (!p.name.trim()) return setError('Give the printer a name')
-    if (!(p.widthMm > 0)) return setError('Printer width must be more than 0 mm')
-    if (!(p.xDpi > 0 && p.yDpi > 0)) return setError('Print resolution must be more than 0 dpi')
-    if ([m.topMm, m.rightMm, m.bottomMm, m.leftMm, p.defaultGapMm].some((v) => !(v >= 0))) return setError('Margins and gap cannot be negative')
-    if (p.widthMm - m.leftMm - m.rightMm <= 0) return setError('Margins leave no printable width')
+    if (!(p.widthMm > 0)) return setError('Film width must be more than 0 mm')
+    if (!(p.xDpi > 0 && p.yDpi > 0)) return setError('Resolution must be more than 0 dpi')
+    if ([m.topMm, m.rightMm, m.bottomMm, m.leftMm, p.defaultGapMm].some((v) => !(v >= 0))) return setError('Margins and spacing cannot be negative')
+    if (p.widthMm - m.leftMm - m.rightMm <= 0) return setError('The left and right margins leave no room to print')
     try {
       await getSettingsStore().getState().upsertProfile({ ...p, name: p.name.trim() })
       onDone()
@@ -61,19 +66,29 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
   return (
     <div className="profile-editor">
       <label className="dialog-field">
-        Name
+        Printer name
         <input type="text" value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} />
       </label>
+
+      <h4>Film and resolution</h4>
       <div className="field-grid">
-        {field('Width (mm)', p.widthMm, (v) => setP({ ...p, widthMm: num(v) }))}
-        {field('Across dpi', p.xDpi, (v) => setP({ ...p, xDpi: num(v) }))}
-        {field('Along dpi', p.yDpi, (v) => setP({ ...p, yDpi: num(v) }))}
-        {field('Gap (mm)', p.defaultGapMm, (v) => setP({ ...p, defaultGapMm: num(v) }))}
+        {field('Film width (mm)', p.widthMm, (v) => setP({ ...p, widthMm: num(v) }))}
+        <span />
+        {field('Resolution across the film (dpi)', p.xDpi, (v) => setP({ ...p, xDpi: num(v) }))}
+        {field('Resolution along the film (dpi)', p.yDpi, (v) => setP({ ...p, yDpi: num(v) }))}
+      </div>
+      <Help>Use the same print mode as in Maintop or ATools, for example 720 × 1800 dpi.</Help>
+
+      <h4>Starting layout for new sheets</h4>
+      <div className="field-grid">
         {field('Top margin (mm)', p.defaultMargins.topMm, (v) => setMargin('topMm', v))}
-        {field('Right margin (mm)', p.defaultMargins.rightMm, (v) => setMargin('rightMm', v))}
         {field('Bottom margin (mm)', p.defaultMargins.bottomMm, (v) => setMargin('bottomMm', v))}
         {field('Left margin (mm)', p.defaultMargins.leftMm, (v) => setMargin('leftMm', v))}
+        {field('Right margin (mm)', p.defaultMargins.rightMm, (v) => setMargin('rightMm', v))}
+        {field('Space between designs (mm)', p.defaultGapMm, (v) => setP({ ...p, defaultGapMm: num(v) }))}
       </div>
+      <Help>Margins keep designs away from the film edges. You can still change both on each sheet.</Help>
+
       {error && (
         <p className="inline-error" role="alert">
           {error}
@@ -96,59 +111,10 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
   )
 }
 
-export function SettingsDialog({ initialTab = 'general', onClose }: Props) {
-  const [tab, setTab] = useState<SettingsTab>(initialTab)
-  const apiBaseUrl = useSettings((s) => s.apiBaseUrl)
-  const thresholds = useSettings((s) => s.thresholds)
+function PrintersPanel() {
   const profiles = useSettings((s) => s.profiles)
-  const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
-
-  const [url, setUrl] = useState(apiBaseUrl)
-  const [fine, setFine] = useState(String(thresholds.fine))
-  const [low, setLow] = useState(String(thresholds.low))
+  const activeId = useSettings((s) => s.activeProfileId)
   const [editing, setEditing] = useState<PrinterProfile | null>(null)
-  const [previewLen, setPreviewLen] = useState(String(minPreviewLengthMm))
-  const [previewMsg, setPreviewMsg] = useState<string | null>(null)
-  const [urlMsg, setUrlMsg] = useState<string | null>(null)
-  const [dpiMsg, setDpiMsg] = useState<string | null>(null)
-
-  const saveUrl = async () => {
-    const trimmed = url.trim()
-    try {
-      new URL(trimmed)
-    } catch {
-      return setUrlMsg('Enter a full address, like https://dtfcreations.co.za/api/v1')
-    }
-    try {
-      await getSettingsStore().getState().setApiBaseUrl(trimmed)
-      setUrlMsg('Saved')
-    } catch (e) {
-      setUrlMsg(`Could not save: ${errorText(e)}`)
-    }
-  }
-
-  const saveThresholds = async () => {
-    const f = Number(fine)
-    const l = Number(low)
-    if (!(l > 0 && f > 0)) return setDpiMsg('Quality limits must be more than 0 dpi')
-    try {
-      await getSettingsStore().getState().setThresholds({ fine: f, low: l })
-      setDpiMsg('Saved')
-    } catch (e) {
-      setDpiMsg(errorText(e))
-    }
-  }
-
-  const savePreviewLength = async () => {
-    const n = Number(previewLen)
-    if (!(n >= 100)) return setPreviewMsg('Preview length must be at least 100 mm')
-    try {
-      await getSettingsStore().getState().setMinPreviewLength(n)
-      setPreviewMsg('Saved')
-    } catch (e) {
-      setPreviewMsg(`Could not save: ${errorText(e)}`)
-    }
-  }
 
   const newProfile = (): PrinterProfile => ({
     id: `printer-${Date.now().toString(36)}`,
@@ -161,9 +127,145 @@ export function SettingsDialog({ initialTab = 'general', onClose }: Props) {
     ...DEFAULT_ENGINE_SETTINGS,
   })
 
+  if (editing) {
+    return (
+      <section className="settings-section">
+        <h3>{profiles.some((p) => p.id === editing.id) ? `Edit ${editing.name}` : 'Add a printer'}</h3>
+        <ProfileEditor
+          key={editing.id}
+          profile={editing}
+          canRemove={profiles.length > 1 && profiles.some((p) => p.id === editing.id)}
+          onDone={() => setEditing(null)}
+        />
+      </section>
+    )
+  }
+
+  return (
+    <section className="settings-section">
+      <h3>Printers</h3>
+      <p className="muted">The film width, resolution and starting margins for each printer. Ink settings are on the Ink & colour tab.</p>
+      <ul className="profile-list">
+        {profiles.map((p) => (
+          <li key={p.id} className="profile-card">
+            <div>
+              <strong>{p.name}</strong>
+              {p.id === activeId && <span className="badge">In use</span>}
+              <div className="muted">
+                {p.widthMm / 10} cm film · {p.xDpi} × {p.yDpi} dpi · {p.defaultMargins.leftMm} mm margins
+              </div>
+            </div>
+            <button type="button" aria-label={`Edit ${p.name}`} onClick={() => setEditing(p)}>
+              Edit
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="button-row">
+        <button type="button" onClick={() => setEditing(newProfile())}>
+          Add printer
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function GeneralPanel() {
+  const apiBaseUrl = useSettings((s) => s.apiBaseUrl)
+  const thresholds = useSettings((s) => s.thresholds)
+  const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
+  const [url, setUrl] = useState(apiBaseUrl)
+  const [fine, setFine] = useState(String(thresholds.fine))
+  const [low, setLow] = useState(String(thresholds.low))
+  const [previewCm, setPreviewCm] = useState(String(minPreviewLengthMm / 10))
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
+
+  const fail = (text: string) => setMessage({ text, error: true })
+
+  const save = async () => {
+    const trimmed = url.trim()
+    try {
+      new URL(trimmed)
+    } catch {
+      return fail('Enter a full server address, like https://dtfcreations.co.za/api/v1')
+    }
+    const f = Number(fine)
+    const l = Number(low)
+    if (!(l > 0 && f > 0)) return fail('Quality warnings must be more than 0 dpi')
+    if (l > f) return fail('"Too low below" must not be higher than "Good from"')
+    const previewMm = Number(previewCm) * 10
+    if (!(previewMm >= MIN_PREVIEW_LENGTH_FLOOR_MM)) return fail(`Empty sheet length must be at least ${MIN_PREVIEW_LENGTH_FLOOR_MM / 10} cm`)
+    try {
+      const s = getSettingsStore().getState()
+      await s.setThresholds({ fine: f, low: l })
+      await s.setMinPreviewLength(previewMm)
+      await s.setApiBaseUrl(trimmed)
+      setMessage({ text: 'Saved', error: false })
+    } catch (e) {
+      fail(`Could not save: ${errorText(e)}`)
+    }
+  }
+
+  return (
+    <>
+      <section className="settings-section">
+        <h3>Image quality warnings</h3>
+        <p className="muted">
+          Each design is checked against its printed size. Blue means good, amber means it may look soft, red means it will look blurry.
+        </p>
+        <div className="field-grid">
+          <label className="dialog-field">
+            Good from (dpi)
+            <input type="number" min={1} value={fine} onChange={(e) => setFine(e.target.value)} />
+          </label>
+          <label className="dialog-field">
+            Too low below (dpi)
+            <input type="number" min={1} value={low} onChange={(e) => setLow(e.target.value)} />
+          </label>
+        </div>
+        <Help>Between the two numbers a design shows amber. 200 and 150 suit most DTF work.</Help>
+      </section>
+
+      <section className="settings-section">
+        <h3>Canvas</h3>
+        <label className="dialog-field">
+          Empty sheet length (cm)
+          <input type="number" min={MIN_PREVIEW_LENGTH_FLOOR_MM / 10} step="any" value={previewCm} onChange={(e) => setPreviewCm(e.target.value)} />
+        </label>
+        <Help>How much film a new sheet shows before you add designs. The sheet grows as you add more, up to 20 m.</Help>
+      </section>
+
+      <section className="settings-section">
+        <h3>DTF Creations server</h3>
+        <label className="dialog-field">
+          Server address
+          <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} />
+        </label>
+        <Help>Only change this if DTF Creations asks you to.</Help>
+      </section>
+
+      <div className="button-row">
+        <button type="button" className="primary" onClick={() => void save()}>
+          Save
+        </button>
+        {message && (
+          <span role={message.error ? 'alert' : 'status'} className={message.error ? 'inline-error' : undefined}>
+            {message.text}
+          </span>
+        )}
+      </div>
+
+      <ScreenCalibration />
+    </>
+  )
+}
+
+export function SettingsDialog({ initialTab = 'printers', onClose }: Props) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
+
   return (
     <div className="dialog-backdrop">
-      <div className="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div className="dialog dialog-wide settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <h2 id="settings-title">Settings</h2>
         <div className="settings-tabs" role="tablist" aria-label="Settings pages">
           {TABS.map(([id, label]) => (
@@ -173,91 +275,10 @@ export function SettingsDialog({ initialTab = 'general', onClose }: Props) {
           ))}
         </div>
 
-        {tab === 'print-sizes' && <PrintSizesPanel />}
+        {tab === 'printers' && <PrintersPanel />}
         {tab === 'printer-ink' && <EngineSettings />}
-        {tab === 'general' && (
-          <>
-          <section className="settings-section">
-            <h3>DTF Creations address</h3>
-            <label className="dialog-field">
-              Server address
-              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} />
-            </label>
-            <div className="button-row">
-              <button type="button" onClick={() => void saveUrl()}>
-                Save address
-              </button>
-              {urlMsg && <span role="status">{urlMsg}</span>}
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <h3>Print quality limits</h3>
-            <div className="field-grid">
-              <label className="dialog-field">
-                Fine from (dpi)
-                <input type="number" value={fine} onChange={(e) => setFine(e.target.value)} />
-              </label>
-              <label className="dialog-field">
-                Low from (dpi)
-                <input type="number" value={low} onChange={(e) => setLow(e.target.value)} />
-              </label>
-            </div>
-            <div className="button-row">
-              <button type="button" onClick={() => void saveThresholds()}>
-                Save limits
-              </button>
-              {dpiMsg && <span role="status">{dpiMsg}</span>}
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <h3>Film preview</h3>
-            <label className="dialog-field">
-              Preview length when empty (mm)
-              <input type="number" min={100} step="any" value={previewLen} onChange={(e) => setPreviewLen(e.target.value)} />
-            </label>
-            <div className="button-row">
-              <button type="button" onClick={() => void savePreviewLength()}>
-                Save preview length
-              </button>
-              {previewMsg && <span role="status">{previewMsg}</span>}
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <h3>Printers</h3>
-            {editing ? (
-              <ProfileEditor
-                key={editing.id}
-                profile={editing}
-                canRemove={profiles.length > 1 && profiles.some((p) => p.id === editing.id)}
-                onDone={() => setEditing(null)}
-              />
-            ) : (
-              <>
-                <ul className="profile-list">
-                  {profiles.map((p) => (
-                    <li key={p.id}>
-                      <span>
-                        {p.name} — {p.widthMm} mm, {p.xDpi} × {p.yDpi} dpi
-                      </span>
-                      <button type="button" onClick={() => setEditing(p)}>
-                        Edit
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button type="button" onClick={() => setEditing(newProfile())}>
-                  Add printer
-                </button>
-              </>
-            )}
-          </section>
-
-          <ScreenCalibration />
-          </>
-        )}
+        {tab === 'print-sizes' && <PrintSizesPanel />}
+        {tab === 'general' && <GeneralPanel />}
 
         <div className="dialog-actions">
           <button type="button" className="primary" onClick={onClose}>

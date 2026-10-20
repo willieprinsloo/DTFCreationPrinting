@@ -1,7 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 
-export type SettingsTab = 'general' | 'print-sizes' | 'printer-ink'
+export type SettingsTab = 'printers' | 'printer-ink' | 'print-sizes' | 'general'
 
 interface UiState {
   /** Open Settings page, or null when Settings is closed. */
@@ -17,7 +17,7 @@ interface UiState {
 export const uiStore = createStore<UiState>((set) => ({
   settingsTab: null,
   printSizeNotice: null,
-  openSettings: (tab = 'general') => set({ settingsTab: tab }),
+  openSettings: (tab = 'printers') => set({ settingsTab: tab }),
   closeSettings: () => set({ settingsTab: null }),
   setPrintSizeNotice: (text) => set({ printSizeNotice: text }),
 }))

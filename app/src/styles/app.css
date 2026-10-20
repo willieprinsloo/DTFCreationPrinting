@@ -1099,3 +1099,91 @@ button.link-btn:hover:not(:disabled) {
 .print-size-notice span {
   flex: 1;
 }
+
+/* Settings */
+.settings-dialog h3 {
+  font-size: 14px;
+}
+
+.settings-dialog h4 {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size);
+}
+
+.field-help {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+.profile-card {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.profile-card strong {
+  margin-right: var(--space-2);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  font-size: var(--font-size-small);
+  font-weight: 600;
+}
+
+.profile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-advanced {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.settings-advanced > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-advanced[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-advanced .settings-section:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.curve-grid {
+  display: grid;
+  grid-template-columns: 80px repeat(3, 1fr);
+  gap: var(--space-1) var(--space-2);
+  align-items: center;
+}
+
+.curve-head {
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+}
+
+.curve-grid input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  min-width: 0;
+}
