@@ -1,0 +1,63 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr var(--drawer-h) auto;
+  grid-template-columns: 1fr var(--panel-w);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.region {
+  background: var(--surface);
+  border: 0 solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.topbar {
+  grid-column: 1 / -1;
+  min-height: var(--topbar-h);
+  border-bottom-width: 1px;
+}
+
+.canvas-area {
+  background: var(--surface-alt);
+}
+
+.properties-panel {
+  border-left-width: 1px;
+}
+
+.library-drawer {
+  grid-column: 1 / -1;
+  border-top-width: 1px;
+}
+
+.status-bar {
+  grid-column: 1 / -1;
+  min-height: var(--statusbar-h);
+  border-top-width: 1px;
+  font-size: var(--font-size-small);
+  color: var(--text-muted);
+}
