@@ -1187,3 +1187,37 @@ button.link-btn:hover:not(:disabled) {
   padding: 4px 8px;
   min-width: 0;
 }
+
+.tone-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tone-slider-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 500;
+}
+
+.tone-value {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tone-slider-track {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-small);
+}
+
+.tone-slider-track span:last-child {
+  text-align: right;
+}
+
+.tone-slider-track input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}

@@ -17,6 +17,8 @@ export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   screening: 'blueNoise',
   dotGain: { K: [], C: [], M: [], Y: [], W: [] },
   leadInMm: 0,
+  darkness: 0,
+  saturationPct: 100,
 }
 
 export const LIMITS = {
@@ -24,6 +26,8 @@ export const LIMITS = {
   whiteDensityPct: [0, 100],
   whiteChokeMm: [0, 2],
   leadInMm: [0, 1000],
+  darkness: [-100, 100],
+  saturationPct: [50, 150],
 } as const
 
 /** Out-of-range numbers are clamped to the nearest bound; non-numbers get the fallback. */
@@ -53,6 +57,8 @@ export function sanitizeEngineSettings(raw: Partial<Record<keyof EngineSettings,
     screening: raw.screening === 'errorDiffusion' || raw.screening === 'blueNoise' ? raw.screening : d.screening,
     dotGain: Object.fromEntries(INKS.map((k) => [k, sanitizeCurve(gain[k])])) as DotGain,
     leadInMm: inRange(raw.leadInMm, LIMITS.leadInMm[0], LIMITS.leadInMm[1], d.leadInMm),
+    darkness: inRange(raw.darkness, LIMITS.darkness[0], LIMITS.darkness[1], d.darkness),
+    saturationPct: inRange(raw.saturationPct, LIMITS.saturationPct[0], LIMITS.saturationPct[1], d.saturationPct),
     ...(icc ? { iccProfilePath: icc } : {}),
   }
 }
@@ -66,7 +72,9 @@ export function validateEngineSettings(s: EngineSettings): string | null {
   if (!within(s.inkLimitPct, L.inkLimitPct)) return 'Ink limit must be between 100 and 400 %'
   if (!within(s.whiteDensityPct, L.whiteDensityPct)) return 'White density must be between 0 and 100 %'
   if (!within(s.whiteChokeMm, L.whiteChokeMm)) return 'White choke must be between 0 and 2 mm'
-  if (!within(s.leadInMm, L.leadInMm)) return 'Lead-in must be between 0 and 1000 mm'
+  if (!within(s.leadInMm, L.leadInMm)) return 'Blank film before the first design must be between 0 and 1000 mm'
+  if (!within(s.darkness, L.darkness)) return 'Lighter / darker must be between -100 and 100'
+  if (!within(s.saturationPct, L.saturationPct)) return 'Colour must be between 50 and 150 %'
   for (const ink of INKS) {
     const pts = s.dotGain[ink] ?? []
     const ok = pts.every(([x, y], i) => within(x, [0, 1]) && within(y, [0, 1]) && (i === 0 || (x > pts[i - 1][0] && y >= pts[i - 1][1])))

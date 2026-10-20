@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../state/persist', async (orig) => {
@@ -109,6 +109,23 @@ describe('Settings › Ink & colour', () => {
     await userEvent.type(screen.getByLabelText('White choke (mm)'), '0.2')
     await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a number')
+  })
+
+  it('has lighter/darker and colour sliders that save and feed the test chart', async () => {
+    vi.mocked(save).mockResolvedValueOnce('/out/colour.prn')
+    vi.mocked(createChartPrn).mockResolvedValue({ lines: 10, bytes: 1, millis: 1 })
+    page()
+    expect(screen.getAllByText('Normal')).toHaveLength(2)
+    fireEvent.change(screen.getByLabelText('Lighter or darker'), { target: { value: '30' } })
+    fireEvent.change(screen.getByLabelText('Colour'), { target: { value: '120' } })
+    expect(screen.getByText('30% darker')).toBeInTheDocument()
+    expect(screen.getByText('20% more colour')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Create colour chart PRN' }))
+    expect(createChartPrn).toHaveBeenCalledWith('colour', expect.objectContaining({ darkness: 30, saturationPct: 120 }), '/out/colour.prn')
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    expect(saved()).toMatchObject({ darkness: 30, saturationPct: 120 })
+    await userEvent.click(screen.getByRole('button', { name: 'Back to normal' }))
+    expect(screen.getAllByText('Normal')).toHaveLength(2)
   })
 
   it('creates the colour and white charts from the settings on screen', async () => {

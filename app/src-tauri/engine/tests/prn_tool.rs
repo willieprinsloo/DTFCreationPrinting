@@ -133,6 +133,15 @@ fn colour_chart_follows_the_profile_settings() {
     let curve = format!(r#"{PROFILE},"dotGain":{{"C":[[0.5,0.7]]}}}}"#);
     let (c, _, _d3) = chart_digest("colour", Some(&curve), &[]);
     assert_ne!(base, c, "curves must change the chart");
+    let dark = format!(r#"{PROFILE},"darkness":60}}"#);
+    let (d, _, _d5) = chart_digest("colour", Some(&dark), &[]);
+    assert_ne!(base, d, "the darker slider must change the chart");
+    let sat = format!(r#"{PROFILE},"saturationPct":130}}"#);
+    let (e, _, _d6) = chart_digest("colour", Some(&sat), &[]);
+    assert_ne!(base, e, "the colour slider must change the chart");
+    let neutral = format!(r#"{PROFILE},"darkness":0,"saturationPct":100}}"#);
+    let (f, _, _d7) = chart_digest("colour", Some(&neutral), &[]);
+    assert_eq!(base, f, "sliders in the middle change nothing");
     // the same profile twice gives the same chart
     let (a2, _, _d4) = chart_digest("colour", Some(&ink), &[]);
     assert_eq!(a, a2);

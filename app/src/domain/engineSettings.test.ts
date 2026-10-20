@@ -22,6 +22,12 @@ describe('sanitizeEngineSettings ranges', () => {
     expect(sanitizeEngineSettings({ ...d, leadInMm: -1 }).leadInMm).toBe(0)
   })
 
+  it('gives old profiles normal sliders and clamps the slider values', () => {
+    const { darkness: _d, saturationPct: _s, ...old } = d
+    expect(sanitizeEngineSettings(old)).toMatchObject({ darkness: 0, saturationPct: 100 })
+    expect(sanitizeEngineSettings({ ...d, darkness: 300, saturationPct: 10 })).toMatchObject({ darkness: 100, saturationPct: 50 })
+  })
+
   it('falls back to the default for values that are not numbers', () => {
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: NaN }).inkLimitPct).toBe(d.inkLimitPct)
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)
@@ -47,7 +53,9 @@ describe('validateEngineSettings', () => {
     expect(validateEngineSettings({ ...d, inkLimitPct: 50 })).toMatch(/ink limit.*100.*400/i)
     expect(validateEngineSettings({ ...d, whiteDensityPct: 101 })).toMatch(/white density.*0.*100/i)
     expect(validateEngineSettings({ ...d, whiteChokeMm: 2.5 })).toMatch(/choke.*0.*2/i)
-    expect(validateEngineSettings({ ...d, leadInMm: -1 })).toMatch(/lead-in/i)
+    expect(validateEngineSettings({ ...d, leadInMm: -1 })).toMatch(/blank film/i)
+    expect(validateEngineSettings({ ...d, darkness: 101 })).toMatch(/lighter or darker|lighter \/ darker/i)
+    expect(validateEngineSettings({ ...d, saturationPct: 49 })).toMatch(/colour/i)
     expect(validateEngineSettings({ ...d, channelOrder: ['K', 'K', 'M', 'Y', 'W', 'W'] })).toMatch(/each ink/i)
     expect(validateEngineSettings({ ...d, inkLimitPct: NaN })).toMatch(/ink limit/i)
   })

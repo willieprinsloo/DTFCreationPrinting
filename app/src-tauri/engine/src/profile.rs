@@ -33,6 +33,8 @@ pub struct ProfileDto {
     dot_gain: Option<DotGainDto>,
     lead_in_mm: Option<f32>,
     icc_profile_path: Option<String>,
+    darkness: Option<f32>,
+    saturation_pct: Option<f32>,
 }
 
 impl ProfileDto {
@@ -56,6 +58,8 @@ impl ProfileDto {
                 .icc_profile_path
                 .filter(|p| !p.trim().is_empty())
                 .map(PathBuf::from),
+            darkness: self.darkness.unwrap_or(d.darkness).clamp(-100.0, 100.0),
+            saturation_pct: self.saturation_pct.unwrap_or(d.saturation_pct).clamp(50.0, 150.0),
         }
     }
 }

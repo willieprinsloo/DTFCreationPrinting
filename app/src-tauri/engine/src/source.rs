@@ -107,6 +107,7 @@ fn prepare_rgba(
     let mut ink: Vec<Vec<u16>> = (0..4).map(|_| vec![0u16; n]).collect();
     let mut alpha = vec![65535u16; n];
     let [k, c, m, y] = &mut ink[..] else { unreachable!() };
+    let tone = s.tone.adjuster();
     k.par_chunks_mut(wu)
         .zip(c.par_chunks_mut(wu))
         .zip(m.par_chunks_mut(wu))
@@ -119,7 +120,10 @@ fn prepare_rgba(
                 let inst = inst.as_ref().map_err(|e| EngineError::Icc(e.to_string()))?;
                 rgb.clear();
                 for p in src.chunks_exact(4) {
-                    rgb.extend_from_slice(&p[..3]);
+                    match &tone {
+                        Some(t) => rgb.extend_from_slice(&t.apply([p[0], p[1], p[2]])),
+                        None => rgb.extend_from_slice(&p[..3]),
+                    }
                 }
                 out.resize(wu, [0u16; 4]);
                 inst.convert(rgb, out);
@@ -157,7 +161,7 @@ mod tests {
     }
     fn prep(px: [u8; 4], dens: f32, white: bool) -> PreparedSource {
         let d = tempfile::tempdir().unwrap();
-        let s = ColourSettings { white_density_pct: dens, icc_profile_path: None };
+        let s = ColourSettings { white_density_pct: dens, ..Default::default() };
         prepare(&rgba_png(d.path(), px), &s, white).unwrap()
     }
     fn near(v: u16, want: f32) -> bool {
@@ -246,7 +250,7 @@ mod tests {
             img.put_pixel((i % 3) as u32, (i / 3) as u32, Rgba(*v));
         }
         img.save(&p).unwrap();
-        let s = prepare(&p, &ColourSettings { white_density_pct: 50.0, icc_profile_path: None }, true).unwrap();
+        let s = prepare(&p, &ColourSettings { white_density_pct: 50.0, ..Default::default() }, true).unwrap();
         let (f, h) = (65535u16, 32768u16);
         // [K, C, M, Y, W] per pixel in row-major order
         let want: [[u16; 5]; 6] = [
@@ -323,7 +327,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let bad = d.path().join("p.icc");
         std::fs::write(&bad, b"not a profile").unwrap();
-        let s = ColourSettings { white_density_pct: 100.0, icc_profile_path: Some(bad) };
+        let s = ColourSettings { icc_profile_path: Some(bad), ..Default::default() };
         let r = prepare(&rgba_png(d.path(), [0, 0, 0, 255]), &s, true);
         assert!(matches!(r, Err(EngineError::Icc(_))));
     }

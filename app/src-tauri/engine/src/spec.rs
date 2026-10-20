@@ -41,6 +41,16 @@ pub struct EngineSettings {
     pub curves: Option<[Vec<(f32, f32)>; 5]>,
     pub lead_in_mm: f32,
     pub icc_profile_path: Option<PathBuf>,
+    /// Lighter/darker slider, -100 ..= 100 (0 = unchanged).
+    #[serde(default)]
+    pub darkness: f32,
+    /// Colour slider, 50 ..= 150 % (100 = unchanged).
+    #[serde(default = "default_saturation_pct")]
+    pub saturation_pct: f32,
+}
+
+fn default_saturation_pct() -> f32 {
+    100.0
 }
 
 impl Default for EngineSettings {
@@ -54,6 +64,8 @@ impl Default for EngineSettings {
             curves: None,
             lead_in_mm: 0.0,
             icc_profile_path: None,
+            darkness: 0.0,
+            saturation_pct: 100.0,
         }
     }
 }
@@ -63,6 +75,7 @@ impl From<&EngineSettings> for ColourSettings {
         ColourSettings {
             white_density_pct: s.white_density_pct,
             icc_profile_path: s.icc_profile_path.clone(),
+            tone: crate::colour::Tone { darkness: s.darkness / 100.0, saturation: s.saturation_pct / 100.0 },
         }
     }
 }

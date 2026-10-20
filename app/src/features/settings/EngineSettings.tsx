@@ -15,6 +15,47 @@ function Help({ children }: { children: string }) {
   return <p className="field-help">{children}</p>
 }
 
+interface SliderProps {
+  label: string
+  left: string
+  right: string
+  min: number
+  max: number
+  value: number
+  neutral: number
+  describe(v: number): string
+  onChange(v: number): void
+}
+
+/** A Maintop-style slider: plain words at each end and the current setting in words. */
+function ToneSlider({ label, left, right, min, max, value, neutral, describe, onChange }: SliderProps) {
+  return (
+    <div className="tone-slider">
+      <div className="tone-slider-head">
+        <span>{label}</span>
+        <span className={value === neutral ? 'muted' : 'tone-value'}>{describe(value)}</span>
+      </div>
+      <div className="tone-slider-track">
+        <span className="muted">{left}</span>
+        <input
+          type="range"
+          aria-label={label}
+          min={min}
+          max={max}
+          step={5}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          onDoubleClick={() => onChange(neutral)}
+        />
+        <span className="muted">{right}</span>
+      </div>
+    </div>
+  )
+}
+
+const describeDarkness = (v: number) => (v === 0 ? 'Normal' : v < 0 ? `${-v}% lighter` : `${v}% darker`)
+const describeColour = (v: number) => (v === 100 ? 'Normal' : v < 100 ? `${100 - v}% less colour` : `${v - 100}% more colour`)
+
 function Editor({ profile }: { profile: PrinterProfile }) {
   const [order, setOrder] = useState<InkChannel[]>(profile.channelOrder)
   const [ink, setInk] = useState(String(profile.inkLimitPct))
@@ -23,6 +64,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   const [screening, setScreening] = useState(profile.screening)
   const [leadIn, setLeadIn] = useState(String(profile.leadInMm))
   const [icc, setIcc] = useState(profile.iccProfilePath)
+  const [darkness, setDarkness] = useState(profile.darkness)
+  const [saturation, setSaturation] = useState(profile.saturationPct)
   const [curves, setCurves] = useState<Record<InkChannel, string[]>>(
     () => Object.fromEntries(INKS.map((k) => [k, curveToThree(profile.dotGain[k]).map(String)])) as Record<InkChannel, string[]>,
   )
@@ -64,6 +107,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       screening,
       dotGain,
       leadInMm: Number(leadIn),
+      darkness,
+      saturationPct: saturation,
       ...(icc ? { iccProfilePath: icc } : {}),
     }
     return validateEngineSettings(engine) ?? engine
@@ -122,6 +167,40 @@ function Editor({ profile }: { profile: PrinterProfile }) {
 
   return (
     <>
+      <section className="settings-section">
+        <h3>Lighter or darker, more or less colour</h3>
+        <Help>Adjusts every print from this printer. Make a colour chart PRN below to see the effect before you save. Double-click a slider to put it back to normal.</Help>
+        <ToneSlider
+          label="Lighter or darker"
+          left="Lighter"
+          right="Darker"
+          min={-100}
+          max={100}
+          neutral={0}
+          value={darkness}
+          describe={describeDarkness}
+          onChange={(v) => { setDarkness(v); touch() }}
+        />
+        <ToneSlider
+          label="Colour"
+          left="Less colour"
+          right="More colour"
+          min={50}
+          max={150}
+          neutral={100}
+          value={saturation}
+          describe={describeColour}
+          onChange={(v) => { setSaturation(v); touch() }}
+        />
+        {(darkness !== 0 || saturation !== 100) && (
+          <div className="button-row">
+            <button type="button" className="link-btn" onClick={() => { setDarkness(0); setSaturation(100); touch() }}>
+              Back to normal
+            </button>
+          </div>
+        )}
+      </section>
+
       <section className="settings-section">
         <h3>Ink and white</h3>
         <div className="field-grid">
