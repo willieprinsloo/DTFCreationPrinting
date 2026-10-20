@@ -46,4 +46,13 @@ describe('SheetProperties', () => {
     expect(settings().widthMm).toBe(600)
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
+
+  it('does not store a negative margin', async () => {
+    render(<SheetProperties />)
+    const top = screen.getByLabelText('Top margin')
+    await userEvent.clear(top)
+    await userEvent.type(top, '-4{Enter}')
+    expect(settings().margins.topMm).toBe(5)
+    expect(screen.getByRole('alert')).toHaveTextContent('Margins cannot be negative')
+  })
 })
