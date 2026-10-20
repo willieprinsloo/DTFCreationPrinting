@@ -4,6 +4,7 @@ import type { ProductSummary } from '../../api/types'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
+import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
 import { assetAspect, dpiLabel, dpiStatus, effectiveDpi, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { ONE_SIZE, resolveWidthMm } from '../../domain/printSizes'
@@ -48,7 +49,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const fail = useCallback(
     (e: unknown) => {
       if (e instanceof AuthRequiredError) requireLogin()
-      setError(`Couldn't download "${product.name}" — try again`)
+      setError(isPdfNotInstalled(e) ? PDF_NOT_INSTALLED : `Couldn't download "${product.name}" — try again`)
     },
     [product.name, requireLogin],
   )

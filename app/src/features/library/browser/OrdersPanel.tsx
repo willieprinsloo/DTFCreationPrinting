@@ -150,8 +150,8 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
       getSheetStore().getState().addItems(res.items)
       selection.remove(res.done)
     }
-    if (res.failed.length > 0) {
-      setError(`Couldn't download ${res.failed.join(', ')} — try again`)
+    if (res.error) {
+      setError(res.error)
       if (res.items.length > 0) getViewportStore().getState().fit()
     } else if (res.items.length > 0) onAdded()
   }

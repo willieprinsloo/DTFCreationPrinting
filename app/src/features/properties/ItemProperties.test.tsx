@@ -7,6 +7,7 @@ vi.mock('../../state/persist', async (orig) => {
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ItemProperties } from './ItemProperties'
+import { pdfPrintedDpi } from '../../domain/dpi'
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
 import { uiStore } from '../../state/uiStore'
@@ -43,11 +44,24 @@ describe('ItemProperties', () => {
     const s = getSheetStore().getState()
     s.newSheet(DEFAULT_PROFILE)
     const pdf = { assetId: 'p', path: '/p.pdf', previewPath: '/p.png', widthPx: 827, heightPx: 827, kind: 'pdf' as const, widthMm: 70, heightMm: 70 }
-    s.addItems([{ asset: pdf, source: { kind: 'local', id: 'p', label: 'Sheet.pdf' }, widthMm: 700, heightMm: 700, quantity: 1 }])
+    s.addItems([{ asset: pdf, source: { kind: 'local', id: 'p', label: 'Sheet.pdf' }, widthMm: 70, heightMm: 70, quantity: 1 }])
     render(<ItemProperties ids={[getSheetStore().getState().sheet.items[0].id]} />)
     expect(screen.getByText('Vector')).toBeInTheDocument()
     expect(screen.getByText('Good')).toBeInTheDocument()
     expect(screen.queryByText(/dpi/)).toBeNull()
+  })
+
+  it('shows the printed dpi for a PDF too large for full resolution', () => {
+    const s = getSheetStore().getState()
+    s.newSheet(DEFAULT_PROFILE)
+    const pdf = { assetId: 'p', path: '/p.pdf', previewPath: '/p.png', widthPx: 7087, heightPx: 11811, kind: 'pdf' as const, widthMm: 600, heightMm: 1000 }
+    s.addItems([{ asset: pdf, source: { kind: 'local', id: 'p', label: 'Sheet.pdf' }, widthMm: 600, heightMm: 1000, quantity: 1 }])
+    const placed = item() // fitted to the printable width
+    const n = pdfPrintedDpi(placed, DEFAULT_PROFILE)!
+    expect(n).toBeGreaterThan(300)
+    render(<ItemProperties ids={[placed.id]} />)
+    expect(screen.getByText(`Vector · printed at ${Math.floor(n)} dpi`)).toBeInTheDocument()
+    expect(screen.getByText('Good')).toBeInTheDocument()
   })
 
   it('keeps aspect when width changes', async () => {

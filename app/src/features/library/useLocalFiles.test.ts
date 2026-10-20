@@ -44,6 +44,13 @@ describe('useLocalFiles.addPaths', () => {
     expect(it0.heightMm).toBe(50)
   })
 
+  it('shows "PDF support is not installed" verbatim', async () => {
+    vi.mocked(importLocalFile).mockRejectedValue('PDF support is not installed')
+    const { result } = renderHook(() => useLocalFiles())
+    await act(() => result.current.addPaths(['/x/a.pdf']))
+    expect(result.current.error).toBe('PDF support is not installed')
+  })
+
   it('one failure does not block the others', async () => {
     vi.mocked(importLocalFile).mockImplementation(async (p) => {
       if (p.endsWith('bad.png')) throw new Error('corrupt')

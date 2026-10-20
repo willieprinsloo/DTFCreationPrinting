@@ -224,19 +224,28 @@ fn composite_row(
 /// Pixel size to render a PDF item at. Unrotated (or half-turned) items get
 /// exactly the printer grid (x dpi across, y dpi down), quarter-turned items
 /// the swapped grid, any other angle the finer density on both axes. If that
-/// exceeds `max_px` pixels both axes are scaled down uniformly to fit.
+/// exceeds `max_px` pixels, the finer axis is first reduced towards the
+/// coarser axis's density, then both are reduced evenly (R13). Mirrored in
+/// the app as `pdfRenderSize` (app/src/domain/dpi.ts) — keep them in step.
 pub fn pdf_render_size(w_mm: f64, h_mm: f64, rot_deg: f64, x_dpi: u32, y_dpi: u32, max_px: u64) -> (u32, u32) {
     let (da, db) = match rot_deg.rem_euclid(180.0) {
-        0.0 => (x_dpi, y_dpi),
-        90.0 => (y_dpi, x_dpi),
-        _ => (x_dpi.max(y_dpi), x_dpi.max(y_dpi)),
+        0.0 => (x_dpi as f64, y_dpi as f64),
+        90.0 => (y_dpi as f64, x_dpi as f64),
+        _ => (x_dpi.max(y_dpi) as f64, x_dpi.max(y_dpi) as f64),
     };
-    let (w, h) = (w_mm / 25.4 * da as f64, h_mm / 25.4 * db as f64);
-    let (w, h) = if w * h > max_px as f64 {
-        let k = (max_px as f64 / (w * h)).sqrt();
-        ((w * k).floor(), (h * k).floor())
+    let (wi, hi) = (w_mm / 25.4, h_mm / 25.4);
+    let (w, h) = if wi * da * hi * db <= max_px as f64 {
+        ((wi * da).round(), (hi * db).round())
     } else {
-        (w.round(), h.round())
+        // densities whose product fits the budget
+        let p = max_px as f64 / (wi * hi);
+        let coarse = da.min(db);
+        let (da, db) = if coarse * coarse <= p {
+            if da <= db { (da, p / da) } else { (p / db, db) }
+        } else {
+            (p.sqrt(), p.sqrt())
+        };
+        ((wi * da).floor(), (hi * db).floor())
     };
     ((w as u32).max(1), (h as u32).max(1))
 }
@@ -621,14 +630,29 @@ mod tests {
 
     #[test]
     fn pdf_render_size_is_capped_to_the_pixel_budget() {
-        // a 600 x 1000 mm gang sheet would be 17007 x 70866 px
-        let (w, h) = pdf_render_size(600.0, 1000.0, 0.0, 720, 1800, 100_000_000);
-        assert!((w as u64 * h as u64) <= 100_000_000, "{w}x{h}");
-        assert!((w as u64 * h as u64) > 99_000_000, "{w}x{h}");
-        // aspect of the grid is kept (scaled uniformly)
-        assert!(((h as f64 / w as f64) - 70866.0 / 17007.0).abs() < 0.01, "{w}x{h}");
+        let dpi = |px: u32, mm: f64| px as f64 / (mm / 25.4);
+        // a 600 x 1000 mm gang sheet (17007 x 70866 px on the grid): the finer
+        // axis drops to 720, then both scale down evenly to ~339 dpi (R13)
+        let (w, h) = pdf_render_size(600.0, 1000.0, 0.0, 720, 1800, MAX_PREPARED_PX);
+        assert!(w as u64 * h as u64 <= MAX_PREPARED_PX, "{w}x{h}");
+        assert!((dpi(w, 600.0) - 339.0).abs() <= 2.0 && (dpi(h, 1000.0) - 339.0).abs() <= 2.0, "{w}x{h}");
+        // 300 x 300 mm: only the 1800-dpi axis is reduced, 720 across is kept
+        let (w, h) = pdf_render_size(300.0, 300.0, 0.0, 720, 1800, MAX_PREPARED_PX);
+        assert!(w as u64 * h as u64 <= MAX_PREPARED_PX, "{w}x{h}");
+        assert_eq!(w, 8503);
+        assert!(dpi(h, 300.0) > 720.0 && dpi(h, 300.0) < 1800.0, "{w}x{h}");
         // never a zero side
         assert_eq!(pdf_render_size(0.01, 0.01, 0.0, 720, 1800, u64::MAX), (1, 1));
+    }
+
+    /// The same numbers are asserted in app/src/domain/dpi.test.ts (pdfRenderSize).
+    #[test]
+    fn pdf_render_size_cross_check_with_the_app() {
+        assert_eq!(MAX_PREPARED_PX, 107_374_182);
+        assert_eq!(pdf_render_size(50.0, 50.0, 0.0, 720, 1800, MAX_PREPARED_PX), (1417, 3543));
+        assert_eq!(pdf_render_size(600.0, 1000.0, 0.0, 720, 1800, MAX_PREPARED_PX), (8026, 13377));
+        assert_eq!(pdf_render_size(300.0, 300.0, 0.0, 720, 1800, MAX_PREPARED_PX), (8503, 12626));
+        assert_eq!(pdf_render_size(300.0, 600.0, 90.0, 720, 1800, MAX_PREPARED_PX), (7327, 14654));
     }
 
     #[test]

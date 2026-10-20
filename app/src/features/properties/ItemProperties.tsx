@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Copy, Lock, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { uiStore, useUi } from '../../state/uiStore'
-import { getSettingsStore, useSettings } from '../../state/settingsStore'
-import { dpiLabel, dpiStatus, effectiveDpi } from '../../domain/dpi'
+import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
+import { dpiLabel, dpiStatus, effectiveDpi, pdfBadge } from '../../domain/dpi'
 import { MIN_PRINT_MM, heightForWidth, widthForHeight } from '../../domain/geometry'
 import type { SheetItem } from '../../domain/types'
 import { ONE_SIZE, resolveWidthMm, widthKey } from '../../domain/printSizes'
@@ -93,6 +93,8 @@ export function ItemProperties({ ids }: { ids: string[] }) {
   const allItems = useSheet((s) => s.sheet.items)
   const [sizeError, setSizeError] = useState<string | null>(null)
   const thresholds = useSettings((s) => s.thresholds)
+  const profileId = useSheet((s) => s.sheet.profileId)
+  const profiles = useSettings((s) => s.profiles)
   const actions = getSheetStore().getState()
 
   const buttons = (
@@ -137,8 +139,10 @@ export function ItemProperties({ ids }: { ids: string[] }) {
     )
   }
 
+  const profile = profiles.find((p) => p.id === profileId) ?? DEFAULT_PROFILE
   const dpi = effectiveDpi(item)
-  const status = dpiStatus(dpi, thresholds)
+  const badge = item.asset.kind === 'pdf' ? pdfBadge(item, profile) : { label: dpiLabel(dpi), status: dpiStatus(dpi, thresholds) }
+  const status = badge.status
   const setWidth = (cm: number) => {
     if (!(cm > 0)) return
     const mm = cm * MM_PER_CM
@@ -159,7 +163,7 @@ export function ItemProperties({ ids }: { ids: string[] }) {
     <div className="props-section" data-testid="item-properties">
       <h2>Design</h2>
       <p className={`dpi-badge dpi-${status}`}>
-        <span>{dpiLabel(dpi)}</span> <span>{LABELS[status]}</span>
+        <span>{badge.label}</span> <span>{LABELS[status]}</span>
       </p>
       <div className="source-label">
         <strong>{item.source.label}</strong>

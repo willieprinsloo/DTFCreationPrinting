@@ -46,6 +46,12 @@ describe('AddDesignDialog', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('shows "PDF support is not installed" verbatim', async () => {
+    vi.mocked(cacheAsset).mockRejectedValue('PDF support is not installed')
+    render(<AddDesignDialog design={{ ...design, imageUrl: '/u/lion.pdf' }} onClose={vi.fn()} />, { wrapper: withClient(fakeClient()) })
+    expect(await screen.findByText('PDF support is not installed')).toBeInTheDocument()
+  })
+
   it('clamps the quantity to 500', async () => {
     vi.mocked(cacheAsset).mockResolvedValue(asset)
     render(<AddDesignDialog design={design} onClose={vi.fn()} />, { wrapper: withClient(fakeClient()) })

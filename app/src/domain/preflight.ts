@@ -1,5 +1,5 @@
 import type { DpiThresholds, PrinterProfile, Problem, Sheet, SheetItem } from './types'
-import { dpiStatus, effectiveDpi } from './dpi'
+import { dpiStatus, effectiveDpi, pdfPrintedDpi } from './dpi'
 import { findProblems, itemBounds } from './geometry'
 
 const MM_PER_INCH = 25.4
@@ -13,6 +13,8 @@ export interface PreflightResult {
   orderIds: string[]
   low: SheetItem[]
   bad: SheetItem[]
+  /** PDFs too large to print at full printer resolution, with the dpi they will print at. */
+  pdfNotes: { item: SheetItem; dpi: number }[]
   problems: Problem[]
   estimatedPrnBytes: number
   canCreate: boolean
@@ -36,6 +38,10 @@ export function preflight(sheet: Sheet, profile: PrinterProfile, t: DpiThreshold
     if (s === 'low') low.push(it)
     else if (s === 'bad') bad.push(it)
   }
+  const pdfNotes = sheet.items.flatMap((item) => {
+    const dpi = pdfPrintedDpi(item, profile)
+    return dpi === null ? [] : [{ item, dpi }]
+  })
   const problems = findProblems(sheet)
   const orderIds = [...new Set(sheet.items.map((i) => i.source.orderId).filter((o): o is string => !!o))]
   return {
@@ -44,6 +50,7 @@ export function preflight(sheet: Sheet, profile: PrinterProfile, t: DpiThreshold
     orderIds,
     low,
     bad,
+    pdfNotes,
     problems,
     estimatedPrnBytes: PRN_HEADER_BYTES + lines * PRN_PASSES_PER_LINE * bytesPerLine,
     canCreate: problems.length === 0 && sheet.items.length > 0,

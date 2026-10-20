@@ -19,6 +19,17 @@ const sheet = (items: SheetItem[]): Sheet => ({
 const run = (items: SheetItem[]) => preflight(sheet(items), DEFAULT_PROFILE, DEFAULT_THRESHOLDS)
 
 describe('preflight', () => {
+  it('lists PDFs the engine prints below full resolution as notes, not as low quality', () => {
+    const pdf = { assetId: 'p', path: '/p.pdf', previewPath: '/p.png', widthPx: 7087, heightPx: 11811, kind: 'pdf' as const, widthMm: 600, heightMm: 1000 }
+    const big = item('big', { asset: pdf, widthMm: 590, heightMm: 983.3 })
+    const small = item('small', { asset: { ...pdf, widthMm: 70, heightMm: 70 }, xMm: 5, yMm: 990, widthMm: 70, heightMm: 70 })
+    const r = run([big, small])
+    expect(r.pdfNotes.map((n) => n.item.id)).toEqual(['big'])
+    expect(Math.abs(r.pdfNotes[0].dpi - 345)).toBeLessThanOrEqual(3)
+    expect(r.low).toEqual([])
+    expect(r.bad).toEqual([])
+  })
+
   it('estimates the PRN size from content length and full printer width', () => {
     const r = run([item('a')])
     expect(r.estimatedPrnBytes).toBe(180_973_680)

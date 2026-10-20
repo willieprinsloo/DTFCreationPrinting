@@ -90,6 +90,12 @@ describe('AddProductDialog', () => {
     expect(getSheetStore().getState().sheet.items).toHaveLength(0)
   })
 
+  it('shows "PDF support is not installed" verbatim', async () => {
+    vi.mocked(cacheAsset).mockRejectedValue('PDF support is not installed')
+    render(<AddProductDialog product={product} onClose={vi.fn()} />, { wrapper: withClient(fakeClient(source(['M'], '/uploads/d.pdf'))) })
+    expect(await screen.findByText('PDF support is not installed')).toBeInTheDocument()
+  })
+
   it('asks for sign-in on AuthRequiredError', async () => {
     const requireLogin = vi.fn()
     vi.mocked(cacheAsset).mockRejectedValue(new AuthRequiredError())

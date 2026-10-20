@@ -4,6 +4,7 @@ import type { GalleryDesign } from '../../api/types'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
+import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
 import { assetAspect, dpiLabel, dpiStatus, effectiveDpi, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
@@ -47,7 +48,7 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
       return a
     } catch (e) {
       if (e instanceof AuthRequiredError) requireLogin()
-      setError(`Couldn't download "${design.name}" — try again`)
+      setError(isPdfNotInstalled(e) ? PDF_NOT_INSTALLED : `Couldn't download "${design.name}" — try again`)
       return null
     } finally {
       setLoading(false)

@@ -42,11 +42,22 @@ fn pdfium() -> Result<&'static Pdfium, EngineError> {
     if let Some(p) = PDFIUM.get() {
         return Ok(p);
     }
-    for c in candidates().into_iter().filter(|c| c.is_file()) {
-        if let Ok(b) = Pdfium::bind_to_library(&c) {
-            return Ok(PDFIUM.get_or_init(|| Pdfium::new(b)));
+    let mut reasons = Vec::new();
+    for c in candidates() {
+        if !c.is_file() {
+            reasons.push(format!("{} not found", c.display()));
+            continue;
+        }
+        match Pdfium::bind_to_library(&c) {
+            Ok(b) => return Ok(PDFIUM.get_or_init(|| Pdfium::new(b))),
+            Err(e) => reasons.push(format!("{}: {e}", c.display())),
         }
     }
+    if reasons.is_empty() {
+        reasons.push(format!("no library folder set and {ENV_VAR} is not set"));
+    }
+    // The user sees only the plain message; the reason goes to the log.
+    eprintln!("PDF support is not installed: {}", reasons.join("; "));
     Err(EngineError::PdfNotInstalled)
 }
 
@@ -134,13 +145,33 @@ pub mod testing {
     /// A one-page PDF `page_mm` square with a black `square_mm` square
     /// centred on it; the rest of the page is transparent.
     pub fn square_pdf(page_mm: f64, square_mm: f64) -> Vec<u8> {
-        let pt = |mm: f64| mm / 25.4 * 72.0;
-        let (p, s, o) = (pt(page_mm), pt(square_mm), pt((page_mm - square_mm) / 2.0));
-        let content = format!("0 0 0 rg {o:.4} {o:.4} {s:.4} {s:.4} re f\n");
+        let o = pt((page_mm - square_mm) / 2.0);
+        let s = pt(square_mm);
+        page_pdf(page_mm, &format!("0 0 0 rg {o:.4} {o:.4} {s:.4} {s:.4} re f\n"), "")
+    }
+
+    /// A 70 mm page with a red 50 mm square whose outer 10 mm ring is 50 %
+    /// transparent (inner 30 mm opaque); the rest of the page is transparent.
+    pub fn red_soft_edge_pdf() -> Vec<u8> {
+        let (o, s, io, is) = (pt(10.0), pt(50.0), pt(20.0), pt(30.0));
+        let content = format!(
+            "q /Half gs 1 0 0 rg {o:.4} {o:.4} {s:.4} {s:.4} re {io:.4} {io:.4} {is:.4} {is:.4} re f* Q \
+             1 0 0 rg {io:.4} {io:.4} {is:.4} {is:.4} re f\n"
+        );
+        page_pdf(70.0, &content, "/ExtGState << /Half << /ca 0.5 >> >>")
+    }
+
+    fn pt(mm: f64) -> f64 {
+        mm / 25.4 * 72.0
+    }
+
+    /// A one-page PDF `page_mm` square with the given content stream and resources.
+    fn page_pdf(page_mm: f64, content: &str, resources: &str) -> Vec<u8> {
+        let p = pt(page_mm);
         let objs = [
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-            format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {p:.4} {p:.4}] /Contents 4 0 R /Resources << >> >>"),
+            format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {p:.4} {p:.4}] /Contents 4 0 R /Resources << {resources} >> >>"),
             format!("<< /Length {} >>\nstream\n{content}endstream", content.len()),
         ];
         let mut out = b"%PDF-1.4\n".to_vec();

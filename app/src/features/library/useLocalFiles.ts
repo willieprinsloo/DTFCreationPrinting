@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { nativeSizeMm } from '../../domain/dpi'
 import { importLocalFile } from '../../platform/tauri'
+import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
 import { getSheetStore } from '../../state/sheetStore'
 import type { NewItem } from '../../state/sheetStore'
 
@@ -24,6 +25,7 @@ export function useLocalFiles() {
     setError(null)
     const items: NewItem[] = []
     const failed: string[] = []
+    let noPdf = false
     for (const p of wanted) {
       try {
         const asset = await importLocalFile(p)
@@ -33,12 +35,14 @@ export function useLocalFiles() {
           ...nativeSizeMm(asset),
           quantity: 1,
         })
-      } catch {
-        failed.push(baseName(p))
+      } catch (e) {
+        if (isPdfNotInstalled(e)) noPdf = true
+        else failed.push(baseName(p))
       }
     }
     if (items.length > 0) getSheetStore().getState().addItems(items)
-    if (failed.length > 0) setError(`Couldn't open ${failed.join(', ')}`)
+    const errors = [noPdf && PDF_NOT_INSTALLED, failed.length > 0 && `Couldn't open ${failed.join(', ')}`].filter(Boolean)
+    if (errors.length > 0) setError(errors.join('. '))
     setBusy(false)
     return items.length
   }, [])

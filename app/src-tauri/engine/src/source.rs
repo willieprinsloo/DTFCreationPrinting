@@ -289,6 +289,29 @@ mod tests {
     }
 
     #[test]
+    fn pdf_colours_are_rgba_with_straight_alpha() {
+        if !crate::pdf::testing::pdfium_ready() {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("red.pdf");
+        std::fs::write(&p, crate::pdf::testing::red_soft_edge_pdf()).unwrap();
+        // 1 px per mm: inner opaque red 20..50, half-transparent ring 10..20 and 50..60
+        let s = prepare_pdf(&p, 70, 70, &ColourSettings::default(), true).unwrap();
+        let px = |x: usize, y: usize| {
+            let i = y * 70 + x;
+            [s.ink[0].data[i], s.ink[1].data[i], s.ink[2].data[i], s.ink[3].data[i], s.alpha.data[i]]
+        };
+        // red = magenta + yellow, no cyan (a BGRA/RGBA swap would give blue = cyan + magenta)
+        assert_eq!(px(35, 35), [0, 0, 65535, 65535, 65535]);
+        // ring: alpha ~0.5; ink planes are tone x alpha, so a straight-alpha
+        // red gives ~0.5 M/Y (pdfium premultiplied output would give ~0.25)
+        let [k, c, m, y, a] = px(15, 35);
+        assert!(near(a, 0.5) && near(m, 0.5) && near(y, 0.5) && k == 0 && c == 0, "{:?}", px(15, 35));
+        assert_eq!(px(3, 3), [0; 5]);
+    }
+
+    #[test]
     fn bad_file_is_decode_error() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("x.png");

@@ -47,7 +47,7 @@ export function GangSheetsTab() {
     setNotice(null)
     const res = await downloadOrderFiles(client, refs)
     if (res.authFailed) requireLogin()
-    if (res.failed.length > 0) setError(`Couldn't download ${res.failed.join(', ')} — try again`)
+    if (res.error) setError(res.error)
     if (res.items.length > 0) {
       getSheetStore().getState().addItems(res.items)
       setSelected((cur) => cur.filter((k) => !res.done.includes(k)))

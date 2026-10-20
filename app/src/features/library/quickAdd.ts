@@ -6,6 +6,7 @@ import { assetAspect, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { ONE_SIZE, pickSize, resolveWidthMm, widthKey } from '../../domain/printSizes'
 import { cacheAsset } from '../../platform/tauri'
+import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
 import { getSettingsStore } from '../../state/settingsStore'
 import { getSheetStore, type NewItem } from '../../state/sheetStore'
 import { uiStore } from '../../state/uiStore'
@@ -41,6 +42,7 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
     const unset = new Set<string>()
     const noDesign: string[] = []
     const failed: string[] = []
+    let noPdf = false
 
     for (const p of products) {
       try {
@@ -69,7 +71,8 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
         addedIds.push(p.id)
       } catch (e) {
         if (e instanceof AuthRequiredError) authFailed = true
-        failed.push(p.name)
+        if (isPdfNotInstalled(e)) noPdf = true
+        else failed.push(p.name)
       }
     }
     if (authFailed) requireLogin()
@@ -80,6 +83,7 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
       .setPrintSizeNotice(unset.size > 0 ? `No default print size for ${[...unset].join(', ')} — set it in Settings › Print sizes` : null)
     const errors = [
       noDesign.length > 0 && `No design file for ${noDesign.join(', ')}`,
+      noPdf && PDF_NOT_INSTALLED,
       failed.length > 0 && `Couldn't download ${failed.map((n) => `"${n}"`).join(', ')} — try again`,
     ].filter((x): x is string => !!x)
     return { addedIds, error: errors.length > 0 ? errors.join('. ') : null }

@@ -171,6 +171,18 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
             <ul>{list(result.bad, 'bad')}</ul>
           </div>
         )}
+        {result.pdfNotes.length > 0 && (
+          <div>
+            <h3>Notes</h3>
+            <ul>
+              {result.pdfNotes.map(({ item, dpi }) => (
+                <li key={item.id}>
+                  {item.source.label} — PDF too large for full printer resolution; printed at {Math.floor(dpi)} dpi
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {result.needsConfirm && (
           <label className="dialog-check">
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />

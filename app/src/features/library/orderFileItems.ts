@@ -3,16 +3,20 @@ import { AuthRequiredError } from '../../api/dtfClient'
 import type { OrderFile, OrderSummary } from '../../api/types'
 import { nativeSizeMm } from '../../domain/dpi'
 import { cacheAsset } from '../../platform/tauri'
+import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
 import type { NewItem } from '../../state/sheetStore'
 
 export interface OrderFileRef { order: OrderSummary; file: OrderFile; customerName: string; key: string }
-export interface DownloadResult { items: NewItem[]; done: string[]; failed: string[]; authFailed: boolean }
+/** `error`: what to show for the failures (null when none). */
+export interface DownloadResult { items: NewItem[]; done: string[]; failed: string[]; authFailed: boolean; error: string | null }
 
 export const orderFileKey = (orderId: string, f: OrderFile) => `${orderId}:${f.itemId}`
 
 /** Downloads each order file and builds a sheet item at native size (300 dpi, or a PDF's page size). Failures are reported, not thrown. */
 export async function downloadOrderFiles(client: DtfClient, refs: OrderFileRef[]): Promise<DownloadResult> {
-  const out: DownloadResult = { items: [], done: [], failed: [], authFailed: false }
+  const out: DownloadResult = { items: [], done: [], failed: [], authFailed: false, error: null }
+  let noPdf = false
+  const otherFailed: string[] = []
   for (const { order: o, file: f, customerName, key } of refs) {
     try {
       const url = client.absoluteUrl(f.printFileUrl)
@@ -34,7 +38,11 @@ export async function downloadOrderFiles(client: DtfClient, refs: OrderFileRef[]
     } catch (e) {
       if (e instanceof AuthRequiredError) out.authFailed = true
       out.failed.push(`${o.orderNumber} ${f.sizeLabel}`)
+      if (isPdfNotInstalled(e)) noPdf = true
+      else otherFailed.push(`${o.orderNumber} ${f.sizeLabel}`)
     }
   }
+  const errors = [noPdf && PDF_NOT_INSTALLED, otherFailed.length > 0 && `Couldn't download ${otherFailed.join(', ')} — try again`].filter(Boolean)
+  out.error = errors.length > 0 ? errors.join('. ') : null
   return out
 }
