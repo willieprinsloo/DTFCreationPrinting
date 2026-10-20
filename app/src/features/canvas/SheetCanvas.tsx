@@ -103,14 +103,14 @@ export function SheetCanvas() {
     return () => ro.disconnect()
   }, [])
 
-  // A new or loaded sheet goes back to auto-fit.
+  // A new or loaded sheet goes back to the default (home) view.
   useEffect(() => {
-    getViewportStore().getState().setAutoFit(true)
+    getViewportStore().setState({ autoFit: true, autoMode: 'home' })
     fitRef.current = null
   }, [sheet.id])
 
-  // Keep the whole film in view on first size, film size change and container resize,
-  // until the user navigates manually.
+  // Re-apply the automatic view (home, or fit-all after Fit) on first size, film size change
+  // and container resize, until the user navigates manually.
   useEffect(() => {
     if (!(view.w > 0 && view.h > 0)) return
     const vs = getViewportStore().getState()
@@ -120,7 +120,7 @@ export function SheetCanvas() {
     if (shouldAutoFit(prev, next, vs.autoFit)) {
       vs.setSheetSize(sheetW, sheetH)
       vs.setView(view.w, view.h)
-      vs.fit()
+      vs.autoView()
     }
   }, [sheetW, sheetH, view.w, view.h, sheet.id])
 

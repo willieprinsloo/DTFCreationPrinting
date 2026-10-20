@@ -22,7 +22,7 @@ export function LibraryBrowser({ tab, onTabChange, onClose, local }: Props) {
 
   const onAdded = () => {
     onClose()
-    getViewportStore().getState().fit()
+    getViewportStore().getState().autoView()
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {

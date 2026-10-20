@@ -4,6 +4,7 @@ import { useStore } from 'zustand'
 import {
   fitSheet,
   fitWidth as fitWidthVp,
+  homeView,
   trueSize as trueSizeVp,
   zoomAt,
   type Viewport,
@@ -13,6 +14,8 @@ import { getSettingsStore } from '../../state/settingsStore'
 /** Wheel delta → zoom factor; pinch sends small ctrlKey deltas, mouse wheels larger ones. */
 const WHEEL_ZOOM_SPEED = 0.01
 const MAX_WHEEL_STEP = 0.5
+/** Zoom a sheet opens at, relative to true size (100% = 1:1 on screen). */
+export const DEFAULT_ZOOM = 0.3
 
 /** Zoom factor between two successive WebKit gesture scales (cumulative since gesturestart). */
 export function pinchFactor(prevScale: number, nextScale: number): number {
@@ -42,6 +45,8 @@ export function shouldAutoFit(prev: FitInputs | null, next: FitInputs, autoFit: 
 export interface ViewportState {
   /** True until the user zooms/pans manually; fit() turns it back on. */
   autoFit: boolean
+  /** What the automatic view keeps re-applying: the 30% home view, or fit-all (after Fit). */
+  autoMode: 'home' | 'fit'
   setAutoFit(on: boolean): void
   vp: Viewport
   viewW: number
@@ -52,6 +57,10 @@ export interface ViewportState {
   setView(viewW: number, viewH: number): void
   setSheetSize(sheetW: number, sheetH: number): void
   fit(): void
+  /** DEFAULT_ZOOM, film centred across, top of the film in view. */
+  home(): void
+  /** Re-applies whichever automatic view is active. */
+  autoView(): void
   fitWidth(): void
   trueSize(): void
   /** Zooms around the centre of the view. */
@@ -66,6 +75,7 @@ export function createViewportStore() {
   return createStore<ViewportState>((set, get) => ({
     vp: { scale: 1, offsetX: 0, offsetY: 0 },
     autoFit: true,
+    autoMode: 'home',
     setAutoFit: (autoFit) => set({ autoFit }),
     viewW: 0,
     viewH: 0,
@@ -77,7 +87,16 @@ export function createViewportStore() {
     setSheetSize: (sheetW, sheetH) => set({ sheetW, sheetH }),
     fit() {
       const { sheetW, sheetH, viewW, viewH } = get()
-      set({ vp: fitSheet(sheetW, sheetH, viewW, viewH), autoFit: true })
+      set({ vp: fitSheet(sheetW, sheetH, viewW, viewH), autoFit: true, autoMode: 'fit' })
+    },
+    home() {
+      const { sheetW, viewW } = get()
+      const scale = DEFAULT_ZOOM * getSettingsStore().getState().screenPxPerMm
+      set({ vp: homeView(sheetW, viewW, scale), autoFit: true, autoMode: 'home' })
+    },
+    autoView() {
+      if (get().autoMode === 'fit') get().fit()
+      else get().home()
     },
     fitWidth() {
       const { sheetW, viewW } = get()

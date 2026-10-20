@@ -50,6 +50,12 @@ export function fitWidth(sheetW: number, viewW: number, paddingPx = 24): Viewpor
   return { scale, offsetX: (viewW - sheetW * scale) / 2, offsetY: paddingPx }
 }
 
+/** `scale` px/mm, film centred across the view, its top `paddingPx` below the view's top. */
+export function homeView(sheetW: number, viewW: number, scale: number, paddingPx = 32): Viewport {
+  const s = clampScale(scale)
+  return { scale: s, offsetX: (viewW - sheetW * s) / 2, offsetY: paddingPx }
+}
+
 /** 1:1 physical size, keeping the sheet point at the view centre fixed. */
 export function trueSize(
   vp: Viewport,

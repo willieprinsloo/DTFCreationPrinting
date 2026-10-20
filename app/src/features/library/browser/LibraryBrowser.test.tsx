@@ -157,9 +157,9 @@ describe('LibraryBrowser', () => {
     expect(within(dlg).getByRole('button', { name: 'Add 2 to sheet' })).toBeEnabled()
   })
 
-  it('ticking an order selects all its files; Add adds them, closes and fits the canvas', async () => {
+  it('ticking an order selects all its files; Add adds them, closes and resets the canvas view', async () => {
     vi.mocked(cacheAsset).mockResolvedValue({ assetId: 'a', path: '/a.png', previewPath: '/a.jpg', widthPx: 300, heightPx: 300 })
-    const fit = vi.spyOn(getViewportStore().getState(), 'fit')
+    const autoView = vi.spyOn(getViewportStore().getState(), 'autoView')
     const client = fakeClient({
       listOrders: page([order]),
       getOrderFiles: vi.fn(async () => [
@@ -178,7 +178,7 @@ describe('LibraryBrowser', () => {
     await userEvent.click(within(dlg).getByRole('button', { name: 'Add 2 to sheet' }))
     await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(2))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Library browser' })).toBeNull())
-    expect(fit).toHaveBeenCalled()
+    expect(autoView).toHaveBeenCalled()
   })
 
   it('keyboard: ↓ moves focus, Space toggles, ⌘A selects the page, Enter opens the add dialog', async () => {
@@ -364,8 +364,8 @@ describe('LibraryBrowser', () => {
       expect(within(screen.getByRole('dialog', { name: 'Library browser' })).getByRole('alert')).toHaveTextContent('No design file for Cap')
     })
 
-    it('a partly failed add keeps the panel open with the error, deselects only what went in, and fits', async () => {
-      const fit = vi.spyOn(getViewportStore().getState(), 'fit')
+    it('a partly failed add keeps the panel open with the error, deselects only what went in, and resets the view', async () => {
+      const autoView = vi.spyOn(getViewportStore().getState(), 'autoView')
       vi.mocked(cacheAsset).mockReset().mockResolvedValueOnce(asset).mockRejectedValueOnce(new Error('boom'))
       open(client())
       const dlg = await popOut()
@@ -377,7 +377,7 @@ describe('LibraryBrowser', () => {
       expect(getSheetStore().getState().sheet.items.map((i) => i.source.label)).toEqual(['Tee — M'])
       expect(within(dlg).getByText('1 selected')).toBeInTheDocument()
       expect(within(dlg).getByRole('checkbox', { name: 'Cap' })).toHaveAttribute('aria-checked', 'true')
-      expect(fit).toHaveBeenCalled()
+      expect(autoView).toHaveBeenCalled()
     })
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createViewportStore, pinchFactor, shouldAutoFit } from './useViewport'
+import { createViewportStore, DEFAULT_ZOOM, pinchFactor, shouldAutoFit } from './useViewport'
+import { getSettingsStore } from '../../state/settingsStore'
 import { screenToSheet } from '../../domain/viewport'
 
 const wheel = (deltaY: number, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; deltaX: number }> = {}) => ({
@@ -89,6 +90,28 @@ describe('autoFit', () => {
     const { vp } = s.getState()
     expect(vp.scale).toBeCloseTo((600 - 48) / 1000)
     expect(vp.offsetX).toBeCloseTo((800 - 600 * vp.scale) / 2)
+  })
+
+  it('home() opens at 30% of true size, centred across, top of the film in view', () => {
+    const s = store()
+    s.getState().home()
+    const { vp, autoFit, autoMode } = s.getState()
+    expect(vp.scale).toBeCloseTo(DEFAULT_ZOOM * getSettingsStore().getState().screenPxPerMm)
+    expect(vp.offsetX).toBeCloseTo((800 - 600 * vp.scale) / 2)
+    expect(vp.offsetY).toBe(32)
+    expect(autoFit).toBe(true)
+    expect(autoMode).toBe('home')
+  })
+
+  it('autoView() re-applies home by default and fit after fit()', () => {
+    const s = store()
+    expect(s.getState().autoMode).toBe('home')
+    s.getState().autoView()
+    expect(s.getState().vp.offsetY).toBe(32)
+    s.getState().fit()
+    s.getState().setView(1000, 600)
+    s.getState().autoView()
+    expect(s.getState().vp.scale).toBeCloseTo((600 - 48) / 1000)
   })
 })
 

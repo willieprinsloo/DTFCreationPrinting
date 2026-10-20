@@ -152,7 +152,7 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
     }
     if (res.error) {
       setError(res.error)
-      if (res.items.length > 0) getViewportStore().getState().fit()
+      if (res.items.length > 0) getViewportStore().getState().autoView()
     } else if (res.items.length > 0) onAdded()
   }
 

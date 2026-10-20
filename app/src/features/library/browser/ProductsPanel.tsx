@@ -87,7 +87,7 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
         return
       }
       if (res.error) setNotice((cur) => (cur ? `${cur}. ${res.error}` : res.error))
-      if (res.addedIds.length > 0) getViewportStore().getState().fit()
+      if (res.addedIds.length > 0) getViewportStore().getState().autoView()
     } finally {
       setAdding(false)
     }
