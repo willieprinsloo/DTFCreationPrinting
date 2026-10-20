@@ -250,6 +250,12 @@ pub fn cancel_prn(jobs: State<'_, Arc<PrnJobs>>, job_id: String) {
     jobs.cancel(&job_id);
 }
 
+/// Explorer's `/select,"<path>"` argument (passed raw, not re-quoted).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn explorer_select_arg(path: &str) -> String {
+    format!("/select,\"{path}\"")
+}
+
 /// Opens the system file manager with `path` selected.
 #[tauri::command]
 pub fn reveal_in_folder(path: String) -> Result<(), String> {
@@ -262,10 +268,15 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
         .spawn()
         .map_err(fail)?;
     #[cfg(target_os = "windows")]
-    Command::new("explorer")
-        .arg(format!("/select,{path}"))
-        .spawn()
-        .map_err(fail)?;
+    {
+        // `arg` would re-quote the whole "/select,..." token when the path has
+        // spaces, and Explorer then opens the wrong folder; pass it verbatim.
+        use std::os::windows::process::CommandExt;
+        Command::new("explorer")
+            .raw_arg(explorer_select_arg(&path))
+            .spawn()
+            .map_err(fail)?;
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let dir = Path::new(&path).parent().unwrap_or(Path::new("."));
@@ -380,6 +391,14 @@ mod tests {
     fn bad_sheet_json_is_a_plain_error() {
         let e = job_from_sheet("{}", PROFILE).unwrap_err();
         assert!(e.starts_with("Creating the PRN failed: "), "{e}");
+    }
+
+    #[test]
+    fn explorer_select_arg_quotes_the_path() {
+        assert_eq!(
+            explorer_select_arg(r"C:\My Prints\job 1.prn"),
+            r#"/select,"C:\My Prints\job 1.prn""#
+        );
     }
 
     #[test]

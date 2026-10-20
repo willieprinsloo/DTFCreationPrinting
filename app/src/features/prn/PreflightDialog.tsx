@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { save } from '@tauri-apps/plugin-dialog'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
@@ -22,18 +22,24 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path
 
 interface Done { path: string; stats: PrnStats }
 
-/** Sets each distinct order on the sheet to In production; returns one line per order that failed. */
+/**
+ * Sets each distinct order on the sheet to In production, skipping (and adding to)
+ * `marked` so no order is sent twice; returns one line per order that failed.
+ */
 async function markOrdersInProduction(
   sheet: Sheet,
   orderIds: string[],
+  marked: Set<string>,
   setStatus: (orderId: string, status: string) => Promise<void>,
   requireLogin: () => void,
 ): Promise<string[]> {
   const failures: string[] = []
   let askedLogin = false
   for (const id of orderIds) {
+    if (marked.has(id)) continue
     try {
       await setStatus(id, 'in_production')
+      marked.add(id)
     } catch (e) {
       const label = `Order ${sheet.items.find((i) => i.source.orderId === id)?.source.orderNumber || id}`
       if (e instanceof AuthRequiredError) {
@@ -60,7 +66,11 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
   const [progress, setProgress] = useState<number | null>(null)
   const [markOrders, setMarkOrders] = useState(true)
   const [orderFailures, setOrderFailures] = useState<string[]>([])
+  const [updatingOrders, setUpdatingOrders] = useState(false)
   const job = useRef<PrnJob | null>(null)
+  /** Orders already set to In production from this dialog (never sent again). */
+  const markedOrders = useRef(new Set<string>())
+  useEffect(() => () => job.current?.cancel(), [])
   const { client, requireLogin } = useDtfClient()
 
   const profile = profiles.find((p) => p.id === sheet.profileId) ?? profiles.find((p) => p.id === activeId) ?? DEFAULT_PROFILE
@@ -107,7 +117,16 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
       setDone({ path, stats })
       setProgress(null)
       if (markOrders && result.orderIds.length > 0) {
-        setOrderFailures(await markOrdersInProduction(sheet, result.orderIds, (id, st) => client.setOrderStatus(id, st), requireLogin))
+        setUpdatingOrders(true)
+        try {
+          const failures = await markOrdersInProduction(
+            sheet, result.orderIds, markedOrders.current, (id, st) => client.setOrderStatus(id, st), requireLogin,
+          )
+          setOrderFailures(failures)
+          if (failures.length === 0) setMarkOrders(false)
+        } finally {
+          setUpdatingOrders(false)
+        }
       }
     } catch (e) {
       if (!(e instanceof PrnCancelledError)) setError(errorText(e))
@@ -178,6 +197,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
             <button type="button" onClick={() => void revealInFolder(done.path).catch((e) => setError(errorText(e)))}>Show in folder</button>
           </p>
         )}
+        {updatingOrders && <p role="status">Updating orders in DTF Creations…</p>}
         {orderFailures.length > 0 && (
           <div>
             <p className="inline-error">The PRN was created, but these orders were not set to In production:</p>
