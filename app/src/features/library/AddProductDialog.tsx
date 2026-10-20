@@ -4,7 +4,7 @@ import type { ProductSummary } from '../../api/types'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
-import { dpiStatus, effectiveDpi } from '../../domain/dpi'
+import { assetAspect, dpiLabel, dpiStatus, effectiveDpi, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { ONE_SIZE, resolveWidthMm } from '../../domain/printSizes'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
@@ -61,7 +61,7 @@ export function AddProductDialog({ product, onClose }: Props) {
         const url = client.absoluteUrl(path)
         const a = await cacheAsset(url, client.bearerFor(url))
         setAsset(a)
-        setNativeCm(Math.round(Math.min((a.widthPx / 300) * 2.54, maxWidthCm) * 100) / 100)
+        setNativeCm(Math.round(Math.min(nativeSizeMm(a).widthMm / 10, maxWidthCm) * 100) / 100)
         return a
       } catch (e) {
         fail(e)
@@ -106,7 +106,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const rows = (sizes.length > 0 ? sizes.map((s) => ({ size: s as string | null, qty: quantities[s] ?? 0 })) : [{ size: null, qty: single }]).map(
     (r) => {
       const widthMm = (widthCmOf(r.size) ?? 0) * 10
-      const heightMm = asset ? (widthMm * asset.heightPx) / asset.widthPx : 0
+      const heightMm = asset ? widthMm * assetAspect(asset) : 0
       const dpi = asset && widthMm > 0 ? effectiveDpi({ asset, widthMm, heightMm }) : null
       return { ...r, widthMm, heightMm, dpi, status: dpi === null ? null : dpiStatus(dpi, thresholds) }
     },
@@ -154,7 +154,7 @@ export function AddProductDialog({ product, onClose }: Props) {
     r.dpi !== null &&
     r.status && (
       <p className={`dpi-badge dpi-${r.status}`}>
-        <span>{Math.round(r.dpi)} dpi</span> <span>{LABELS[r.status]}</span>
+        <span>{dpiLabel(r.dpi)}</span> <span>{LABELS[r.status]}</span>
       </p>
     )
 

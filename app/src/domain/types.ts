@@ -16,7 +16,11 @@ export interface EngineSettings {
 }
 export interface PrinterProfile extends EngineSettings { id: string; name: string; widthMm: number; xDpi: number; yDpi: number; defaultMargins: Margins; defaultGapMm: number }
 export interface SheetSettings { widthMm: number; margins: Margins; gapMm: number; lengthMode: 'auto' | 'fixed'; fixedLengthMm: number; mirror: boolean; whiteEnabled: boolean; allowRotate: boolean }
-export interface Asset { assetId: string; path: string; previewPath: string; widthPx: number; heightPx: number }
+/**
+ * A cached design file. `kind` is missing on older sheets (= raster). PDFs are vector: `widthMm`/`heightMm`
+ * is the page size, and `widthPx`/`heightPx` that size at 300 dpi.
+ */
+export interface Asset { assetId: string; path: string; previewPath: string; widthPx: number; heightPx: number; kind?: 'raster' | 'pdf'; widthMm?: number; heightMm?: number }
 export interface SourceRef {
   kind: 'gallery' | 'order-file' | 'local'
   id: string

@@ -6,6 +6,7 @@ use std::fs;
 use std::io;
 use std::time::Duration;
 use std::path::{Path, PathBuf};
+use dtf_engine::pdf;
 use tauri::Manager;
 
 pub const PREVIEW_MAX_SIDE: u32 = 2048;
@@ -16,19 +17,30 @@ pub struct AssetInfo {
     pub asset_id: String,
     pub path: String,
     pub preview_path: String,
+    /// For PDFs: the page size at 300 dpi.
     pub width_px: u32,
     pub height_px: u32,
+    /// "raster" or "pdf".
+    pub kind: &'static str,
+    /// PDF page size (absent for rasters).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width_mm: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height_mm: Option<f64>,
 }
+
+/// Resolution a PDF page size is expressed at in `width_px`/`height_px`.
+const PDF_NOMINAL_DPI: f64 = 300.0;
 
 fn unsupported(ext: &str) -> String {
-    format!("Unsupported file type: .{ext} (use PNG, JPEG or TIFF)")
+    format!("Unsupported file type: .{ext} (use PNG, JPEG, TIFF or PDF)")
 }
 
-/// Lowercased extension if supported (png, jpg, jpeg, tif, tiff), else the unsupported error.
+/// Lowercased extension if supported (png, jpg, jpeg, tif, tiff, pdf), else the unsupported error.
 fn supported_ext(ext: &str) -> Result<String, String> {
     let e = ext.to_lowercase();
     match e.as_str() {
-        "png" | "jpg" | "jpeg" | "tif" | "tiff" => Ok(e),
+        "png" | "jpg" | "jpeg" | "tif" | "tiff" | "pdf" => Ok(e),
         _ => Err(unsupported(&e)),
     }
 }
@@ -44,12 +56,26 @@ pub fn read_dimensions(path: &Path) -> Result<(u32, u32), String> {
     Ok((size.width as u32, size.height as u32))
 }
 
+/// Renders the first page with its long side `max_side` px, transparent where the page is empty.
+fn pdf_preview(src: &Path, tmp: &Path, max_side: u32) -> Result<(), String> {
+    let (wmm, hmm) = pdf::page_size_mm(src).map_err(|e| e.to_string())?;
+    let k = max_side as f64 / wmm.max(hmm);
+    let (w, h) = (((wmm * k).round() as u32).max(1), ((hmm * k).round() as u32).max(1));
+    let img = pdf::render_page(src, w, h).map_err(|e| e.to_string())?;
+    img.save_with_format(tmp, image::ImageFormat::Png)
+        .map_err(|e| format!("Could not write preview: {e}"))
+}
+
 pub fn ensure_preview(src: &Path, dst: &Path, max_side: u32) -> Result<(), String> {
     if dst.exists() {
         return Ok(());
     }
     let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("");
-    supported_ext(ext)?;
+    if supported_ext(ext)? == "pdf" {
+        let tmp = dst.with_extension("png.tmp");
+        pdf_preview(src, &tmp, max_side)?;
+        return fs::rename(&tmp, dst).map_err(|e| format!("Could not write preview: {e}"));
+    }
     let (w, h) = read_dimensions(src)?;
     let tmp = dst.with_extension("png.tmp");
     if w <= max_side && h <= max_side && ext.eq_ignore_ascii_case("png") {
@@ -90,13 +116,23 @@ fn build_info(file: &Path) -> Result<AssetInfo, String> {
         .to_string();
     let preview = file.with_file_name(format!("{stem}.preview.png"));
     ensure_preview(file, &preview, PREVIEW_MAX_SIDE)?;
-    let (w, h) = read_dimensions(file)?;
+    let (w, h, page_mm) = if pdf::is_pdf(file) {
+        let (wmm, hmm) = pdf::page_size_mm(file).map_err(|e| e.to_string())?;
+        let px = |mm: f64| ((mm / 25.4 * PDF_NOMINAL_DPI).round() as u32).max(1);
+        (px(wmm), px(hmm), Some((wmm, hmm)))
+    } else {
+        let (w, h) = read_dimensions(file)?;
+        (w, h, None)
+    };
     Ok(AssetInfo {
         asset_id: stem,
         path: file.to_string_lossy().into_owned(),
         preview_path: preview.to_string_lossy().into_owned(),
         width_px: w,
         height_px: h,
+        kind: if page_mm.is_some() { "pdf" } else { "raster" },
+        width_mm: page_mm.map(|p| p.0),
+        height_mm: page_mm.map(|p| p.1),
     })
 }
 
@@ -115,6 +151,18 @@ fn url_extension(url: &str) -> Result<String, String> {
     let last = no_query.rsplit('/').next().unwrap_or("");
     let ext = last.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
     supported_ext(ext)
+}
+
+/// Rejects downloads that are not what their extension says (e.g. a login page).
+fn validate_download(path: &Path, ext: &str) -> Result<(), String> {
+    if ext != "pdf" {
+        return validate_image(path);
+    }
+    match pdf::page_size_mm(path) {
+        Ok(_) => Ok(()),
+        Err(e @ dtf_engine::EngineError::PdfNotInstalled) => Err(e.to_string()),
+        Err(_) => Err("Downloaded file is not a valid PDF".into()),
+    }
 }
 
 /// Rejects files whose header cannot be read as an image.
@@ -147,7 +195,8 @@ fn download_into(dir: &Path, url: &str, bearer: Option<&str>, name: &str) -> Res
         let mut f = fs::File::create(&tmp).map_err(|e| format!("Could not save download: {e}"))?;
         io::copy(&mut resp, &mut f).map_err(|e| format!("Download failed: {e}"))?;
         drop(f);
-        validate_image(&tmp)
+        let ext = Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("");
+        validate_download(&tmp, ext)
     })();
     if let Err(e) = result {
         let _ = fs::remove_file(&tmp);
@@ -246,9 +295,9 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let bad = d.path().join("x.tmp");
         fs::write(&bad, b"<html>not an image</html>").unwrap();
-        assert_eq!(validate_image(&bad).unwrap_err(), "Downloaded file is not a valid image");
+        assert_eq!(validate_download(&bad, "png").unwrap_err(), "Downloaded file is not a valid image");
         let good = make_png(d.path(), "g.png", 10, 10);
-        assert!(validate_image(&good).is_ok());
+        assert!(validate_download(&good, "png").is_ok());
     }
 
     #[test]
@@ -257,11 +306,61 @@ mod tests {
         let p = d.path().join("a.gif");
         fs::write(&p, b"GIF89a").unwrap();
         let err = ensure_preview(&p, &d.path().join("a.preview.png"), 2048).unwrap_err();
-        assert_eq!(err, "Unsupported file type: .gif (use PNG, JPEG or TIFF)");
+        assert_eq!(err, "Unsupported file type: .gif (use PNG, JPEG, TIFF or PDF)");
         assert_eq!(
             url_extension("https://x/a.gif?x=1").unwrap_err(),
-            "Unsupported file type: .gif (use PNG, JPEG or TIFF)"
+            "Unsupported file type: .gif (use PNG, JPEG, TIFF or PDF)"
         );
         assert_eq!(url_extension("https://x/a.JPEG?x=1").unwrap(), "jpeg");
+        assert_eq!(url_extension("https://x/sheet.PDF?x=1").unwrap(), "pdf");
+    }
+
+    #[test]
+    fn raster_info_is_kind_raster_without_page_size() {
+        let d = tempfile::tempdir().unwrap();
+        let p = make_png(d.path(), "abc.png", 30, 20);
+        let v = serde_json::to_value(build_info(&p).unwrap()).unwrap();
+        assert_eq!(v["kind"], "raster");
+        assert_eq!((v["widthPx"].as_u64(), v["heightPx"].as_u64()), (Some(30), Some(20)));
+        assert!(v.get("widthMm").is_none() && v.get("heightMm").is_none());
+    }
+
+    fn pdf_fixture(dir: &Path) -> PathBuf {
+        let p = dir.join("abc.pdf");
+        fs::write(&p, dtf_engine::pdf::testing::square_pdf(70.0, 50.0)).unwrap();
+        p
+    }
+
+    #[test]
+    fn pdf_info_has_page_size_and_a_transparent_preview() {
+        if !dtf_engine::pdf::testing::pdfium_ready() {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let info = build_info(&pdf_fixture(d.path())).unwrap();
+        let v = serde_json::to_value(&info).unwrap();
+        assert_eq!(v["kind"], "pdf");
+        let (wmm, hmm) = (v["widthMm"].as_f64().unwrap(), v["heightMm"].as_f64().unwrap());
+        assert!((wmm - 70.0).abs() < 0.01 && (hmm - 70.0).abs() < 0.01, "{wmm}x{hmm}");
+        // pixel size = page size at 300 dpi (for code that only knows pixels)
+        assert_eq!((info.width_px, info.height_px), (827, 827));
+        let prev = image::open(&info.preview_path).unwrap().to_rgba8();
+        assert_eq!(prev.dimensions(), (2048, 2048));
+        assert_eq!(prev.get_pixel(1024, 1024).0, [0, 0, 0, 255]);
+        assert_eq!(prev.get_pixel(10, 10).0[3], 0, "page background must be transparent");
+    }
+
+    #[test]
+    fn downloaded_pdf_is_validated_as_pdf() {
+        if !dtf_engine::pdf::testing::pdfium_ready() {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let good = d.path().join("x.pdf.tmp");
+        fs::write(&good, dtf_engine::pdf::testing::square_pdf(70.0, 50.0)).unwrap();
+        assert!(validate_download(&good, "pdf").is_ok());
+        let bad = d.path().join("y.pdf.tmp");
+        fs::write(&bad, b"<html>login</html>").unwrap();
+        assert_eq!(validate_download(&bad, "pdf").unwrap_err(), "Downloaded file is not a valid PDF");
     }
 }

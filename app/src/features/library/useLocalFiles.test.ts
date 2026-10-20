@@ -28,10 +28,20 @@ describe('useLocalFiles.addPaths', () => {
 
   it('skips unsupported extensions with a message', async () => {
     const { result } = renderHook(() => useLocalFiles())
-    await act(() => result.current.addPaths(['/x/notes.pdf']))
+    await act(() => result.current.addPaths(['/x/notes.docx']))
     expect(importLocalFile).not.toHaveBeenCalled()
-    expect(result.current.error).toBe('Only PNG, JPEG and TIFF files can be added')
+    expect(result.current.error).toBe('Only PNG, JPEG, TIFF and PDF files can be added')
     expect(getSheetStore().getState().sheet.items).toHaveLength(0)
+  })
+
+  it('adds a PDF at its page size', async () => {
+    vi.mocked(importLocalFile).mockResolvedValue({ ...asset('p1', 827, 591), kind: 'pdf', widthMm: 70, heightMm: 50 })
+    const { result } = renderHook(() => useLocalFiles())
+    await act(() => result.current.addPaths(['/x/gang sheet.PDF']))
+    expect(importLocalFile).toHaveBeenCalledWith('/x/gang sheet.PDF')
+    const [it0] = getSheetStore().getState().sheet.items
+    expect(it0.widthMm).toBe(70)
+    expect(it0.heightMm).toBe(50)
   })
 
   it('one failure does not block the others', async () => {

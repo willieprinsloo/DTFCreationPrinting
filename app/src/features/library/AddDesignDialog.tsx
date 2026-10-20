@@ -4,7 +4,7 @@ import type { GalleryDesign } from '../../api/types'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
-import { dpiStatus, effectiveDpi } from '../../domain/dpi'
+import { assetAspect, dpiLabel, dpiStatus, effectiveDpi, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
@@ -43,7 +43,7 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
       const url = client.absoluteUrl(design.imageUrl)
       const a = await cacheAsset(url, client.bearerFor(url))
       setAsset(a)
-      setWidthCm((w) => w ?? Math.round(Math.min((a.widthPx / 300) * 2.54, maxWidthCm) * 100) / 100)
+      setWidthCm((w) => w ?? Math.round(Math.min(nativeSizeMm(a).widthMm / 10, maxWidthCm) * 100) / 100)
       return a
     } catch (e) {
       if (e instanceof AuthRequiredError) requireLogin()
@@ -61,7 +61,7 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
   }, [])
 
   const widthMm = (widthCm ?? 0) * 10
-  const heightMm = asset ? (widthMm * asset.heightPx) / asset.widthPx : 0
+  const heightMm = asset ? widthMm * assetAspect(asset) : 0
   const valid = !!asset && widthMm > 0 && quantity !== null && quantity >= 1
   const dpi = valid ? effectiveDpi({ asset, widthMm, heightMm }) : null
   const status = dpi === null ? null : dpiStatus(dpi, thresholds)
@@ -105,7 +105,7 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
         {loading && <p className="muted">Downloading…</p>}
         {dpi !== null && status && (
           <p className={`dpi-badge dpi-${status}`}>
-            <span>{Math.round(dpi)} dpi</span> <span>{LABELS[status]}</span>
+            <span>{dpiLabel(dpi)}</span> <span>{LABELS[status]}</span>
           </p>
         )}
         {error && (

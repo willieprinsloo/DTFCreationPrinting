@@ -3,7 +3,7 @@ import { Copy, Lock, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { uiStore, useUi } from '../../state/uiStore'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
-import { dpiStatus, effectiveDpi } from '../../domain/dpi'
+import { dpiLabel, dpiStatus, effectiveDpi } from '../../domain/dpi'
 import { MIN_PRINT_MM, heightForWidth, widthForHeight } from '../../domain/geometry'
 import type { SheetItem } from '../../domain/types'
 import { ONE_SIZE, resolveWidthMm, widthKey } from '../../domain/printSizes'
@@ -159,7 +159,7 @@ export function ItemProperties({ ids }: { ids: string[] }) {
     <div className="props-section" data-testid="item-properties">
       <h2>Design</h2>
       <p className={`dpi-badge dpi-${status}`}>
-        <span>{Math.round(dpi)} dpi</span> <span>{LABELS[status]}</span>
+        <span>{dpiLabel(dpi)}</span> <span>{LABELS[status]}</span>
       </p>
       <div className="source-label">
         <strong>{item.source.label}</strong>

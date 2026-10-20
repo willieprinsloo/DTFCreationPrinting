@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
+import { nativeSizeMm } from '../../domain/dpi'
 import { importLocalFile } from '../../platform/tauri'
 import { getSheetStore } from '../../state/sheetStore'
 import type { NewItem } from '../../state/sheetStore'
 
-const EXT = /\.(png|jpe?g|tiff?)$/i
+const EXT = /\.(png|jpe?g|tiff?|pdf)$/i
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
 
-/** Imports local image files and adds each at native size assuming 300 dpi. */
+/** Imports local image and PDF files and adds each at native size (300 dpi, or a PDF's page size). */
 export function useLocalFiles() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -16,7 +17,7 @@ export function useLocalFiles() {
   const addPaths = useCallback(async (paths: string[]): Promise<number> => {
     const wanted = paths.filter((p) => EXT.test(p))
     if (wanted.length === 0) {
-      if (paths.length > 0) setError('Only PNG, JPEG and TIFF files can be added')
+      if (paths.length > 0) setError('Only PNG, JPEG, TIFF and PDF files can be added')
       return 0
     }
     setBusy(true)
@@ -29,8 +30,7 @@ export function useLocalFiles() {
         items.push({
           asset,
           source: { kind: 'local', id: asset.assetId, label: baseName(p) },
-          widthMm: (asset.widthPx / 300) * 25.4,
-          heightMm: (asset.heightPx / 300) * 25.4,
+          ...nativeSizeMm(asset),
           quantity: 1,
         })
       } catch {
@@ -48,7 +48,7 @@ export function useLocalFiles() {
     try {
       const sel = await open({
         multiple: true,
-        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff'] }],
+        filters: [{ name: 'Images and PDFs', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'pdf'] }],
       })
       if (!sel) return 0
       return await addPaths(Array.isArray(sel) ? sel : [sel])

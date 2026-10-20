@@ -43,11 +43,32 @@ pub fn decode(path: &Path) -> Result<image::DynamicImage, EngineError> {
 
 /// Bytes per pixel held at once: RGBA16 copy (8) + 4 ink planes, white and alpha (12).
 const BYTES_PER_PX: u64 = 20;
+/// Most pixels one prepared source may have.
+pub const MAX_PREPARED_PX: u64 = MAX_ALLOC / BYTES_PER_PX;
 
 /// Decodes and prepares a source. Embedded source ICC profiles are ignored:
 /// the pixels are assumed to be sRGB.
 pub fn prepare(path: &Path, s: &ColourSettings, white_enabled: bool) -> Result<PreparedSource, EngineError> {
     prepare_with_budget(path, s, white_enabled, MAX_ALLOC)
+}
+
+/// Renders the first page of a PDF at exactly `w`×`h` pixels (transparent
+/// background) and prepares it like a raster source.
+pub fn prepare_pdf(
+    path: &Path,
+    w: u32,
+    h: u32,
+    s: &ColourSettings,
+    white_enabled: bool,
+) -> Result<PreparedSource, EngineError> {
+    if w as u64 * h as u64 * BYTES_PER_PX > MAX_ALLOC {
+        return Err(EngineError::Pdf(format!("design is too large to prepare ({w}\u{d7}{h} px)")));
+    }
+    let conv = Converter::from_settings(s)?;
+    let img = image::DynamicImage::ImageRgba8(crate::pdf::render_page(path, w, h)?);
+    let rgba = img.to_rgba16();
+    drop(img);
+    prepare_rgba(rgba, true, &conv, s, white_enabled)
 }
 
 pub fn prepare_with_budget(
@@ -65,11 +86,22 @@ pub fn prepare_with_budget(
     }
     let conv = Converter::from_settings(s)?;
     let img = decode(path)?;
-    let (w, h) = (img.width(), img.height());
     let has_alpha = img.color().has_alpha();
     // 8-bit inputs scale x257 to u16; 16-bit pass through.
     let rgba = img.to_rgba16();
     drop(img);
+    prepare_rgba(rgba, has_alpha, &conv, s, white_enabled)
+}
+
+/// Splits straight-alpha RGBA into premultiplied ink planes, white and alpha.
+fn prepare_rgba(
+    rgba: image::ImageBuffer<image::Rgba<u16>, Vec<u16>>,
+    has_alpha: bool,
+    conv: &Converter,
+    s: &ColourSettings,
+    white_enabled: bool,
+) -> Result<PreparedSource, EngineError> {
+    let (w, h) = rgba.dimensions();
     let wu = w as usize;
     let n = wu * h as usize;
     let mut ink: Vec<Vec<u16>> = (0..4).map(|_| vec![0u16; n]).collect();
@@ -232,6 +264,28 @@ mod tests {
             assert_eq!(&got, w, "pixel {i}");
         }
         assert_eq!(s.alpha.data[5], 0);
+    }
+
+    #[test]
+    fn pdf_is_rendered_at_the_requested_size_and_prepared() {
+        if !crate::pdf::testing::pdfium_ready() {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("sq.pdf");
+        std::fs::write(&p, crate::pdf::testing::square_pdf(70.0, 50.0)).unwrap();
+        let s = prepare_pdf(&p, 70, 140, &ColourSettings::default(), true).unwrap();
+        assert_eq!((s.w, s.h), (70, 140));
+        let at = |x: usize, y: usize| y * 70 + x;
+        // centre: black, opaque, full white underbase
+        assert_eq!(s.ink[0].data[at(35, 70)], 65535);
+        assert_eq!(s.ink[1].data[at(35, 70)], 0);
+        assert_eq!(s.alpha.data[at(35, 70)], 65535);
+        assert_eq!(s.white.data[at(35, 70)], 65535);
+        // margin: transparent, no ink, no white
+        assert_eq!(s.alpha.data[at(2, 2)], 0);
+        assert_eq!(s.ink[0].data[at(2, 2)], 0);
+        assert_eq!(s.white.data[at(2, 2)], 0);
     }
 
     #[test]

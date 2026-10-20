@@ -3,7 +3,7 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
 import { preflight } from '../../domain/preflight'
-import { effectiveDpi } from '../../domain/dpi'
+import { dpiLabel, effectiveDpi } from '../../domain/dpi'
 import { InvalidSheetError } from '../../domain/geometry'
 import { createPrn, PrnCancelledError, revealInFolder, type PrnJob, type PrnStats } from '../../platform/tauri'
 import { defaultPrnName, folderOf } from '../sheets/sheetFiles'
@@ -140,7 +140,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
   const list = (items: typeof result.low, cls: string) =>
     items.map((i) => (
       <li key={i.id} className={cls}>
-        {i.source.label} — {Math.round(effectiveDpi(i))} dpi
+        {i.source.label} — {dpiLabel(effectiveDpi(i))}
       </li>
     ))
 

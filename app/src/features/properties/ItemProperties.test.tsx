@@ -33,6 +33,17 @@ describe('ItemProperties', () => {
     expect(screen.getByText('Jo')).toBeInTheDocument()
   })
 
+  it('shows Vector (Good) for a PDF design', () => {
+    const s = getSheetStore().getState()
+    s.newSheet(DEFAULT_PROFILE)
+    const pdf = { assetId: 'p', path: '/p.pdf', previewPath: '/p.png', widthPx: 827, heightPx: 827, kind: 'pdf' as const, widthMm: 70, heightMm: 70 }
+    s.addItems([{ asset: pdf, source: { kind: 'local', id: 'p', label: 'Sheet.pdf' }, widthMm: 700, heightMm: 700, quantity: 1 }])
+    render(<ItemProperties ids={[getSheetStore().getState().sheet.items[0].id]} />)
+    expect(screen.getByText('Vector')).toBeInTheDocument()
+    expect(screen.getByText('Good')).toBeInTheDocument()
+    expect(screen.queryByText(/dpi/)).toBeNull()
+  })
+
   it('keeps aspect when width changes', async () => {
     render(<ItemProperties ids={[id]} />)
     const w = screen.getByLabelText('Width')

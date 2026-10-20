@@ -1,3 +1,5 @@
+use tauri::Manager;
+
 mod assets;
 mod credentials;
 mod prn;
@@ -10,6 +12,13 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(std::sync::Arc::new(prn::PrnJobs::default()))
+        .setup(|app| {
+            // The bundled pdfium (see build.rs); DTF_PDFIUM_PATH overrides it.
+            if let Ok(dir) = app.path().resource_dir() {
+                dtf_engine::pdf::set_library_dir(&dir.join("pdfium"));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![assets::cache_asset, assets::import_local_file,
             credentials::save_credentials,
             credentials::load_credentials,

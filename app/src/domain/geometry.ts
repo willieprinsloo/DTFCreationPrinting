@@ -1,3 +1,4 @@
+import { assetAspect } from './dpi'
 import type { Problem, Rect, Sheet, SheetItem, SheetSettings } from './types'
 
 const OVERLAP_EPSILON_MM = 0.01
@@ -78,10 +79,10 @@ export function findProblems(sheet: Sheet): Problem[] {
 
 type Sized = Pick<SheetItem, 'asset' | 'widthMm' | 'heightMm'>
 
-/** Print aspect (height / width) is always the source image's; falls back to the item's own if the asset has no size. */
+/** Print aspect (height / width) is always the source's (page aspect for PDFs); falls back to the item's own if the asset has no size. */
 function aspect(item: Sized): number {
-  const { widthPx, heightPx } = item.asset
-  return widthPx > 0 && heightPx > 0 ? heightPx / widthPx : item.heightMm / item.widthMm
+  const a = assetAspect(item.asset)
+  return a > 0 && Number.isFinite(a) ? a : item.heightMm / item.widthMm
 }
 
 export const heightForWidth = (item: Sized, widthMm: number): number => widthMm * aspect(item)

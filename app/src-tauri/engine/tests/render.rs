@@ -493,3 +493,37 @@ fn bench_render_one_metre() {
         std::fs::remove_file(&out).unwrap();
     }
 }
+
+#[test]
+fn pdf_square_prints_its_exact_footprint_with_transparent_margins() {
+    if !dtf_engine::pdf::testing::pdfium_ready() {
+        return;
+    }
+    let d = tempfile::tempdir().unwrap();
+    // 70 mm page, 50 mm black square in the middle (10 mm transparent margin).
+    let p = d.path().join("square.pdf");
+    std::fs::write(&p, dtf_engine::pdf::testing::square_pdf(70.0, 50.0)).unwrap();
+    let mut it = item(&p, 20.0, 30.0, 70.0, 70.0, 0.0);
+    it.white_enabled = true;
+    let mut j = job(vec![it]);
+    j.width_mm = 120.0; // keeps the debug-build test quick
+    j.white_enabled = true;
+    j.settings.white_choke_mm = 0.0;
+    let (lines, ext) = extents(&render(&j, d.path()));
+    // the PRN spans the whole item (30..100 mm): ceil(100/dy) - floor(30/dy)
+    assert_eq!(lines, 7087 - 2125);
+    // ink and white only on the square: 30..80 mm across, 40..90 mm down
+    let (x0, x1) = (30.0f64 / 25.4 * 720.0, 80.0f64 / 25.4 * 720.0); // 850.4 .. 2267.7
+    let (y0, y1) = ((40.0f64 - 30.0) / 25.4 * 1800.0, (90.0f64 - 30.0) / 25.4 * 1800.0); // 708.7 .. 4251.97 (rel.)
+    for ch in [K, W1, W2] {
+        let (f, l, a, b) = ext[ch].unwrap_or_else(|| panic!("channel {ch} empty"));
+        assert!(close(a, x0.round() as usize, 1) && close(b + 1, x1.round() as usize, 1), "ch {ch} x {a}..{b}");
+        assert!(
+            close(f as usize, (y0 - 0.5).round() as usize, 2) && close(l as usize + 1, y1.round() as usize, 2),
+            "ch {ch} lines {f}..{l}"
+        );
+    }
+    for ch in [1, M, 3] {
+        assert!(ext[ch].is_none(), "channel {ch} has ink");
+    }
+}

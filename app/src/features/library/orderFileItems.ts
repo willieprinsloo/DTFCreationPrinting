@@ -1,6 +1,7 @@
 import type { DtfClient } from '../../api/dtfClient'
 import { AuthRequiredError } from '../../api/dtfClient'
 import type { OrderFile, OrderSummary } from '../../api/types'
+import { nativeSizeMm } from '../../domain/dpi'
 import { cacheAsset } from '../../platform/tauri'
 import type { NewItem } from '../../state/sheetStore'
 
@@ -9,7 +10,7 @@ export interface DownloadResult { items: NewItem[]; done: string[]; failed: stri
 
 export const orderFileKey = (orderId: string, f: OrderFile) => `${orderId}:${f.itemId}`
 
-/** Downloads each order file and builds a sheet item at native size (300 dpi). Failures are reported, not thrown. */
+/** Downloads each order file and builds a sheet item at native size (300 dpi, or a PDF's page size). Failures are reported, not thrown. */
 export async function downloadOrderFiles(client: DtfClient, refs: OrderFileRef[]): Promise<DownloadResult> {
   const out: DownloadResult = { items: [], done: [], failed: [], authFailed: false }
   for (const { order: o, file: f, customerName, key } of refs) {
@@ -27,8 +28,7 @@ export async function downloadOrderFiles(client: DtfClient, refs: OrderFileRef[]
           orderNumber: o.orderNumber,
           customerName,
         },
-        widthMm: (asset.widthPx / 300) * 25.4,
-        heightMm: (asset.heightPx / 300) * 25.4,
+        ...nativeSizeMm(asset),
         quantity: 1,
       })
     } catch (e) {

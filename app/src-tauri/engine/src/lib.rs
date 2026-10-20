@@ -1,6 +1,7 @@
 pub mod charts;
 pub mod colour;
 pub mod compose;
+pub mod pdf;
 pub mod prn;
 pub mod profile;
 pub mod screen;
@@ -27,6 +28,10 @@ pub enum EngineError {
     BadLine(String),
     #[error("could not read the image: {0}")]
     Decode(String),
+    #[error("PDF support is not installed")]
+    PdfNotInstalled,
+    #[error("could not read the PDF: {0}")]
+    Pdf(String),
     #[error("colour profile problem: {0}")]
     Icc(String),
     #[error("there is nothing to print")]

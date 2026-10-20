@@ -2,6 +2,7 @@ import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
 import type { ProductSummary } from '../../api/types'
 import type { SourceRef } from '../../domain/types'
+import { assetAspect, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { ONE_SIZE, pickSize, resolveWidthMm, widthKey } from '../../domain/printSizes'
 import { cacheAsset } from '../../platform/tauri'
@@ -9,8 +10,6 @@ import { getSettingsStore } from '../../state/settingsStore'
 import { getSheetStore, type NewItem } from '../../state/sheetStore'
 import { uiStore } from '../../state/uiStore'
 import { useProductSources } from './queries/useProductSources'
-
-const NATIVE_DPI = 300
 
 export interface QuickAddResult {
   /** Ids of the products that went onto the sheet. */
@@ -56,7 +55,7 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
         // A one-size-only type is printed at its One size width, but the item keeps its real garment size.
         const tableWidth = resolveWidthMm(printSizes, p.categoryId, size)
         if (tableWidth === undefined) unset.add(`${typeName(p.categoryId) || 'this type'} · ${widthKey(printSizes, p.categoryId, size) ?? ONE_SIZE}`)
-        const widthMm = tableWidth ?? Math.min((asset.widthPx / NATIVE_DPI) * 25.4, maxWidthMm)
+        const widthMm = tableWidth ?? Math.min(nativeSizeMm(asset).widthMm, maxWidthMm)
         const source: SourceRef = {
           kind: 'gallery',
           id: p.id,
@@ -66,7 +65,7 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
           sizes: src.sizes,
           label: size ? `${p.name} — ${size}` : p.name,
         }
-        items.push({ asset, source, widthMm, heightMm: (widthMm * asset.heightPx) / asset.widthPx, quantity: 1 })
+        items.push({ asset, source, widthMm, heightMm: widthMm * assetAspect(asset), quantity: 1 })
         addedIds.push(p.id)
       } catch (e) {
         if (e instanceof AuthRequiredError) authFailed = true

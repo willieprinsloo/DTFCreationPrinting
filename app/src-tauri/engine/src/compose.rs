@@ -4,7 +4,8 @@ use crate::EngineError;
 use crate::colour::ColourSettings;
 use crate::prn::{CHANNELS, PrnHeader, PrnWriter, pack_levels};
 use crate::screen::{ErrorDiffuser, Screening, apply_curve, screen_row_blue_noise};
-use crate::source::{Plane, PreparedSource, prepare};
+use crate::pdf::is_pdf;
+use crate::source::{MAX_PREPARED_PX, Plane, PreparedSource, prepare, prepare_pdf};
 use crate::spec::{JobSpec, PrnStats};
 use crate::white::erode;
 use rayon::prelude::*;
@@ -220,7 +221,28 @@ fn composite_row(
     true
 }
 
-type SrcKey = (PathBuf, bool);
+/// Pixel size to render a PDF item at. Unrotated (or half-turned) items get
+/// exactly the printer grid (x dpi across, y dpi down), quarter-turned items
+/// the swapped grid, any other angle the finer density on both axes. If that
+/// exceeds `max_px` pixels both axes are scaled down uniformly to fit.
+pub fn pdf_render_size(w_mm: f64, h_mm: f64, rot_deg: f64, x_dpi: u32, y_dpi: u32, max_px: u64) -> (u32, u32) {
+    let (da, db) = match rot_deg.rem_euclid(180.0) {
+        0.0 => (x_dpi, y_dpi),
+        90.0 => (y_dpi, x_dpi),
+        _ => (x_dpi.max(y_dpi), x_dpi.max(y_dpi)),
+    };
+    let (w, h) = (w_mm / 25.4 * da as f64, h_mm / 25.4 * db as f64);
+    let (w, h) = if w * h > max_px as f64 {
+        let k = (max_px as f64 / (w * h)).sqrt();
+        ((w * k).floor(), (h * k).floor())
+    } else {
+        (w.round(), h.round())
+    };
+    ((w as u32).max(1), (h as u32).max(1))
+}
+
+/// Path, white on, and for PDFs the pixel size to render at.
+type SrcKey = (PathBuf, bool, Option<(u32, u32)>);
 /// Source key plus choke radii (rx, ry) in source pixels.
 type ChokeKey = (SrcKey, (u32, u32));
 
@@ -292,7 +314,14 @@ pub fn render_prn(
         .iter()
         .zip(geoms)
         .map(|(i, g)| Placed {
-            key: (i.path.clone(), job.white_enabled && i.white_enabled),
+            key: (
+                i.path.clone(),
+                job.white_enabled && i.white_enabled,
+                is_pdf(&i.path).then(|| {
+                    let (x, y) = (job.x_dpi, job.y_dpi);
+                    pdf_render_size(i.width_mm, i.height_mm, i.rotation_deg, x, y, MAX_PREPARED_PX)
+                }),
+            ),
             first_band: band_of(g.top_mm),
             last_band: band_of(g.bottom_mm),
             g,
@@ -362,7 +391,13 @@ pub fn render_prn(
                 missing.dedup();
                 let loaded: Vec<(SrcKey, PreparedSource)> = missing
                     .par_iter()
-                    .map(|k| Ok(((*k).clone(), prepare(&k.0, &colour, k.1)?)))
+                    .map(|k| {
+                        let src = match k.2 {
+                            Some((w, h)) => prepare_pdf(&k.0, w, h, &colour, k.1)?,
+                            None => prepare(&k.0, &colour, k.1)?,
+                        };
+                        Ok(((*k).clone(), src))
+                    })
                     .collect::<Result<_, EngineError>>()?;
                 sources.extend(loaded);
                 // Choke (R6): radii in source pixels, per item size (x from width, y from height).
@@ -569,6 +604,31 @@ mod tests {
                 assert!(*d > n * n / 4, "ch {ch} tone {tone}: only {d} pixels differ from K");
             }
         }
+    }
+
+    #[test]
+    fn pdf_render_size_follows_the_printer_grid() {
+        let big = u64::MAX;
+        // 50 mm at 720 dpi across, 1800 dpi down
+        assert_eq!(pdf_render_size(50.0, 50.0, 0.0, 720, 1800, big), (1417, 3543));
+        assert_eq!(pdf_render_size(50.0, 50.0, 180.0, 720, 1800, big), (1417, 3543));
+        // quarter turns swap which item axis lies across the sheet
+        assert_eq!(pdf_render_size(50.0, 20.0, 90.0, 720, 1800, big), (3543, 567));
+        assert_eq!(pdf_render_size(50.0, 20.0, -90.0, 720, 1800, big), (3543, 567));
+        // any other angle: the finer density on both axes
+        assert_eq!(pdf_render_size(50.0, 20.0, 30.0, 720, 1800, big), (3543, 1417));
+    }
+
+    #[test]
+    fn pdf_render_size_is_capped_to_the_pixel_budget() {
+        // a 600 x 1000 mm gang sheet would be 17007 x 70866 px
+        let (w, h) = pdf_render_size(600.0, 1000.0, 0.0, 720, 1800, 100_000_000);
+        assert!((w as u64 * h as u64) <= 100_000_000, "{w}x{h}");
+        assert!((w as u64 * h as u64) > 99_000_000, "{w}x{h}");
+        // aspect of the grid is kept (scaled uniformly)
+        assert!(((h as f64 / w as f64) - 70866.0 / 17007.0).abs() < 0.01, "{w}x{h}");
+        // never a zero side
+        assert_eq!(pdf_render_size(0.01, 0.01, 0.0, 720, 1800, u64::MAX), (1, 1));
     }
 
     #[test]
