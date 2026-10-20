@@ -68,7 +68,8 @@ pub fn job_from_sheet(sheet_json: &str, profile_json: &str) -> Result<JobSpec, S
         x_dpi: profile.x_dpi,
         y_dpi: profile.y_dpi,
         mirror: sheet.settings.mirror,
-        white_enabled: sheet.settings.white_enabled,
+        // White underbase is always printed; saved sheets' white flags are ignored.
+        white_enabled: true,
         items: sheet
             .items
             .into_iter()
@@ -79,7 +80,7 @@ pub fn job_from_sheet(sheet_json: &str, profile_json: &str) -> Result<JobSpec, S
                 width_mm: i.width_mm,
                 height_mm: i.height_mm,
                 rotation_deg: i.rotation_deg,
-                white_enabled: i.white_enabled,
+                white_enabled: true,
             })
             .collect(),
         settings: profile.engine_settings(),
@@ -289,7 +290,8 @@ mod tests {
         assert_eq!(job.width_mm, 580.0);
         assert_eq!((job.x_dpi, job.y_dpi), (720, 1800));
         assert!(job.mirror);
-        assert!(!job.white_enabled);
+        // white is always printed, even though the saved sheet has it off
+        assert!(job.white_enabled);
         assert_eq!(job.items.len(), 2);
         let a = &job.items[0];
         assert_eq!(a.path, std::path::PathBuf::from("/cache/a.png"));
@@ -299,7 +301,7 @@ mod tests {
         );
         assert!(a.white_enabled);
         assert_eq!(job.items[1].path, std::path::PathBuf::from("/cache/b.tif"));
-        assert!(!job.items[1].white_enabled);
+        assert!(job.items[1].white_enabled);
         let s = &job.settings;
         assert_eq!(
             s.channel_order,

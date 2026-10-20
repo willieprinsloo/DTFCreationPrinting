@@ -25,6 +25,12 @@ beforeEach(() => {
 const item = () => getSheetStore().getState().sheet.items[0]
 
 describe('ItemProperties', () => {
+  it('has no white control (white is always printed)', () => {
+    render(<ItemProperties ids={[id]} />)
+    expect(screen.queryByText(/white/i)).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(item().whiteEnabled).toBe(true)
+  })
   it('shows dpi and quality label', () => {
     render(<ItemProperties ids={[id]} />)
     expect(screen.getByText('300 dpi')).toBeInTheDocument()
@@ -232,4 +238,5 @@ describe('ItemProperties garment size', () => {
     await screen.findByText(/Garment size/)
     expect(screen.queryByRole('button', { name: /Save as default/ })).toBeNull()
   })
+
 })

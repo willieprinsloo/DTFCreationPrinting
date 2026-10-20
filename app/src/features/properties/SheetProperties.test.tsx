@@ -55,4 +55,10 @@ describe('SheetProperties', () => {
     expect(settings().margins.topMm).toBe(5)
     expect(screen.getByRole('alert')).toHaveTextContent('Margins cannot be negative')
   })
+
+  it('has no white layer toggle (white is always printed)', () => {
+    render(<SheetProperties />)
+    expect(screen.queryByText(/white/i)).toBeNull()
+    expect(settings().whiteEnabled).toBe(true)
+  })
 })

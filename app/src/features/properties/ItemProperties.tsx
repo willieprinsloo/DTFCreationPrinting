@@ -200,16 +200,6 @@ export function ItemProperties({ ids }: { ids: string[] }) {
         />
       </div>
 
-      <div className="props-group toggles">
-        <label>
-          <input
-            type="checkbox"
-            checked={item.whiteEnabled}
-            onChange={(e) => actions.updateItem(item.id, { whiteEnabled: e.target.checked })}
-          />
-          White layer
-        </label>
-      </div>
       {buttons}
     </div>
   )

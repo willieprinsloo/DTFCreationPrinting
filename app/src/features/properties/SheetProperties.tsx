@@ -127,10 +127,6 @@ export function SheetProperties() {
           Mirror for printing
         </label>
         <label>
-          <input type="checkbox" checked={settings.whiteEnabled} onChange={(e) => apply({ whiteEnabled: e.target.checked })} />
-          White layer
-        </label>
-        <label>
           <input type="checkbox" checked={settings.allowRotate} onChange={(e) => apply({ allowRotate: e.target.checked })} />
           Allow rotating in auto-place
         </label>
