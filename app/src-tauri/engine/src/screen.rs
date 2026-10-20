@@ -78,12 +78,34 @@ impl ErrorDiffuser {
     pub fn new(width: usize) -> Self {
         ErrorDiffuser { cur: vec![0.0; width + 2], next: vec![0.0; width + 2], row: 0 }
     }
+    /// True when no error is being carried into the next row.
+    pub fn is_idle(&self) -> bool {
+        !self.cur.iter().any(|e| e.abs() >= CARRY_EPS)
+    }
+
+    /// Fast path: only the span holding ink or carried error (plus a margin
+    /// for the error to fade along the row) is diffused; the rest is 0.
+    /// Carried error below `CARRY_EPS` levels outside that span is dropped.
     pub fn process_row(&mut self, tones: &[u16], out: &mut [u8]) {
         let w = tones.len().min(out.len()).min(self.cur.len() - 2);
         let ltr = self.row.is_multiple_of(2);
+        self.row += 1;
+        let carried = |e: &f32| e.abs() >= CARRY_EPS;
+        let cur = &self.cur[1..w + 1];
+        let lo = [tones[..w].iter().position(|&t| t != 0), cur.iter().position(carried)].into_iter().flatten().min();
+        let hi = [tones[..w].iter().rposition(|&t| t != 0), cur.iter().rposition(carried)].into_iter().flatten().max();
+        let (Some(lo), Some(hi)) = (lo, hi) else {
+            // Blank row, no carried error: nothing to diffuse.
+            out[..w].fill(0);
+            self.cur.fill(0.0);
+            return;
+        };
+        let (lo, hi) = (lo.saturating_sub(SPAN_MARGIN), (hi + SPAN_MARGIN).min(w - 1));
+        out[..lo].fill(0);
+        out[hi + 1..w].fill(0);
         // Buffers are offset by one so x-1 / x+1 never go out of range.
-        for k in 0..w {
-            let x = if ltr { k } else { w - 1 - k };
+        for k in 0..=hi - lo {
+            let x = if ltr { lo + k } else { hi - k };
             let v = tones[x] as f32 * (3.0 / 65535.0) + self.cur[x + 1];
             let q = v.round().clamp(0.0, 3.0);
             out[x] = q as u8;
@@ -96,9 +118,13 @@ impl ErrorDiffuser {
         }
         std::mem::swap(&mut self.cur, &mut self.next);
         self.next.fill(0.0);
-        self.row += 1;
     }
 }
+
+/// Carried error (in levels, 0..3) below this is treated as none.
+const CARRY_EPS: f32 = 1e-4;
+/// Pixels diffused beyond the ink/error span so error fades along the row.
+const SPAN_MARGIN: usize = 32;
 
 #[cfg(test)]
 mod tests {
@@ -166,6 +192,69 @@ mod tests {
         let mut part = vec![0u8; 100];
         screen_row_blue_noise(&row[200..], 5, 200, &mut part);
         assert_eq!(&full[200..], &part[..]);
+    }
+
+    /// The pre-fast-path diffuser, kept as the reference.
+    fn reference_rows(img: &[Vec<u16>]) -> Vec<Vec<u8>> {
+        let w = img[0].len();
+        let (mut cur, mut next) = (vec![0.0f32; w + 2], vec![0.0f32; w + 2]);
+        let mut res = Vec::new();
+        for (row, tones) in img.iter().enumerate() {
+            let mut out = vec![0u8; w];
+            let ltr = row % 2 == 0;
+            for k in 0..w {
+                let x = if ltr { k } else { w - 1 - k };
+                let v = tones[x] as f32 * (3.0 / 65535.0) + cur[x + 1];
+                let q = v.round().clamp(0.0, 3.0);
+                out[x] = q as u8;
+                let e = (v - q).clamp(-1.0, 1.0);
+                let (fwd, back) = if ltr { (x + 2, x) } else { (x, x + 2) };
+                cur[fwd] += e * (7.0 / 16.0);
+                next[back] += e * (3.0 / 16.0);
+                next[x + 1] += e * (5.0 / 16.0);
+                next[fwd] += e * (1.0 / 16.0);
+            }
+            std::mem::swap(&mut cur, &mut next);
+            next.fill(0.0);
+            res.push(out);
+        }
+        res
+    }
+
+    #[test]
+    fn diffuser_fast_path_matches_reference_on_sparse_ink() {
+        // 2000 px wide; ink only in a 100 px wide block in rows 20..60, blank elsewhere.
+        let (w, h) = (2000usize, 120usize);
+        let img: Vec<Vec<u16>> = (0..h)
+            .map(|y| {
+                (0..w)
+                    .map(|x| if (20..60).contains(&y) && (900..1000).contains(&x) { ((x * 331 + y * 97) % 50000 + 5000) as u16 } else { 0 })
+                    .collect()
+            })
+            .collect();
+        let want = reference_rows(&img);
+        let mut d = ErrorDiffuser::new(w);
+        let mut out = vec![9u8; w];
+        let mut mismatches = 0;
+        for (y, row) in img.iter().enumerate() {
+            d.process_row(row, &mut out);
+            mismatches += out.iter().zip(&want[y]).filter(|(a, b)| a != b).count();
+        }
+        assert_eq!(mismatches, 0);
+        // Error diffusion conserves error, so the residual left by the ink is
+        // never exactly zero; it must stay confined to a narrow span (the only
+        // part still diffused) and never print a stray dot.
+        let blank = vec![0u16; w];
+        for _ in 0..1000 {
+            d.process_row(&blank, &mut out);
+            assert!(out.iter().all(|&v| v == 0), "stray dot below the ink");
+        }
+        let span = d.cur.iter().filter(|e| e.abs() >= CARRY_EPS).count();
+        assert!(span < w / 4, "carried error spread over {span} px");
+        // Before any ink the diffuser is idle and blank rows cost nothing.
+        let mut fresh = ErrorDiffuser::new(w);
+        fresh.process_row(&blank, &mut out);
+        assert!(fresh.is_idle() && out.iter().all(|&v| v == 0));
     }
 
     #[test]

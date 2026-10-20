@@ -33,4 +33,6 @@ pub enum EngineError {
     Cancelled,
     #[error("invalid print settings: {0}")]
     BadSettings(String),
+    #[error("internal error while printing: {0}")]
+    Internal(String),
 }

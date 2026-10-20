@@ -121,7 +121,7 @@ fn rotated_90_clockwise_is_10_wide_20_tall_with_left_edge_on_top() {
         &job(vec![item(&p, 50.0, 50.0, 20.0, 10.0, 90.0)]),
         d.path(),
     ));
-    assert_eq!(lines, 1418); // ceil(20/25.4*1800)
+    assert_eq!(lines, 1419); // ceil(65/dy) - floor(45/dy) = 4607 - 3188
     let (kf, kl, ka, kb) = ext[K].unwrap();
     let (mf, ml, ma, mb) = ext[M].unwrap();
     // footprint 10 mm wide: centre x 60 mm -> 55..65 mm -> px 1559..1842
@@ -197,6 +197,25 @@ fn white_goes_to_both_w_channels_and_is_choked() {
     j.white_enabled = false;
     let (_, ext) = extents(&render(&j, d.path()));
     assert!(ext[W1].is_none() && ext[W2].is_none());
+}
+
+#[test]
+fn choke_is_per_axis_for_stretched_sources() {
+    // 100x100 px source stretched to 10x20 mm: 10 px/mm across, 5 px/mm down.
+    // A 0.2 mm choke is rx = 2 px and ry = 1 px, i.e. 0.2 mm on both axes.
+    let d = tempfile::tempdir().unwrap();
+    let p = png(d.path(), "b.png", 100, 100, |_, _| BLACK);
+    let mut it = item(&p, 5.0, 5.0, 10.0, 20.0, 0.0);
+    it.white_enabled = true;
+    let mut j = job(vec![it]);
+    j.white_enabled = true;
+    let (_, ext) = extents(&render(&j, d.path()));
+    let (wf, _, wa, _) = ext[W1].unwrap();
+    assert!(close(wa, 147, 3), "W x starts at {wa}");
+    // The first white dot is where the bilinear ramp starts, half a source
+    // pixel (0.1 mm) before the choked edge: 0.2 - 0.1 mm = 7 lines. With
+    // ry = 2 px (0.4 mm) it would start at 0.3 mm = 21 lines.
+    assert!(close(wf as usize, 7, 3), "W starts at line {wf}");
 }
 
 #[test]
@@ -293,6 +312,73 @@ fn ink_limit_applies_in_render() {
     }
     let t = total as f64 / n as f64;
     assert!((t - 1.5).abs() < 0.03, "total ink {t}");
+}
+
+/// A rotated item active in a band but not covering the current row, while
+/// another item does, must not panic (reviewer repro).
+fn rotated_beside_tall_item(rot: f64) {
+    let d = tempfile::tempdir().unwrap();
+    let a = png(d.path(), "a.png", 100, 600, |_, _| BLACK);
+    let b = png(d.path(), "b.png", 200, 100, |_, _| RED);
+    let j = job(vec![item(&a, 0.0, 0.0, 10.0, 60.0, 0.0), item(&b, 50.0, 20.0, 20.0, 10.0, rot)]);
+    let (lines, ext) = extents(&render(&j, d.path()));
+    assert_eq!(lines, 4252); // ceil(60/dy)
+    let (_, _, ka, kb) = ext[K].unwrap();
+    assert!(close(ka, 0, 1) && close(kb + 1, 283, 1), "K x {ka}..{kb}");
+    let (mf, ml, ma, mb) = ext[M].unwrap();
+    // red item: centre (60, 25) mm, rotated about it
+    let r = rot.to_radians();
+    let (hw, hh) = ((20.0 * r.cos().abs() + 10.0 * r.sin().abs()) / 2.0, (20.0 * r.sin().abs() + 10.0 * r.cos().abs()) / 2.0);
+    let px = |mm: f64| (mm / 25.4 * 720.0) as usize;
+    let ln = |mm: f64| (mm / 25.4 * 1800.0) as usize;
+    assert!(close(ma, px(60.0 - hw), 2) && close(mb, px(60.0 + hw), 2), "M x {ma}..{mb}");
+    assert!(close(mf as usize, ln(25.0 - hh), 2) && close(ml as usize, ln(25.0 + hh), 2), "M lines {mf}..{ml}");
+}
+
+#[test]
+fn rotated_90_item_beside_another_item_does_not_panic() {
+    rotated_beside_tall_item(90.0);
+}
+
+#[test]
+fn rotated_30_item_beside_another_item_does_not_panic() {
+    rotated_beside_tall_item(30.0);
+}
+
+#[test]
+fn bottom_line_is_kept_when_item_straddles_a_line_boundary() {
+    // Item 0.9 and 1.0 line tall, starting 0.7 / 0.6 into line 0: only line 1's
+    // centre is inside it, so the PRN needs two lines (old formula gave one).
+    let dy = 25.4 / 1800.0;
+    for (top, h) in [(0.7, 0.9), (0.6, 1.0)] {
+        let d = tempfile::tempdir().unwrap();
+        let p = png(d.path(), "b.png", 100, 10, |_, _| BLACK);
+        let j = job(vec![item(&p, 0.0, top * dy, 10.0, h * dy, 0.0)]);
+        let (lines, ext) = extents(&render(&j, d.path()));
+        assert_eq!(lines, 2, "top {top} h {h}");
+        let (f, l, _, _) = ext[K].expect("ink on line 1");
+        assert_eq!((f, l), (1, 1));
+    }
+}
+
+#[test]
+fn ink_is_continuous_across_band_boundaries() {
+    // 709 lines cross the band boundaries at 256 and 512.
+    for s in [Screening::BlueNoise, Screening::ErrorDiffusion] {
+        let d = tempfile::tempdir().unwrap();
+        let p = png(d.path(), "b.png", 100, 100, |_, _| BLACK);
+        let mut j = job(vec![item(&p, 5.0, 5.0, 10.0, 10.0, 0.0)]);
+        j.settings.screening = s;
+        let out = render(&j, d.path());
+        let mut r = PrnReader::open(&out).unwrap();
+        let first = r.read_line(0).unwrap()[K].clone();
+        let n = first.iter().filter(|&&v| v == 3).count();
+        assert!(close(n, 283, 1), "{s:?} line 0 has {n} full dots");
+        for i in 1..709 {
+            let l = r.read_line(i).unwrap();
+            assert_eq!(l[K], first, "{s:?} line {i} differs");
+        }
+    }
 }
 
 #[test]

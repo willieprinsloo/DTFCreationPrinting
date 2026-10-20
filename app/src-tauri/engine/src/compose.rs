@@ -33,6 +33,31 @@ pub fn ink_limit(t: [f32; 4], limit: f32) -> [f32; 4] {
     [k, c * s, m * s, y * s]
 }
 
+/// Per logical channel (K, C, M, Y, W) blue-noise mask offset (x, y): steps
+/// of (73, 151) mod 256, so equal tones in different inks do not print
+/// dot-on-dot (R7).
+const BN_OFFSET: [(u32, u32); LOGICAL] = [(0, 0), (73, 151), (146, 46), (219, 197), (36, 92)];
+
+/// Screen one row of logical channel `ch` with blue noise.
+fn screen_bn(ch: usize, tones: &[u16], row: u32, out: &mut [u8]) {
+    let (ox, oy) = BN_OFFSET[ch];
+    screen_row_blue_noise(tones, row.wrapping_add(oy), ox, out);
+}
+
+/// Runs `f`, turning a panic into `EngineError::Internal`.
+fn guarded<T>(f: impl FnOnce() -> Result<T, EngineError>) -> Result<T, EngineError> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| Err(panic_error(p)))
+}
+
+fn panic_error(p: Box<dyn std::any::Any + Send>) -> EngineError {
+    let msg = p
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| p.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".into());
+    EngineError::Internal(msg)
+}
+
 /// PRN channel index -> logical channel index.
 fn channel_map(order: &[String; CHANNELS]) -> Result<[usize; CHANNELS], EngineError> {
     let mut map = [0; CHANNELS];
@@ -132,7 +157,8 @@ fn composite_row(
                 e = e.min(t0.max(t1).ceil() + 1.0);
             }
         }
-        let (s, e) = (s.max(0.0) as usize, e.clamp(0.0, ctx.width as f64) as usize);
+        let s = s.clamp(0.0, ctx.width as f64) as usize;
+        let e = (e.clamp(0.0, ctx.width as f64) as usize).max(s); // empty when the row misses the item
         if s < e {
             lo = lo.min(s);
             hi = hi.max(e);
@@ -195,6 +221,8 @@ fn composite_row(
 }
 
 type SrcKey = (PathBuf, bool);
+/// Source key plus choke radii (rx, ry) in source pixels.
+type ChokeKey = (SrcKey, (u32, u32));
 
 struct Placed {
     g: Geom,
@@ -203,6 +231,11 @@ struct Placed {
     last_band: usize,
 }
 
+/// Renders `job` to a PRN at `out` (written to `<out>.part`, renamed when
+/// complete). `progress` is called after each band with the fraction done
+/// (the last call is exactly 1.0); returning `false` cancels — including on
+/// that final call, which still deletes the file — and yields
+/// `EngineError::Cancelled`. Any error or panic removes the `.part` file.
 pub fn render_prn(
     job: &JobSpec,
     out: &Path,
@@ -239,7 +272,7 @@ pub fn render_prn(
         .fold(f64::NEG_INFINITY, f64::max);
     let lead = (s.lead_in_mm.max(0.0) as f64 / dy).ceil() as i64;
     let first_line = (top / dy).floor() as i64 - lead;
-    let lines = ((bottom - top) / dy).ceil() as i64 + lead;
+    let lines = (bottom / dy).ceil() as i64 - (top / dy).floor() as i64 + lead;
     if lines <= 0 || lines > u32::MAX as i64 {
         return bad("the print length is out of range");
     }
@@ -291,7 +324,7 @@ pub fn render_prn(
     let part = PathBuf::from(part);
     let file = File::create(&part)?;
 
-    let result: Result<(), EngineError> = std::thread::scope(|scope| {
+    let result: Result<(), EngineError> = guarded(|| std::thread::scope(|scope| {
         let (tx, rx) = sync_channel::<Vec<u8>>(1);
         let writer = scope.spawn(move || -> Result<(), EngineError> {
             let mut w = PrnWriter::new(BufWriter::with_capacity(1 << 20, file), header)?;
@@ -305,7 +338,7 @@ pub fn render_prn(
         let produce = || -> Result<(), EngineError> {
             let tx = tx; // dropped when production ends, which ends the writer
             let mut sources: HashMap<SrcKey, PreparedSource> = HashMap::new();
-            let mut choked: HashMap<(SrcKey, u32), Plane> = HashMap::new();
+            let mut choked: HashMap<ChokeKey, Plane> = HashMap::new();
             let mut diffusers: Vec<ErrorDiffuser> = match s.screening {
                 Screening::ErrorDiffusion => {
                     (0..LOGICAL).map(|_| ErrorDiffuser::new(width)).collect()
@@ -332,25 +365,26 @@ pub fn render_prn(
                     .map(|k| Ok(((*k).clone(), prepare(&k.0, &colour, k.1)?)))
                     .collect::<Result<_, EngineError>>()?;
                 sources.extend(loaded);
-                // Choke (R6): radius in source pixels, per item width.
-                let radius = |p: &Placed| -> u32 {
+                // Choke (R6): radii in source pixels, per item size (x from width, y from height).
+                let radius = |p: &Placed| -> (u32, u32) {
                     let src = &sources[&p.key];
                     if !p.key.1 || choke_mm <= 0.0 {
-                        return 0;
+                        return (0, 0);
                     }
-                    (choke_mm * src.w as f64 / p.g.width_mm).round() as u32
+                    let r = |px: u32, mm: f64| (choke_mm * px as f64 / mm).round() as u32;
+                    (r(src.w, p.g.width_mm), r(src.h, p.g.height_mm))
                 };
-                let mut need: Vec<(SrcKey, u32)> = active
+                let mut need: Vec<ChokeKey> = active
                     .iter()
                     .map(|p| (p.key.clone(), radius(p)))
-                    .filter(|k| k.1 > 0 && !choked.contains_key(k))
+                    .filter(|k| k.1 != (0, 0) && !choked.contains_key(k))
                     .collect();
                 need.sort();
                 need.dedup();
-                let eroded: Vec<((SrcKey, u32), Plane)> = need
+                let eroded: Vec<(ChokeKey, Plane)> = need
                     .into_par_iter()
                     .map(|k| {
-                        let e = erode(&sources[&k.0].white, k.1, k.1);
+                        let e = erode(&sources[&k.0].white, k.1.0, k.1.1);
                         (k, e)
                     })
                     .collect();
@@ -361,7 +395,7 @@ pub fn render_prn(
                     .map(|p| {
                         let src = &sources[&p.key];
                         let r = radius(p);
-                        let white = if r > 0 {
+                        let white = if r != (0, 0) {
                             &choked[&(p.key.clone(), r)]
                         } else {
                             &src.white
@@ -405,12 +439,7 @@ pub fn render_prn(
                                 }
                                 for ch in 0..LOGICAL {
                                     let span = ch * width..(ch + 1) * width;
-                                    screen_row_blue_noise(
-                                        &t[span.clone()],
-                                        row as u32,
-                                        0,
-                                        &mut lv[span],
-                                    );
+                                    screen_bn(ch, &t[span.clone()], row as u32, &mut lv[span]);
                                 }
                                 for (pc, &l) in map.iter().enumerate() {
                                     pack_levels(
@@ -423,7 +452,6 @@ pub fn render_prn(
                     }
                     Screening::ErrorDiffusion => {
                         tones.resize(bh * LOGICAL * width, 0);
-                        tones.truncate(bh * LOGICAL * width);
                         tones
                             .par_chunks_mut(LOGICAL * width)
                             .enumerate()
@@ -477,17 +505,13 @@ pub fn render_prn(
             }
             Ok(())
         };
-        let produced = produce();
-        let written = writer.join().unwrap_or_else(|_| {
-            Err(EngineError::BadLine(
-                "the writer stopped unexpectedly".into(),
-            ))
-        });
+        let produced = guarded(produce);
+        let written = writer.join().unwrap_or_else(|p| Err(panic_error(p)));
         match produced {
             Err(e) => Err(e),
             Ok(()) => written,
         }
-    });
+    }));
 
     if let Err(e) = result {
         let _ = std::fs::remove_file(&part);
@@ -517,5 +541,40 @@ mod tests {
         assert!((t[2] / t[1] - 1.8).abs() < 1e-4 && (t[3] / t[1] - 2.0).abs() < 1e-4);
         // under the limit: unchanged
         assert_eq!(ink_limit([0.2, 0.3, 0.4, 0.5], 2.0), [0.2, 0.3, 0.4, 0.5]);
+    }
+
+    #[test]
+    fn blue_noise_channels_do_not_stack_dot_on_dot() {
+        let n = 256usize;
+        for tone in [16384u16, 32768, 49152] {
+            let t = vec![tone; n];
+            let want = tone as f64 / 65535.0;
+            let mut outs = vec![vec![0u8; n]; LOGICAL];
+            let mut sums = [0u64; LOGICAL];
+            let mut differ = [0usize; LOGICAL];
+            for row in 0..n as u32 {
+                for (ch, o) in outs.iter_mut().enumerate() {
+                    screen_bn(ch, &t, row, o);
+                    sums[ch] += o.iter().map(|&v| v as u64).sum::<u64>();
+                }
+                for ch in 1..LOGICAL {
+                    differ[ch] += outs[0].iter().zip(&outs[ch]).filter(|(a, b)| a != b).count();
+                }
+            }
+            for (ch, sum) in sums.iter().enumerate() {
+                let mean = *sum as f64 / (n * n * 3) as f64;
+                assert!((mean - want).abs() < 0.01, "ch {ch} tone {tone}: mean {mean}");
+            }
+            for (ch, d) in differ.iter().enumerate().skip(1) {
+                assert!(*d > n * n / 4, "ch {ch} tone {tone}: only {d} pixels differ from K");
+            }
+        }
+    }
+
+    #[test]
+    fn panics_become_internal_errors() {
+        let r: Result<(), EngineError> = guarded(|| panic!("boom"));
+        assert!(matches!(&r, Err(EngineError::Internal(m)) if m.contains("boom")), "{r:?}");
+        assert!(matches!(guarded(|| Ok(7)), Ok(7)));
     }
 }
