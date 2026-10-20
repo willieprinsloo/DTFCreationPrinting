@@ -101,6 +101,14 @@ describe('dtfClient', () => {
     expect(client.absoluteUrl('https://cdn.x/y.png')).toBe('https://cdn.x/y.png')
   })
 
+  it('bearerFor only returns the token for the API origin', async () => {
+    const { client } = setup([loginOk()])
+    await client.login({ email: 'a', password: 'b' })
+    expect(client.bearerFor('https://dtfcreations.co.za/uploads/a.png')).toBe(client.token())
+    expect(client.bearerFor('https://cdn.example.com/x.png')).toBeUndefined()
+    expect(client.bearerFor('not a url')).toBeUndefined()
+  })
+
   it('maps customers defensively', async () => {
     const { client } = setup([
       loginOk(),

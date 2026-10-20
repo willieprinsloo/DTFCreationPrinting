@@ -14,6 +14,7 @@ export function fakeClient(over: Partial<DtfClient> = {}): DtfClient {
     setOrderStatus: vi.fn(async () => {}),
     absoluteUrl: (p: string) => `https://x.test${p}`,
     token: () => 'tok',
+    bearerFor: (u: string) => (u.startsWith('https://x.test/') ? 'tok' : undefined),
     ...over,
   }
 }

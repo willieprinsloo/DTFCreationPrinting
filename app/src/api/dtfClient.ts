@@ -27,6 +27,8 @@ export interface DtfClient {
   /** Resolves '/uploads/...' against the site origin. */
   absoluteUrl(pathOrUrl: string): string
   token(): string | null
+  /** The bearer token, but only for URLs on the API's own origin (never leak it to other hosts). */
+  bearerFor(url: string): string | undefined
 }
 
 const OFFLINE = "Can't reach DTF Creations — working offline"
@@ -180,5 +182,13 @@ export function createDtfClient(o: {
       return new URL(pathOrUrl, new URL(base).origin).toString()
     },
     token: () => token,
+    bearerFor(url) {
+      if (!token) return undefined
+      try {
+        return new URL(url).origin === new URL(base).origin ? token : undefined
+      } catch {
+        return undefined
+      }
+    },
   }
 }

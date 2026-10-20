@@ -64,6 +64,19 @@ async function confirmDiscard(): Promise<boolean> {
   return ask(`Discard unsaved changes to ${name}?`, { title: 'Unsaved changes', kind: 'warning' })
 }
 
+/**
+ * After settings load: the app starts on a built-in 'default' sheet; if it is still untouched
+ * (no items, nothing opened or saved) rebuild it from the saved active profile.
+ */
+export function adoptActiveProfile() {
+  const { sheet } = getSheetStore().getState()
+  if (sheet.items.length > 0 || sheet.profileId !== 'default' || currentPath !== null) return
+  const { profiles, activeProfileId } = getSettingsStore().getState()
+  const profile = profiles.find((p) => p.id === activeProfileId) ?? DEFAULT_PROFILE
+  getSheetStore().getState().newSheet(profile)
+  markClean()
+}
+
 export async function newSheetFile() {
   if (!(await confirmDiscard())) return
   const { profiles, activeProfileId } = getSettingsStore().getState()

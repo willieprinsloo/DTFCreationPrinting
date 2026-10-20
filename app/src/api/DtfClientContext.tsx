@@ -3,6 +3,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { AuthRequiredError, createDtfClient, type DtfClient } from './dtfClient'
 import { loadCredentials } from '../platform/tauri'
 import { getSettingsStore, useSettings } from '../state/settingsStore'
+import { adoptActiveProfile } from '../features/sheets/sheetFiles'
 import { LoginDialog } from '../features/auth/LoginDialog'
 
 export interface DtfClientValue {
@@ -31,7 +32,10 @@ export function DtfClientProvider({ children }: { children: ReactNode }) {
       .getState()
       .load()
       .catch(() => {})
-      .finally(() => setReady(true))
+      .finally(() => {
+        adoptActiveProfile()
+        setReady(true)
+      })
   }, [])
 
   const client = useMemo(

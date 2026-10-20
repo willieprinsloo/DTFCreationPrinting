@@ -13,12 +13,12 @@ export function printableArea(s: SheetSettings): Rect {
   const { leftMm, rightMm, topMm } = s.margins
   const widthMm = s.widthMm - leftMm - rightMm
   if (widthMm <= 0) throw new InvalidSheetError('Margins leave no printable width on this sheet')
-  return {
-    xMm: leftMm,
-    yMm: topMm,
-    widthMm,
-    heightMm: s.lengthMode === 'fixed' ? s.fixedLengthMm - topMm - s.margins.bottomMm : Infinity,
+  let heightMm = Infinity
+  if (s.lengthMode === 'fixed') {
+    heightMm = s.fixedLengthMm - topMm - s.margins.bottomMm
+    if (heightMm <= 0) throw new InvalidSheetError('Margins leave no printable length on this sheet')
   }
+  return { xMm: leftMm, yMm: topMm, widthMm, heightMm }
 }
 
 /** Axis-aligned bounding box after rotating about the item centre. */
@@ -52,7 +52,10 @@ export function findProblems(sheet: Sheet): Problem[] {
 
   sheet.items.forEach((it, i) => {
     const b = bounds[i]
-    if (b.xMm < area.xMm - eps || b.xMm + b.widthMm > area.xMm + area.widthMm + eps || b.yMm < area.yMm - eps) {
+    if (
+      b.xMm < area.xMm - eps || b.xMm + b.widthMm > area.xMm + area.widthMm + eps || b.yMm < area.yMm - eps ||
+      b.yMm + b.heightMm > area.yMm + area.heightMm + eps
+    ) {
       problems.push({ kind: 'outside', itemId: it.id })
     }
   })

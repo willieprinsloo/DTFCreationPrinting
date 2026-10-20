@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseSheet, serializeSheet, defaultPrnName, sanitizeName, newSheetFile, openSheetAt, saveSheet } from './sheetFiles'
+import { parseSheet, serializeSheet, defaultPrnName, sanitizeName, newSheetFile, openSheetAt, saveSheet, adoptActiveProfile, isDirty } from './sheetFiles'
 import { ask, save } from '@tauri-apps/plugin-dialog'
 import { readSheetFile, writeSheetFile } from '../../platform/tauri'
 
@@ -76,5 +76,32 @@ describe('unsaved changes guard', () => {
     await saveSheet()
     await newSheetFile()
     expect(ask).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('adoptActiveProfile (startup sheet)', () => {
+  const p300 = { ...DEFAULT_PROFILE, id: 'p300', name: 'Narrow', widthMm: 300 }
+  const startup = () => ({ ...getSheetStore().getState().sheet, profileId: 'default', items: [] })
+  beforeEach(async () => {
+    getSettingsStore().setState({ profiles: [p300], activeProfileId: 'p300' })
+    vi.mocked(ask).mockResolvedValue(true)
+    await newSheetFile()
+  })
+
+  it('replaces the untouched startup sheet with the active profile and marks it clean', () => {
+    getSheetStore().setState({ sheet: startup() })
+    adoptActiveProfile()
+    const sh = getSheetStore().getState().sheet
+    expect(sh.settings.widthMm).toBe(300)
+    expect(sh.profileId).toBe('p300')
+    expect(isDirty()).toBe(false)
+  })
+
+  it('does not replace a sheet that has items', () => {
+    const base = startup()
+    const withItem = { ...base, items: [{ id: 'i' } as never] }
+    getSheetStore().setState({ sheet: withItem })
+    adoptActiveProfile()
+    expect(getSheetStore().getState().sheet).toBe(withItem)
   })
 })

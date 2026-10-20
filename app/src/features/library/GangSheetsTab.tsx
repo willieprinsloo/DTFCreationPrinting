@@ -90,7 +90,8 @@ export function GangSheetsTab() {
       for (const f of fs[o.id] ?? []) {
         if (!keys.includes(keyOf(o.id, f))) continue
         try {
-          const asset = await cacheAsset(client.absoluteUrl(f.printFileUrl), client.token() ?? undefined)
+          const url = client.absoluteUrl(f.printFileUrl)
+          const asset = await cacheAsset(url, client.bearerFor(url))
           done.push(keyOf(o.id, f))
           items.push({
             asset,

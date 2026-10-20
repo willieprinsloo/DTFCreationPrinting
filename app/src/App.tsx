@@ -3,11 +3,12 @@ import "./styles/app.css";
 import { TopBar } from "./features/topbar/TopBar";
 import { PropertiesPanel } from "./features/properties/PropertiesPanel";
 import { StatusBar } from "./features/status/StatusBar";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { DtfClientProvider } from "./api/DtfClientContext";
 import { LibraryDrawer } from "./features/library/LibraryDrawer";
 import { useSettings } from "./state/settingsStore";
 import { PreflightDialog } from "./features/prn/PreflightDialog";
+import { installCloseGuard } from "./features/sheets/closeGuard";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 
 // react-konva needs a real canvas; jsdom tests render the shell without it.
@@ -21,6 +22,21 @@ export default function App() {
   const [preflightOpen, setPreflightOpen] = useState(false);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const drawerHeight = useSettings((s) => s.drawerHeightPx);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    try {
+      installCloseGuard()
+        .then((u) => (disposed ? u() : (unlisten = u)))
+        .catch(() => {});
+    } catch {
+      // Not running inside Tauri (tests / browser preview).
+    }
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
   return (
     <DtfClientProvider>
     <div

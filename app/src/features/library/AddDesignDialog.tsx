@@ -9,6 +9,7 @@ import { printableArea } from '../../domain/geometry'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
 
+const MAX_QUANTITY = 500
 const LABELS = { fine: 'Good', low: 'Low', bad: 'Too low' } as const
 
 interface Props {
@@ -39,7 +40,8 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const a = await cacheAsset(client.absoluteUrl(design.imageUrl), client.token() ?? undefined)
+      const url = client.absoluteUrl(design.imageUrl)
+      const a = await cacheAsset(url, client.bearerFor(url))
       setAsset(a)
       setWidthCm((w) => w ?? Math.round(Math.min((a.widthPx / 300) * 2.54, maxWidthCm) * 100) / 100)
       return a
@@ -98,7 +100,7 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
         </label>
         <label className="dialog-field">
           Quantity
-          <input type="number" min={1} step={1} value={quantity ?? ''} onChange={(e) => setQuantity(e.target.value === '' ? null : Math.floor(Number(e.target.value)))} />
+          <input type="number" min={1} max={MAX_QUANTITY} step={1} value={quantity ?? ''} onChange={(e) => setQuantity(e.target.value === '' ? null : Math.min(MAX_QUANTITY, Math.max(1, Math.floor(Number(e.target.value)))))} />
         </label>
         {loading && <p className="muted">Downloading…</p>}
         {dpi !== null && status && (

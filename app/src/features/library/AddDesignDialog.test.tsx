@@ -46,6 +46,26 @@ describe('AddDesignDialog', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('clamps the quantity to 500', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    render(<AddDesignDialog design={design} onClose={vi.fn()} />, { wrapper: withClient(fakeClient()) })
+    const width = await screen.findByLabelText('Print width (cm)')
+    await waitFor(() => expect(width).toBeEnabled())
+    const qty = screen.getByLabelText('Quantity')
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '100000')
+    expect(qty).toHaveValue(500)
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(getSheetStore().getState().sheet.items).toHaveLength(500)
+  })
+
+  it('does not send the bearer token to another origin', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    render(<AddDesignDialog design={{ ...design, imageUrl: 'https://cdn.example.com/x.png' }} onClose={vi.fn()} />, { wrapper: withClient(fakeClient({ absoluteUrl: (p: string) => p })) })
+    await waitFor(() => expect(cacheAsset).toHaveBeenCalled())
+    expect(cacheAsset).toHaveBeenCalledWith('https://cdn.example.com/x.png', undefined)
+  })
+
   it('shows an error and adds nothing when the download fails', async () => {
     vi.mocked(cacheAsset).mockRejectedValue(new Error('boom'))
     render(<AddDesignDialog design={design} onClose={vi.fn()} />, { wrapper: withClient(fakeClient()) })

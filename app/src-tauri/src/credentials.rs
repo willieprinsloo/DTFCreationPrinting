@@ -4,10 +4,19 @@ use serde::{Deserialize, Serialize};
 const SERVICE: &str = "za.co.dtfcreations.printstudio";
 const USER: &str = "dtf-creations-login";
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct Credentials {
     pub email: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("email", &self.email)
+            .field("password", &"<redacted>")
+            .finish()
+    }
 }
 
 fn entry() -> Result<Entry, String> {
@@ -58,6 +67,14 @@ mod tests {
         let c = Credentials { email: "a@b.c".into(), password: "p\"w".into() };
         let back: Credentials = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn debug_output_redacts_the_password() {
+        let c = Credentials { email: "a@b.c".into(), password: "hunter2-secret".into() };
+        let out = format!("{:?}", c);
+        assert!(!out.contains("hunter2-secret"));
+        assert!(out.contains("a@b.c"));
     }
 
     /// Needs the OS keychain (may prompt); run manually: cargo test -- --ignored

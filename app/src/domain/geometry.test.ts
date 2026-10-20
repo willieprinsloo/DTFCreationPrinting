@@ -67,3 +67,17 @@ describe('findProblems', () => {
     expect(findProblems(sheet([item('a', { yMm: 2 })]))).toEqual([{ kind: 'outside', itemId: 'a' }])
   })
 })
+
+describe('fixed length overflow', () => {
+  const fixed = settings({ lengthMode: 'fixed', fixedLengthMm: 1000 })
+  it('flags an item running into the bottom margin', () => {
+    const p = findProblems(sheet([item('a', { yMm: 949, heightMm: 50 })], fixed))
+    expect(p).toEqual([{ kind: 'outside', itemId: 'a' }])
+  })
+  it('accepts an item inside the printable area', () => {
+    expect(findProblems(sheet([item('a', { yMm: 940, heightMm: 50 })], fixed))).toEqual([])
+  })
+  it('throws when the fixed length leaves no printable height', () => {
+    expect(() => printableArea(settings({ lengthMode: 'fixed', fixedLengthMm: 8 }))).toThrow(InvalidSheetError)
+  })
+})
