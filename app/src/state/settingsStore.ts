@@ -14,6 +14,8 @@ export const DEFAULT_PROFILE: PrinterProfile = {
   defaultGapMm: 3,
 }
 
+export const clampDrawerHeight = (px: number) => Math.min(480, Math.max(120, Math.round(px)))
+
 export interface SettingsData {
   profiles: PrinterProfile[]
   activeProfileId: string
@@ -93,7 +95,7 @@ export function createSettingsStore(kv: KeyValueStore) {
       },
       setApiBaseUrl: (url) => commit({ apiBaseUrl: url }),
       setScreenPxPerMm: (v) => commit({ screenPxPerMm: v }),
-      setDrawerHeight: (px) => commit({ drawerHeightPx: Math.min(480, Math.max(120, Math.round(px))) }),
+      setDrawerHeight: (px) => commit({ drawerHeightPx: clampDrawerHeight(px) }),
     }
   })
 }

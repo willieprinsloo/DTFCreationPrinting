@@ -5,7 +5,7 @@ import type { OrderFile, OrderSummary } from '../../api/types'
 import { cacheAsset } from '../../platform/tauri'
 import { getSheetStore, type NewItem } from '../../state/sheetStore'
 import { Thumb } from './Thumb'
-import { beginLibraryDrag, endLibraryDrag } from './dragAdd'
+import { beginLibraryDrag } from './dragAdd'
 import { useDebounced } from './useDebounced'
 
 export function GangSheetsTab() {
@@ -24,6 +24,8 @@ export function GangSheetsTab() {
   const generation = useRef(0)
   const stateRef = useRef({ orders, files, selected })
   stateRef.current = { orders, files, selected }
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
 
   const fail = useCallback(
     (e: unknown) => {
@@ -82,12 +84,14 @@ export function GangSheetsTab() {
   const addSelected = async (keys: string[]) => {
     const { orders: os, files: fs } = stateRef.current
     const items: NewItem[] = []
+    const done: string[] = []
     setError(null)
     for (const o of os) {
       for (const f of fs[o.id] ?? []) {
         if (!keys.includes(keyOf(o.id, f))) continue
         try {
           const asset = await cacheAsset(client.absoluteUrl(f.printFileUrl), client.token() ?? undefined)
+          done.push(keyOf(o.id, f))
           items.push({
             asset,
             source: {
@@ -110,7 +114,7 @@ export function GangSheetsTab() {
     }
     if (items.length > 0) {
       getSheetStore().getState().addItems(items)
-      setSelected((cur) => cur.filter((k) => !keys.includes(k)))
+      setSelected((cur) => cur.filter((k) => !done.includes(k)))
     }
   }
 
@@ -153,12 +157,10 @@ export function GangSheetsTab() {
                     caption={f.sizeLabel}
                     selected={selected.includes(k)}
                     onToggle={() => toggle(k)}
-                    onDragStart={(e) => {
-                      const keys = selected.includes(k) ? selected : [k]
-                      if (!selected.includes(k)) setSelected([k])
-                      beginLibraryDrag(e, () => void addSelected(keys))
+                    onPointerDown={(e) => {
+                      const keys = selectedRef.current.includes(k) ? selectedRef.current : [k]
+                      beginLibraryDrag(e, `${o.orderNumber} ${f.sizeLabel}`, () => void addSelected(keys))
                     }}
-                    onDragEnd={endLibraryDrag}
                   />
                 )
               })}

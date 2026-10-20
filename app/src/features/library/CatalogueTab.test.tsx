@@ -49,6 +49,21 @@ describe('CatalogueTab', () => {
     expect(screen.getByRole('button', { name: 'Lion' })).toBeInTheDocument()
   })
 
+  it('passes the Type and Category filters to the API', async () => {
+    const client = fakeClient({
+      listGalleryDesigns: vi.fn(async () => ({ items: [design], total: 1, page: 1, hasNext: false })),
+      listGalleryCategories: vi.fn(async () => [{ id: 'cat9', name: 'Animals' }]),
+    })
+    render(<CatalogueTab />, { wrapper: withClient(client) })
+    await screen.findByRole('button', { name: 'Lion' })
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'sticker')
+    await waitFor(() => expect(client.listGalleryDesigns).toHaveBeenLastCalledWith(expect.objectContaining({ designType: 'sticker' })))
+    await userEvent.selectOptions(await screen.findByRole('option', { name: 'Animals' }).then(() => screen.getByLabelText('Category')), 'cat9')
+    await waitFor(() =>
+      expect(client.listGalleryDesigns).toHaveBeenLastCalledWith(expect.objectContaining({ designType: 'sticker', categoryId: 'cat9' })),
+    )
+  })
+
   it('asks for sign-in on AuthRequiredError', async () => {
     const requireLogin = vi.fn()
     const client = fakeClient({ listGalleryDesigns: vi.fn(async () => { throw new AuthRequiredError() }) })

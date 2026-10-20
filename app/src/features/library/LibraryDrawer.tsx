@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { useSettings, getSettingsStore } from '../../state/settingsStore'
+import { useSettings, getSettingsStore, clampDrawerHeight } from '../../state/settingsStore'
 import { CatalogueTab } from './CatalogueTab'
 import { GangSheetsTab } from './GangSheetsTab'
 import { LocalTab } from './LocalTab'
@@ -22,18 +22,27 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
   const [tab, setTab] = useState<Tab>('catalogue')
   const height = useSettings((s) => s.drawerHeightPx)
   const local = useLocalFiles()
-  const drag = useRef<{ y: number; h: number } | null>(null)
+  const drag = useRef<{ y: number; h: number; live: number; shell: HTMLElement | null } | null>(null)
 
   const onPointerDown = (e: React.PointerEvent) => {
-    drag.current = { y: e.clientY, h: height }
+    drag.current = { y: e.clientY, h: height, live: height, shell: e.currentTarget.closest<HTMLElement>('.app-shell') }
     e.currentTarget.setPointerCapture?.(e.pointerId)
   }
+  // Live feedback sets the grid variable directly; the height is persisted once on release.
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return
-    void getSettingsStore().getState().setDrawerHeight(drag.current.h + (drag.current.y - e.clientY)).catch(() => {})
+    const d = drag.current
+    if (!d) return
+    d.live = clampDrawerHeight(d.h + (d.y - e.clientY))
+    d.shell?.style.setProperty('--drawer-h', `${d.live}px`)
   }
   const onPointerUp = () => {
+    const d = drag.current
     drag.current = null
+    if (!d) return
+    getSettingsStore()
+      .getState()
+      .setDrawerHeight(d.live)
+      .catch((err) => console.warn('Could not save library height', err))
   }
 
   return (
@@ -47,6 +56,7 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
         />
       )}
       <div className="library-tabs" role="tablist">

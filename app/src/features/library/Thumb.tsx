@@ -6,21 +6,18 @@ interface Props {
   caption?: ReactNode
   selected: boolean
   onToggle(): void
-  onDragStart(e: React.DragEvent): void
-  onDragEnd(): void
+  onPointerDown(e: React.PointerEvent): void
 }
 
-export function Thumb({ src, label, caption, selected, onToggle, onDragStart, onDragEnd }: Props) {
+export function Thumb({ src, label, caption, selected, onToggle, onPointerDown }: Props) {
   return (
     <button
       type="button"
       className={`thumb${selected ? ' selected' : ''}`}
       aria-pressed={selected}
       aria-label={label}
-      draggable
       onClick={onToggle}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
+      onPointerDown={onPointerDown}
     >
       <img src={src} alt="" loading="lazy" draggable={false} />
       <span className="thumb-caption">{caption ?? label}</span>

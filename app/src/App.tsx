@@ -6,7 +6,6 @@ import { StatusBar } from "./features/status/StatusBar";
 import { lazy, Suspense, useState } from "react";
 import { DtfClientProvider } from "./api/DtfClientContext";
 import { LibraryDrawer } from "./features/library/LibraryDrawer";
-import { dropLibraryDrag, isLibraryDrag } from "./features/library/dragAdd";
 import { useSettings } from "./state/settingsStore";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 
@@ -29,18 +28,7 @@ export default function App() {
       <header className="region topbar" data-testid="topbar">
         <TopBar onOpenSettings={() => setSettingsOpen(true)} />
       </header>
-      <main
-        className="region canvas-area"
-        data-testid="canvas-area"
-        onDragOver={(e) => {
-          if (isLibraryDrag(e.dataTransfer)) e.preventDefault();
-        }}
-        onDrop={(e) => {
-          if (!isLibraryDrag(e.dataTransfer)) return;
-          e.preventDefault();
-          dropLibraryDrag();
-        }}
-      >
+      <main className="region canvas-area" data-testid="canvas-area">
         {SheetCanvas ? (
           <Suspense fallback={null}>
             <SheetCanvas />

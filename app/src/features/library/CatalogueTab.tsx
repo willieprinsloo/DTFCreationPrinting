@@ -4,7 +4,7 @@ import { AuthRequiredError } from '../../api/dtfClient'
 import type { Customer, GalleryCategory, GalleryDesign } from '../../api/types'
 import { AddDesignDialog } from './AddDesignDialog'
 import { Thumb } from './Thumb'
-import { beginLibraryDrag, endLibraryDrag } from './dragAdd'
+import { beginLibraryDrag } from './dragAdd'
 import { useDebounced } from './useDebounced'
 
 const LIMIT = 50
@@ -170,12 +170,10 @@ export function CatalogueTab() {
             label={d.name}
             selected={selected.includes(d.id)}
             onToggle={() => toggle(d.id)}
-            onDragStart={(e) => {
+            onPointerDown={(e) => {
               const ids = selectedRef.current.includes(d.id) ? selectedRef.current : [d.id]
-              if (!selectedRef.current.includes(d.id)) setSelected([d.id])
-              beginLibraryDrag(e, () => enqueue(ids))
+              beginLibraryDrag(e, d.name, () => enqueue(ids))
             }}
-            onDragEnd={endLibraryDrag}
           />
         ))}
         {!loading && !error && items.length === 0 && <p className="muted">No designs found</p>}

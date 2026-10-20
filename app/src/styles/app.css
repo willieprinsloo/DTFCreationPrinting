@@ -520,3 +520,18 @@ button.danger {
   gap: var(--space-2);
   padding: var(--space-3);
 }
+
+.drag-ghost {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  padding: 2px var(--space-2);
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+  font-size: var(--font-size-small);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

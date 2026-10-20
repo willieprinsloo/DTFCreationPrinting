@@ -35,6 +35,29 @@ describe('GangSheetsTab', () => {
     expect(it.source).toMatchObject({ kind: 'order-file', id: 'i1', orderId: 'o1', orderNumber: '#1042', customerName: 'Acme' })
   })
 
+  it('on partial failure keeps only the failed file selected', async () => {
+    vi.mocked(cacheAsset).mockImplementation(async (url) => {
+      if (url.endsWith('bad.png')) throw new Error('nope')
+      return { assetId: 'g', path: '/g.png', previewPath: '/g.jpg', widthPx: 300, heightPx: 300 }
+    })
+    const client = fakeClient({
+      listOrders: vi.fn(async () => ({ items: [order], total: 1, page: 1, hasNext: false })),
+      getOrderFiles: vi.fn(async () => [
+        { itemId: 'i1', printFileUrl: '/u/good.png', productType: 'g', sizeLabel: 'A' },
+        { itemId: 'i2', printFileUrl: '/u/bad.png', productType: 'g', sizeLabel: 'B' },
+      ]),
+    })
+    render(<GangSheetsTab />, { wrapper: withClient(client) })
+    await userEvent.click(await screen.findByRole('button', { name: /#1042/ }))
+    await userEvent.click(await screen.findByRole('button', { name: '#1042 A' }))
+    await userEvent.click(screen.getByRole('button', { name: '#1042 B' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(1))
+    expect(screen.getByRole('button', { name: '#1042 A' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: '#1042 B' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/Couldn't download #1042 B/)).toBeInTheDocument()
+  })
+
   it('includes in-production orders when toggled', async () => {
     const client = fakeClient()
     render(<GangSheetsTab />, { wrapper: withClient(client) })
