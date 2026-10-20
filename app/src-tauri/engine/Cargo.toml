@@ -8,6 +8,11 @@ name = "dtf_engine"
 
 [dependencies]
 thiserror = "2"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[[bin]]
+name = "prn-tool"
+path = "src/bin/prn-tool.rs"

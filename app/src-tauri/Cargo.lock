@@ -779,6 +779,7 @@ dependencies = [
 name = "dtf-engine"
 version = "0.1.0"
 dependencies = [
+ "image",
  "tempfile",
  "thiserror 2.0.21",
 ]

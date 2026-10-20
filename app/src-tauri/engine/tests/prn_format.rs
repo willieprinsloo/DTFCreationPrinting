@@ -83,3 +83,24 @@ fn fixture_line0_has_white_in_channel_4() {
     assert_eq!(line[4].len(), 17007);
     assert!(line[4].iter().filter(|&&v| v != 0).count() >= 1000);
 }
+
+#[test]
+fn parse_rejects_inconsistent_headers() {
+    let good = std::fs::read(FIXTURE).unwrap()[..48].to_vec();
+    let put32 = |b: &mut Vec<u8>, o: usize, v: u32| b[o..o + 4].copy_from_slice(&v.to_le_bytes());
+    // bytes_per_line too small for width_px
+    let mut b = good.clone();
+    put32(&mut b, 12, 100);
+    assert!(matches!(PrnHeader::parse(&b), Err(EngineError::BadHeader(_))));
+    // zero width / lines / bytes_per_line / dpi
+    for off in [4usize, 8, 12, 16, 20] {
+        let mut b = good.clone();
+        put32(&mut b, off, 0);
+        assert!(matches!(PrnHeader::parse(&b), Err(EngineError::BadHeader(_))), "offset {off}");
+    }
+    // wrong channel count
+    let mut b = good.clone();
+    b[28..30].copy_from_slice(&4u16.to_le_bytes());
+    assert!(matches!(PrnHeader::parse(&b), Err(EngineError::BadHeader(_))));
+    assert!(PrnHeader::parse(&good).is_ok());
+}

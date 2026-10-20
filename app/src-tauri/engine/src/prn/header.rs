@@ -52,13 +52,33 @@ impl PrnHeader {
         b
     }
 
+    fn validate(&self) -> Result<(), EngineError> {
+        let bad = |m: String| Err(EngineError::BadHeader(m));
+        if self.channels != 6 {
+            return bad(format!("expected 6 channels, found {}", self.channels));
+        }
+        if self.x_dpi == 0 || self.y_dpi == 0 {
+            return bad("resolution is zero".into());
+        }
+        if self.width_px == 0 || self.lines == 0 || self.bytes_per_line == 0 {
+            return bad("width, line count or bytes per line is zero".into());
+        }
+        if (self.bytes_per_line as u64) < (self.width_px as u64).div_ceil(4) {
+            return bad(format!(
+                "{} bytes per line cannot hold {} pixels",
+                self.bytes_per_line, self.width_px
+            ));
+        }
+        Ok(())
+    }
+
     pub fn parse(b: &[u8]) -> Result<Self, EngineError> {
         if b.len() < HEADER_LEN || &b[0..4] != MAGIC {
             return Err(EngineError::NotAPrn);
         }
         let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
         let u16_at = |o: usize| u16::from_le_bytes(b[o..o + 2].try_into().unwrap());
-        Ok(PrnHeader {
+        let h = PrnHeader {
             x_dpi: u32_at(4),
             y_dpi: u32_at(8),
             bytes_per_line: u32_at(12),
@@ -68,6 +88,8 @@ impl PrnHeader {
             channels: u16_at(28),
             flag_1e: u16_at(30),
             field_20: u32_at(32),
-        })
+        };
+        h.validate()?;
+        Ok(h)
     }
 }

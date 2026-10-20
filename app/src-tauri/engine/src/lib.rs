@@ -4,6 +4,8 @@ pub mod prn;
 pub enum EngineError {
     #[error("not a PRN file (bad magic or header too short)")]
     NotAPrn,
+    #[error("unusable PRN header: {0}")]
+    BadHeader(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("wrote {written} lines but the header declares {expected}")]
