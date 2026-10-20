@@ -42,5 +42,13 @@ lto = true
 opt-level = 3
 strip = true
 
+# `tauri dev` builds in debug, where the print engine and the image / colour
+# libraries run about 10x slower; optimise them so a PRN takes seconds, not minutes.
+[profile.dev.package.dtf-engine]
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 3
+
 [workspace]
 members = ["engine"]

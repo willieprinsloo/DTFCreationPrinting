@@ -77,10 +77,10 @@ fn prepare_estimate(k: &SrcKey) -> u64 {
 /// dot-on-dot (R7).
 const BN_OFFSET: [(u32, u32); LOGICAL] = [(0, 0), (73, 151), (146, 46), (219, 197), (36, 92)];
 
-/// Screen one row of logical channel `ch` with blue noise.
-fn screen_bn(ch: usize, tones: &[u16], row: u32, out: &mut [u8]) {
+/// Screen one row of logical channel `ch` with blue noise; `tones[0]` is at sheet column `x0`.
+fn screen_bn(ch: usize, tones: &[u16], row: u32, x0: usize, out: &mut [u8]) {
     let (ox, oy) = BN_OFFSET[ch];
-    screen_row_blue_noise(tones, row.wrapping_add(oy), ox, out);
+    screen_row_blue_noise(tones, row.wrapping_add(oy), ox.wrapping_add(x0 as u32), out);
 }
 
 /// Runs `f`, turning a panic into `EngineError::Internal`.
@@ -173,15 +173,17 @@ struct Ctx {
 }
 
 /// Composite sheet line `line` into `tones` (LOGICAL planes of `width`, in
-/// output order, i.e. mirrored when asked). Returns false if nothing touched it.
+/// output order, i.e. mirrored when asked). Only the returned column range
+/// (output order) is written, so `tones` must be zero elsewhere; `None` when
+/// nothing touches the line. `blend` is scratch space.
 fn composite_row(
     views: &[View],
     ctx: &Ctx,
     line: i64,
     acc: &mut [[f32; LOGICAL]],
+    blend: &mut Vec<[f32; 6]>,
     tones: &mut [u16],
-) -> bool {
-    tones.fill(0);
+) -> Option<(usize, usize)> {
     let py = (line as f64 + 0.5) * ctx.dy;
     let x0 = 0.5 * ctx.dx;
     // Per view: (u at px 0, du, v at px 0, dv, px range).
@@ -215,12 +217,56 @@ fn composite_row(
         spans.push((u0, du, v0, dv, s, e));
     }
     if lo >= hi {
-        return false;
+        return None;
     }
     acc[lo..hi].fill([0.0; LOGICAL]);
+    let k = 1.0 / 65535.0;
     for (v, &(u0, du, v0, dv, s, e)) in views.iter().zip(&spans) {
         let (w, h) = (v.w, v.h);
         let (wf, hf) = (w as f64, h as f64);
+        if s >= e {
+            continue;
+        }
+        if dv == 0.0 {
+            // Not rotated (or half-turned): the whole row reads one source row, so
+            // blend its two neighbouring rows once and interpolate along it.
+            if !(v0 >= 0.0 && v0 < hf) {
+                continue;
+            }
+            let fy = (v0 - 0.5).max(0.0);
+            let ya = (fy as usize).min(h - 1);
+            let yb = (ya + 1).min(h - 1);
+            let ty = (fy - ya as f64) as f32;
+            let col = |u: f64| ((u - 0.5).max(0.0) as usize).min(w - 1);
+            let (ua, ub) = (u0 + du * s as f64, u0 + du * (e - 1) as f64);
+            let (x_lo, x_hi) = (col(ua.min(ub)), (col(ua.max(ub)) + 1).min(w - 1));
+            blend.clear();
+            blend.extend((x_lo..=x_hi).map(|x| {
+                std::array::from_fn(|c| {
+                    let p = v.planes[c];
+                    let (a, b) = (p[ya * w + x] as f32, p[yb * w + x] as f32);
+                    (a + (b - a) * ty) * k
+                })
+            }));
+            for (i, o) in acc[s..e].iter_mut().enumerate() {
+                let u = u0 + du * (s + i) as f64;
+                if !(u >= 0.0 && u < wf) {
+                    continue;
+                }
+                let fx = (u - 0.5).max(0.0);
+                let xa = (fx as usize).min(w - 1);
+                let tx = (fx - xa as f64) as f32;
+                let (pa, pb) = (&blend[xa - x_lo], &blend[(xa + 1).min(w - 1) - x_lo]);
+                let a = pa[5] + (pb[5] - pa[5]) * tx;
+                if a <= 0.0 {
+                    continue;
+                }
+                for (c, oc) in o.iter_mut().enumerate() {
+                    *oc = pa[c] + (pb[c] - pa[c]) * tx + *oc * (1.0 - a);
+                }
+            }
+            continue;
+        }
         for (i, o) in acc[s..e].iter_mut().enumerate() {
             let px = s + i;
             let (u, vv) = (u0 + du * px as f64, v0 + dv * px as f64);
@@ -234,7 +280,6 @@ fn composite_row(
             let (tx, ty) = ((fx - xa as f64) as f32, (fy - ya as f64) as f32);
             let (xb, yb) = ((xa + 1).min(w - 1), (ya + 1).min(h - 1));
             let (i00, i01, i10, i11) = (ya * w + xa, ya * w + xb, yb * w + xa, yb * w + xb);
-            let k = 1.0 / 65535.0;
             let (w00, w01) = ((1.0 - tx) * (1.0 - ty) * k, tx * (1.0 - ty) * k);
             let (w10, w11) = ((1.0 - tx) * ty * k, tx * ty * k);
             let smp = |p: &[u16]| {
@@ -253,20 +298,59 @@ fn composite_row(
         }
     }
     let w = ctx.width;
+    let mut planes: [&mut [u16]; LOGICAL] = {
+        let mut it = tones.chunks_exact_mut(w);
+        std::array::from_fn(|_| it.next().unwrap())
+    };
     for (px, t) in acc[lo..hi].iter().enumerate().map(|(i, t)| (i + lo, t)) {
         let [k, c, m, y] = ink_limit([t[0], t[1], t[2], t[3]], ctx.limit);
-        let mut q = [k, c, m, y, t[4]].map(|v| (v.clamp(0.0, 1.0) * 65535.0).round() as u16);
+        // + 0.5 then truncate: the same as round() for these non-negative values, but cheaper.
+        let mut q = [k, c, m, y, t[4]].map(|v| (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16);
         if let Some(l) = &ctx.luts {
             for (ch, v) in q.iter_mut().enumerate() {
                 *v = l[ch][*v as usize];
             }
         }
         let ox = if ctx.mirror { w - 1 - px } else { px };
-        for (ch, v) in q.into_iter().enumerate() {
-            tones[ch * w + ox] = v;
+        for (p, v) in planes.iter_mut().zip(q) {
+            p[ox] = v;
         }
     }
-    true
+    Some(if ctx.mirror { (w - hi, w - lo) } else { (lo, hi) })
+}
+
+/// One worker's buffers for compositing and screening a line.
+struct Scratch {
+    acc: Vec<[f32; LOGICAL]>,
+    blend: Vec<[f32; 6]>,
+    /// All zero between lines: each line clears the columns it wrote.
+    tones: Vec<u16>,
+    levels: Vec<u8>,
+}
+
+/// A `Scratch` per rayon worker, kept for the whole render. Making them per
+/// line (as `for_each_init` ends up doing) costs more than the compositing.
+struct ScratchPool {
+    width: usize,
+    slots: Vec<std::sync::Mutex<Option<Scratch>>>,
+}
+
+impl ScratchPool {
+    fn new(width: usize) -> Self {
+        let slots = (0..rayon::current_num_threads().max(1)).map(|_| Default::default()).collect();
+        ScratchPool { width, slots }
+    }
+
+    fn with<R>(&self, f: impl FnOnce(&mut Scratch) -> R) -> R {
+        let i = rayon::current_thread_index().unwrap_or(0) % self.slots.len();
+        let mut slot = self.slots[i].lock().unwrap_or_else(|p| p.into_inner());
+        f(slot.get_or_insert_with(|| Scratch {
+            acc: vec![[0.0; LOGICAL]; self.width],
+            blend: Vec::new(),
+            tones: vec![0; LOGICAL * self.width],
+            levels: vec![0; LOGICAL * self.width],
+        }))
+    }
 }
 
 /// Pixel size to render a PDF item at. Unrotated (or half-turned) items get
@@ -443,6 +527,7 @@ fn render_prn_with_budget(
             };
             let mut tones: Vec<u16> = Vec::new();
             let mut levels: Vec<Vec<u8>> = Vec::new();
+            let pool = ScratchPool::new(width);
             for band in 0..n_bands {
                 let active: Vec<&Placed> = placed
                     .iter()
@@ -528,52 +613,44 @@ fn render_prn_with_budget(
                 let bh = BAND_LINES.min(lines as usize - row0);
                 let line_bytes = CHANNELS * bpl;
                 let mut buf = vec![0u8; bh * line_bytes];
-                let scratch = || {
-                    (
-                        vec![[0.0f32; LOGICAL]; width],
-                        vec![0u16; LOGICAL * width],
-                        vec![0u8; LOGICAL * width],
-                    )
-                };
                 match s.screening {
                     Screening::BlueNoise => {
-                        buf.par_chunks_mut(line_bytes).enumerate().for_each_init(
-                            scratch,
-                            |(acc, t, lv), (r, line)| {
+                        buf.par_chunks_mut(line_bytes).enumerate().for_each(|(r, line)| {
+                            pool.with(|sc| {
+                                let Scratch { acc, blend, tones: t, levels: lv } = sc;
                                 let row = row0 + r;
-                                if !composite_row(&views, &ctx, first_line + row as i64, acc, t) {
+                                let Some((a, b)) = composite_row(&views, &ctx, first_line + row as i64, acc, blend, t) else {
                                     return; // blank line stays zero
-                                }
+                                };
+                                // Screen and pack whole bytes around the inked columns; the
+                                // rest of the line is already zero.
+                                let (a, b) = (a / 4 * 4, (b.div_ceil(4) * 4).min(width));
                                 for ch in 0..LOGICAL {
-                                    let span = ch * width..(ch + 1) * width;
-                                    screen_bn(ch, &t[span.clone()], row as u32, &mut lv[span]);
+                                    let span = ch * width + a..ch * width + b;
+                                    screen_bn(ch, &t[span.clone()], row as u32, a, &mut lv[span.clone()]);
+                                    t[span].fill(0); // ready for the next line
                                 }
                                 for (pc, &l) in map.iter().enumerate() {
                                     pack_levels(
-                                        &lv[l * width..(l + 1) * width],
-                                        &mut line[pc * bpl..(pc + 1) * bpl],
+                                        &lv[l * width + a..l * width + b],
+                                        &mut line[pc * bpl + a / 4..pc * bpl + b.div_ceil(4)],
                                     );
                                 }
-                            },
-                        );
+                            })
+                        });
                     }
                     Screening::ErrorDiffusion => {
                         tones.resize(bh * LOGICAL * width, 0);
                         tones
                             .par_chunks_mut(LOGICAL * width)
                             .enumerate()
-                            .for_each_init(
-                                || vec![[0.0f32; LOGICAL]; width],
-                                |acc, (r, t)| {
-                                    composite_row(
-                                        &views,
-                                        &ctx,
-                                        first_line + (row0 + r) as i64,
-                                        acc,
-                                        t,
-                                    );
-                                },
-                            );
+                            .for_each(|(r, t)| {
+                                t.fill(0);
+                                pool.with(|sc| {
+                                    let line = first_line + (row0 + r) as i64;
+                                    composite_row(&views, &ctx, line, &mut sc.acc, &mut sc.blend, t);
+                                })
+                            });
                         levels.resize_with(LOGICAL, Vec::new);
                         let tones = &tones;
                         diffusers
@@ -661,7 +738,7 @@ mod tests {
             let mut differ = [0usize; LOGICAL];
             for row in 0..n as u32 {
                 for (ch, o) in outs.iter_mut().enumerate() {
-                    screen_bn(ch, &t, row, o);
+                    screen_bn(ch, &t, row, 0, o);
                     sums[ch] += o.iter().map(|&v| v as u64).sum::<u64>();
                 }
                 for ch in 1..LOGICAL {

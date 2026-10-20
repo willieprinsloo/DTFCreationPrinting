@@ -46,18 +46,27 @@ pub fn apply_curve(tone: u16, curve: &[(f32, f32)]) -> u16 {
 /// Screen one row of 16-bit tones into levels 0..3 using the blue-noise mask.
 /// `y` is the absolute row, `x0` the absolute column of `tones[0]`.
 pub fn screen_row_blue_noise(tones: &[u16], y: u32, x0: u32, out: &mut [u8]) {
-    let ranks = mask_ranks();
-    let row = (y as usize & (MASK_SIZE - 1)) * MASK_SIZE;
+    let thresholds = mask_thresholds();
+    let row = &thresholds[(y as usize & (MASK_SIZE - 1)) * MASK_SIZE..][..MASK_SIZE];
     for (i, (&t, o)) in tones.iter().zip(out.iter_mut()).enumerate() {
         let v = t as u32 * 3;
         let base = v / 65535;
-        let rem = (v % 65535) as u64;
-        let c = ranks[row + ((x0 as usize + i) & (MASK_SIZE - 1))];
-        let rank = u16::from_le_bytes(c) as u64;
-        // frac = rem/65535 > (rank+0.5)/65536
-        let up = (rem * 131072 > (2 * rank + 1) * 65535) as u32;
+        let rem = v - base * 65535;
+        let up = (rem >= row[(x0 as usize + i) & (MASK_SIZE - 1)] as u32) as u32;
         *o = (base + up).min(3) as u8;
     }
+}
+
+/// Per mask cell, the smallest remainder that rounds up: frac = rem/65535 >
+/// (rank+0.5)/65536, i.e. rem * 131072 > (2 * rank + 1) * 65535.
+fn mask_thresholds() -> &'static [u16] {
+    static T: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        mask_ranks()
+            .iter()
+            .map(|&c| ((2 * u16::from_le_bytes(c) as u64 + 1) * 65535 / 131072 + 1) as u16)
+            .collect()
+    })
 }
 
 #[inline]

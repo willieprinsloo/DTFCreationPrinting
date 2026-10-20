@@ -143,6 +143,26 @@ fn rotated_90_clockwise_is_10_wide_20_tall_with_left_edge_on_top() {
 }
 
 #[test]
+fn half_turn_puts_the_left_half_on_the_right_and_the_top_at_the_bottom() {
+    let d = tempfile::tempdir().unwrap();
+    // 20x10 mm item: top-left quarter black, the rest red.
+    let p = png(d.path(), "q.png", 200, 100, |x, y| {
+        if x < 100 && y < 50 { BLACK } else { RED }
+    });
+    let (lines, ext) = extents(&render(
+        &job(vec![item(&p, 50.0, 50.0, 20.0, 10.0, 180.0)]),
+        d.path(),
+    ));
+    assert_eq!(lines, 709);
+    let (kf, kl, ka, kb) = ext[K].unwrap();
+    // black lands in the bottom-right quarter: x 60..70 mm -> px 1701..1984, lines ~354..709
+    assert!(close(ka, 1701, 4) && close(kb + 1, 1984, 1), "K x {ka}..{kb}");
+    assert!(close(kf as usize, 354, 4) && kl >= 707, "K lines {kf}..{kl}");
+    let (_, _, ma, mb) = ext[M].unwrap();
+    assert!(close(ma, 1417, 1) && close(mb + 1, 1984, 1), "M x {ma}..{mb}");
+}
+
+#[test]
 fn content_is_trimmed_to_item_span() {
     let d = tempfile::tempdir().unwrap();
     let p = png(d.path(), "b.png", 100, 100, |_, _| BLACK);
