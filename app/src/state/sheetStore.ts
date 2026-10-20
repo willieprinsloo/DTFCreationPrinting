@@ -140,7 +140,7 @@ export function createSheetStore() {
                 xMm: settings.margins.leftMm,
                 yMm: 0,
                 widthMm: n.widthMm,
-                heightMm: n.heightMm,
+                heightMm: heightForWidth(n, n.widthMm),
                 rotationDeg: 0,
                 whiteEnabled: settings.whiteEnabled,
               })),

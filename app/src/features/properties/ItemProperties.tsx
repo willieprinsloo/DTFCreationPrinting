@@ -1,10 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Copy, Lock, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { uiStore, useUi } from '../../state/uiStore'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
-import { heightForWidth } from '../../domain/geometry'
+import { MIN_PRINT_MM, heightForWidth, widthForHeight } from '../../domain/geometry'
 import type { SheetItem } from '../../domain/types'
 import { ONE_SIZE, resolveWidthMm, widthKey } from '../../domain/printSizes'
 import { useDtfClient } from '../../api/DtfClientContext'
@@ -64,36 +64,34 @@ function GarmentSize({ item }: { item: SheetItem }) {
   )
 }
 
-const sharedWidthCm = (ids: string[]) => {
-  const widths = getSheetStore().getState().sheet.items.filter((i) => ids.includes(i.id)).map((i) => i.widthMm)
-  return widths.length > 0 && widths.every((w) => Math.abs(w - widths[0]) < 0.05) ? widths[0] / MM_PER_CM : 0
-}
+const MIN_MESSAGE = `Minimum size is ${MIN_PRINT_MM / MM_PER_CM} cm`
+
+type Sized = Pick<SheetItem, 'asset' | 'widthMm' | 'heightMm'>
+/** True when a print of this width (or its derived height) would be under the minimum. */
+const tooSmall = (item: Sized, widthMm: number) => widthMm < MIN_PRINT_MM || heightForWidth(item, widthMm) < MIN_PRINT_MM
 
 /** One undo step: every selected item gets the width (height follows its asset) and keeps its centre. */
-function setAllWidths(ids: string[], cm: number) {
-  if (!(cm > 0)) return
-  const widthMm = cm * MM_PER_CM
-  const store = getSheetStore().getState()
-  const patches = store.sheet.items
-    .filter((i) => ids.includes(i.id))
-    .map((i) => {
-      const heightMm = heightForWidth(i, widthMm)
-      return {
-        id: i.id,
-        patch: {
-          widthMm,
-          xMm: i.xMm + i.widthMm / 2 - widthMm / 2,
-          yMm: i.yMm + i.heightMm / 2 - heightMm / 2,
-        },
-      }
-    })
-  store.updateItems(patches)
+function setAllWidths(selected: SheetItem[], widthMm: number) {
+  const patches = selected.map((i) => {
+    const heightMm = heightForWidth(i, widthMm)
+    return {
+      id: i.id,
+      patch: {
+        widthMm,
+        xMm: i.xMm + i.widthMm / 2 - widthMm / 2,
+        yMm: i.yMm + i.heightMm / 2 - heightMm / 2,
+      },
+    }
+  })
+  getSheetStore().getState().updateItems(patches)
 }
 
 const norm = (deg: number) => ((deg % 360) + 360) % 360
 
 export function ItemProperties({ ids }: { ids: string[] }) {
   const item = useSheet((s) => (ids.length === 1 ? s.sheet.items.find((i) => i.id === ids[0]) : undefined))
+  const allItems = useSheet((s) => s.sheet.items)
+  const [sizeError, setSizeError] = useState<string | null>(null)
   const thresholds = useSettings((s) => s.thresholds)
   const actions = getSheetStore().getState()
 
@@ -108,17 +106,31 @@ export function ItemProperties({ ids }: { ids: string[] }) {
     </div>
   )
 
+  const selected = allItems.filter((i) => ids.includes(i.id))
+  const mixed = selected.some((i) => Math.abs(i.widthMm - selected[0].widthMm) >= 0.05)
+
   if (ids.length !== 1 || !item) {
     return (
       <div className="props-section" data-testid="item-properties">
         <h2>{ids.length} designs selected</h2>
         {ids.length >= 2 && (
-          <NumberField
-            label="Width for all selected (cm)"
-            unit="cm"
-            value={sharedWidthCm(ids)}
-            onCommit={(cm) => setAllWidths(ids, cm)}
-          />
+          <>
+            <NumberField
+              label="Width for all selected (cm)"
+              unit="cm"
+              value={selected.length > 0 ? selected[0].widthMm / MM_PER_CM : 0}
+              blank={mixed}
+              placeholder={mixed ? 'Mixed' : undefined}
+              onCommit={(cm) => {
+                const mm = cm * MM_PER_CM
+                if (!(cm > 0)) return
+                if (selected.some((i) => tooSmall(i, mm))) return setSizeError(MIN_MESSAGE)
+                setSizeError(null)
+                setAllWidths(selected, mm)
+              }}
+            />
+            {sizeError && <p className="muted" role="alert">{sizeError}</p>}
+          </>
         )}
         {buttons}
       </div>
@@ -128,10 +140,18 @@ export function ItemProperties({ ids }: { ids: string[] }) {
   const dpi = effectiveDpi(item)
   const status = dpiStatus(dpi, thresholds)
   const setWidth = (cm: number) => {
-    if (cm > 0) actions.resizeItem(item.id, cm * MM_PER_CM)
+    if (!(cm > 0)) return
+    const mm = cm * MM_PER_CM
+    if (tooSmall(item, mm)) return setSizeError(MIN_MESSAGE)
+    setSizeError(null)
+    actions.resizeItem(item.id, mm)
   }
   const setHeight = (cm: number) => {
-    if (cm > 0) actions.updateItem(item.id, { heightMm: cm * MM_PER_CM })
+    if (!(cm > 0)) return
+    const mm = cm * MM_PER_CM
+    if (tooSmall(item, widthForHeight(item, mm))) return setSizeError(MIN_MESSAGE)
+    setSizeError(null)
+    actions.updateItem(item.id, { heightMm: mm })
   }
   const rotate = (deg: number) => actions.updateItem(item.id, { rotationDeg: norm(item.rotationDeg + deg) })
 
@@ -156,6 +176,7 @@ export function ItemProperties({ ids }: { ids: string[] }) {
           <NumberField label="Width" unit="cm" value={item.widthMm / MM_PER_CM} onCommit={setWidth} />
           <NumberField label="Height" unit="cm" value={item.heightMm / MM_PER_CM} onCommit={setHeight} />
         </div>
+        {sizeError && <p className="muted" role="alert">{sizeError}</p>}
         <p className="muted">
           <Lock size={12} aria-hidden="true" /> Proportions locked
         </p>

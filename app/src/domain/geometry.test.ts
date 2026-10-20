@@ -100,11 +100,9 @@ describe('aspect helpers', () => {
     expect(heightForWidth(it0, 200)).toBe(100)
     expect(widthForHeight(it0, 100)).toBe(200)
   })
-  it('sizeAfterTransform ignores mismatched scales and yields the asset aspect', () => {
-    const r = sizeAfterTransform(it0, 2, 1.1)
+  it('sizeAfterTransform uses scaleX and yields the asset aspect', () => {
+    const r = sizeAfterTransform(it0, 2)
     expect(r.widthMm).toBe(200)
     expect(r.heightMm).toBe(100)
-    const r2 = sizeAfterTransform(it0, 1, 2)
-    expect(r2.heightMm / r2.widthMm).toBeCloseTo(0.5)
   })
 })

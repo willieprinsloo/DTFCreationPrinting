@@ -87,16 +87,14 @@ function aspect(item: Sized): number {
 export const heightForWidth = (item: Sized, widthMm: number): number => widthMm * aspect(item)
 export const widthForHeight = (item: Sized, heightMm: number): number => heightMm / aspect(item)
 
-/**
- * New print size after a canvas transform. Scales on both axes may disagree (side handles); the one that moved
- * furthest from 1 wins and the height is derived from the width.
- */
-export function sizeAfterTransform(item: Sized, scaleX: number, scaleY: number): { widthMm: number; heightMm: number } {
-  const sx = Math.abs(scaleX)
-  const sy = Math.abs(scaleY)
-  const widthMm = Math.abs(sy - 1) > Math.abs(sx - 1) ? widthForHeight(item, item.heightMm * sy) : item.widthMm * sx
+/** New print size after a canvas transform (corner handles only): width from scaleX, height from the asset aspect. */
+export function sizeAfterTransform(item: Sized, scaleX: number): { widthMm: number; heightMm: number } {
+  const widthMm = item.widthMm * Math.abs(scaleX)
   return { widthMm, heightMm: heightForWidth(item, widthMm) }
 }
+
+/** Smallest print dimension a user may set. */
+export const MIN_PRINT_MM = 5
 
 /** Keeps each item's width and re-derives its height; returns the same sheet when nothing was distorted. */
 export function normaliseSheetAspect(sheet: Sheet): Sheet {

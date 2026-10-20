@@ -83,6 +83,31 @@ describe('ItemProperties', () => {
     expect(getSheetStore().getState().sheet.items.map((i) => i.widthMm)).toEqual([254, 254])
   })
 
+  it('rejects sizes under 5 mm with an inline message', async () => {
+    render(<ItemProperties ids={[id]} />)
+    const w = screen.getByLabelText('Width')
+    await userEvent.clear(w)
+    await userEvent.type(w, '0.3{Enter}')
+    expect(item().widthMm).toBeCloseTo(254)
+    expect(screen.getByRole('alert')).toHaveTextContent('Minimum size is 0.5 cm')
+    const h = screen.getByLabelText('Height')
+    await userEvent.clear(h)
+    await userEvent.type(h, '0.2{Enter}')
+    expect(item().heightMm).toBeCloseTo(127)
+  })
+
+  it('multi-select shows Mixed when widths differ and rejects tiny widths', async () => {
+    getSheetStore().getState().addItems([{ asset, source, widthMm: 100, heightMm: 50, quantity: 1 }])
+    const ids = getSheetStore().getState().sheet.items.map((i) => i.id)
+    render(<ItemProperties ids={ids} />)
+    const w = screen.getByLabelText('Width for all selected (cm)') as HTMLInputElement
+    expect(w.value).toBe('')
+    expect(w.placeholder).toBe('Mixed')
+    await userEvent.type(w, '0.4{Enter}')
+    expect(screen.getByRole('alert')).toHaveTextContent('Minimum size is 0.5 cm')
+    expect(getSheetStore().getState().sheet.items.map((i) => i.widthMm)).toEqual([254, 100])
+  })
+
   it('rotates by 90 and duplicates / deletes', async () => {
     render(<ItemProperties ids={[id]} />)
     await userEvent.click(screen.getByRole('button', { name: 'Rotate right 90 degrees' }))

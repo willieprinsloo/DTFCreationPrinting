@@ -54,7 +54,7 @@ describe('sheetStore', () => {
   it('fixed-length sheets place new items just below existing content', () => {
     const store = fresh()
     store.getState().setSettings({ lengthMode: 'fixed', fixedLengthMm: 1000 })
-    store.getState().addItems([mk(1, 100, 100)]) // occupies y 5..105
+    store.getState().addItems([mk(1, 200, 100)]) // occupies y 5..105
     store.getState().addItems([mk(2, 100, 50)])
     const { sheet } = store.getState()
     const ys = sheet.items.slice(1).map((i) => itemBounds(i).yMm)
@@ -79,7 +79,7 @@ describe('sheetStore', () => {
 
   it('unplaceable items are added at the left margin and flagged outside', () => {
     const store = fresh()
-    store.getState().addItems([mk(1, 900, 900)])
+    store.getState().addItems([mk(1, 1400, 700)])
     const { sheet } = store.getState()
     expect(sheet.items).toHaveLength(1)
     expect(sheet.items[0].xMm).toBe(5)
@@ -96,6 +96,12 @@ describe('sheetStore', () => {
     store.setState({ sheet: { ...store.getState().sheet, items: [{ ...it, heightMm: 300 }] } })
     store.getState().resizeItem(id, 50)
     expect([store.getState().sheet.items[0].widthMm, store.getState().sheet.items[0].heightMm]).toEqual([50, 25])
+  })
+
+  it('addItems normalises a distorted NewItem to the asset aspect', () => {
+    const store = fresh()
+    store.getState().addItems([mk(1, 100, 400)])
+    expect(store.getState().sheet.items[0]).toMatchObject({ widthMm: 100, heightMm: 50 })
   })
 
   it('updateItem normalises size patches to the asset aspect', () => {

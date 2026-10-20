@@ -64,6 +64,9 @@ type Gesture =
   | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number; additive: boolean }
 
 /** The film canvas: stage in screen px, layer content in sheet millimetres via the viewport transform. */
+/** Corner handles only: side handles would stretch the print. */
+export const TRANSFORMER_ANCHORS = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+
 export function SheetCanvas() {
   const sheet = useSheet((s) => s.sheet)
   const selectedIds = useSheet((s) => s.selectedIds)
@@ -270,7 +273,7 @@ export function SheetCanvas() {
   }, [queuePatch])
 
   const onTransformEnd = useCallback((item: SheetItem, node: Konva.Group) => {
-    const { widthMm, heightMm } = sizeAfterTransform(item, node.scaleX(), node.scaleY())
+    const { widthMm, heightMm } = sizeAfterTransform(item, node.scaleX())
     node.scale({ x: 1, y: 1 })
     const rotationDeg = ((node.rotation() % 360) + 360) % 360
     queuePatch(item.id, {
@@ -408,6 +411,7 @@ export function SheetCanvas() {
             <Transformer
               ref={transformerRef}
               keepRatio
+              enabledAnchors={TRANSFORMER_ANCHORS}
               rotationSnaps={ROTATION_SNAPS}
               rotationSnapTolerance={ROTATION_SNAP_TOLERANCE_DEG}
               borderStroke={colors.accent}
