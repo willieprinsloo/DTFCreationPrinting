@@ -126,6 +126,7 @@ export function DesignsPanel({ onAdded }: { onAdded(): void }) {
         }
         paging={{ page: query.page, offset: (query.page - 1) * prefs.pageSize, count: query.items.length, total: query.total, hasNext: query.hasNext, loading: query.loading, onPage: query.goTo }}
         selectedCount={selection.size}
+        hiddenCount={[...selection.map.keys()].filter((k) => !query.items.some((x) => x.id === k)).length}
         onAdd={add}
       />
       {dialogs.current && (

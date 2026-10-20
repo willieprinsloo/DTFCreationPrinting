@@ -86,7 +86,7 @@ describe('GangSheetsTab', () => {
     expect(await screen.findAllByText('Ann Lee')).toHaveLength(2)
     expect(client.getCustomer).toHaveBeenCalledTimes(1)
     expect(screen.getAllByText('20 Oct 2026')).toHaveLength(2)
-    expect(screen.getAllByText('confirmed')).toHaveLength(2)
+    expect(screen.getAllByText('Confirmed')).toHaveLength(2)
     expect(await screen.findAllByText('2 files')).toHaveLength(2)
     const imgs = document.querySelectorAll('.order-card img')
     expect(imgs[0]).toHaveAttribute('src', 'https://x.test/uploads/a.png')

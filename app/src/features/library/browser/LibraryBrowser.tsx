@@ -35,7 +35,8 @@ export function LibraryBrowser({ tab, onTabChange, onClose, local }: Props) {
   }
 
   return (
-    <div className="lib-browser-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    // A stray click outside must not lose filters or selection: only Esc or ✕ close.
+    <div className="lib-browser-backdrop">
       <div ref={ref} className="lib-browser" role="dialog" aria-modal="true" aria-label="Library browser" tabIndex={-1} onKeyDown={onKeyDown}>
         <div className="lib-browser-header">
           <div role="tablist" aria-label="Library sources" className="lib-browser-tabs">

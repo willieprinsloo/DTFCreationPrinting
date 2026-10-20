@@ -4,7 +4,7 @@ import type { OrderSummary } from '../../../api/types'
 import { DEFAULT_ORDER_PREFS, type OrderDateFilter, type OrderPrefs, type OrderSort, type OrderStatusFilter } from '../../../state/libraryPrefs'
 import { getSheetStore } from '../../../state/sheetStore'
 import { getViewportStore } from '../../canvas/useViewport'
-import { fileCount, formatDate } from '../format'
+import { fileCount, formatDate, statusLabel } from '../format'
 import { downloadOrderFiles, orderFileKey, type OrderFileRef } from '../orderFileItems'
 import { useOrderDetails } from '../queries/useOrderDetails'
 import { MAX_ORDER_LIMIT, useOrdersQuery } from '../queries/useOrdersQuery'
@@ -64,9 +64,8 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
 
   /** Ticking an order ticks all of its files (loading them first if needed). */
   const toggleOrder = async (o: OrderSummary) => {
-    const refs = refsOf(o, await filesFor(o))
-    const all = refs.length > 0 && refs.every(([k]) => selection.has(k))
-    selection.setMany(refs, !all)
+    // Decided inside the state update, so clicks made while the files loaded are taken into account.
+    selection.toggleAll(refsOf(o, await filesFor(o)))
   }
   const selectPage = async (on: boolean) => {
     const lists = await Promise.all(query.items.map(async (o) => refsOf(o, await filesFor(o))))
@@ -109,7 +108,7 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
         </>
       ),
       checked: keys.length > 0 && picked === keys.length ? true : picked > 0 ? 'mixed' : false,
-      cells: [o.orderNumber, name, formatDate(o.createdAt), o.status, files ? fileCount(files.length) : '…'],
+      cells: [o.orderNumber, name, formatDate(o.createdAt), statusLabel(o.status), files ? fileCount(files.length) : '…'],
       expand: { expanded: expanded.has(o.id), label: `Files of ${o.orderNumber}`, onToggle: () => toggleExpanded(o) },
       onVisible: () => details.prefetch(o),
       sub: expanded.has(o.id)
@@ -212,6 +211,7 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
         onPage: query.goTo,
       }}
       selectedCount={selection.size}
+      hiddenCount={[...selection.map.values()].filter((r) => !query.items.some((o) => o.id === r.order.id)).length}
       adding={adding}
       onAdd={() => void add()}
     />

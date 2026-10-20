@@ -20,6 +20,8 @@ interface Props {
   results: ReactNode
   paging: PagingInfo
   selectedCount: number
+  /** Selected items not on the current page / filter. */
+  hiddenCount?: number
   adding?: boolean
   onAdd(): void
 }
@@ -84,7 +86,7 @@ export function BrowserLayout(p: Props) {
       </div>
       <Pager {...p.paging} pageSize={prefs.pageSize} onPageSize={(pageSize: PageSize) => update({ pageSize })} />
       <div className="lib-browser-footer">
-        <span>{p.selectedCount > 0 ? `${p.selectedCount} selected` : 'Nothing selected'}</span>
+        <span>{p.selectedCount > 0 ? `${p.selectedCount} selected${p.hiddenCount ? ` (${p.hiddenCount} not shown)` : ''}` : 'Nothing selected'}</span>
         <span className="spacer" />
         <button type="button" className="primary" disabled={p.selectedCount === 0 || p.adding} onClick={p.onAdd}>
           {p.adding ? 'Adding…' : `Add ${p.selectedCount} to sheet`}

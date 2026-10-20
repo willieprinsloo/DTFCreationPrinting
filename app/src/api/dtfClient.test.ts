@@ -220,6 +220,17 @@ describe('dtfClient', () => {
       expect(page.items[0]).toMatchObject({ status: 'active', createdAt: '2026-10-01T10:00:00' })
     })
 
+    it('listProducts includes archived (soft-deleted) rows when filtering by archived', async () => {
+      const { client, fetchMock } = setup([loginOk(), json(200, { success: true, data: [], meta: { total: 0 } }), json(200, { success: true, data: [], meta: { total: 0 } })])
+      await client.login({ email: 'a@b.c', password: 'pw' })
+      await client.listProducts({ status: 'archived' })
+      const sp = new URL(fetchMock.mock.calls[1][0] as string).searchParams
+      expect(sp.get('status_filter')).toBe('archived')
+      expect(sp.get('include_archived')).toBe('true')
+      await client.listProducts({ status: 'draft' })
+      expect(new URL(fetchMock.mock.calls[2][0] as string).searchParams.has('include_archived')).toBe(false)
+    })
+
     const detail = (images: unknown[], variants: unknown[] = [], axes: unknown[] = []) =>
       json(200, { success: true, data: { id: 9, axes, variants, images } })
 

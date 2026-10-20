@@ -21,6 +21,18 @@ export function useSelection<T>() {
       return next
     })
   }, [])
+  /** Selects all entries unless all are already selected (then deselects them), judged on the latest state. */
+  const toggleAll = useCallback((entries: Array<[string, T]>) => {
+    setMap((cur) => {
+      const on = !(entries.length > 0 && entries.every(([k]) => cur.has(k)))
+      const next = new Map(cur)
+      for (const [k, v] of entries) {
+        if (on) next.set(k, v)
+        else next.delete(k)
+      }
+      return next
+    })
+  }, [])
   const remove = useCallback((keys: string[]) => setMany(keys.map((k) => [k, undefined as T]), false), [setMany])
-  return { map, size: map.size, has: (k: string) => map.has(k), toggle, setMany, remove }
+  return { map, size: map.size, has: (k: string) => map.has(k), toggle, toggleAll, setMany, remove }
 }

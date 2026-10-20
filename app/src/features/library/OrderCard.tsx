@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import type { OrderFile, OrderSummary } from '../../api/types'
-import { fileCount, formatDate } from './format'
+import { fileCount, formatDate, statusLabel } from './format'
 import { useOnVisible } from './useOnVisible'
 
 interface Props {
@@ -23,7 +23,7 @@ export function OrderCard({ order, name, files, thumbSrc, expanded, onVisible, o
       <strong>{order.orderNumber}</strong>
       <span className="muted">{name || 'Unknown customer'}</span>
       {date && <span className="muted">{date}</span>}
-      <span className="muted">{order.status}</span>
+      <span className="muted">{statusLabel(order.status)}</span>
       {files && <span className="muted">{fileCount(files.length)}</span>}
     </button>
   )

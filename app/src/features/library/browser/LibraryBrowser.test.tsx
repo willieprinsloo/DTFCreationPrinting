@@ -158,6 +158,62 @@ describe('LibraryBrowser', () => {
     expect(await screen.findByRole('dialog', { name: 'Add Tiger' })).toBeInTheDocument()
   })
 
+  it('clicking the backdrop keeps the panel open', async () => {
+    open(fakeClient())
+    const dlg = await popOut()
+    await userEvent.click(dlg.parentElement!)
+    expect(screen.getByRole('dialog', { name: 'Library browser' })).toBeInTheDocument()
+  })
+
+  it('shows order statuses in plain English', async () => {
+    const odd = { ...order, id: 'o2', orderNumber: '#2', status: 'ready_to_ship' }
+    open(fakeClient({ listOrders: page([order, { ...odd, id: 'o3', orderNumber: '#3', status: 'in_production' }, odd]) }))
+    const dlg = await popOut()
+    await userEvent.click(within(dlg).getByRole('button', { name: 'List view' }))
+    await showTab(dlg, 'Gang sheets')
+    expect(await within(dlg).findByRole('cell', { name: 'Confirmed' })).toBeInTheDocument()
+    expect(within(dlg).getByRole('cell', { name: 'In production' })).toBeInTheDocument()
+    expect(within(dlg).getByRole('cell', { name: 'Ready to ship' })).toBeInTheDocument()
+  })
+
+  it('counts selected items that are not in the current view', async () => {
+    const list = vi.fn(async (q: { search?: string }) => {
+      const items = [product('p1', 'Tee'), product('p2', 'Cap')].filter((p) => !q.search || p.name.toLowerCase().includes(q.search))
+      return { items, total: items.length, page: 1, hasNext: false }
+    })
+    open(fakeClient({ listProducts: list }))
+    const dlg = await popOut()
+    await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Cap' }))
+    expect(within(dlg).getByText('2 selected')).toBeInTheDocument()
+    await userEvent.type(within(dlg).getByLabelText('Search products'), 'tee')
+    expect(await within(dlg).findByText('2 selected (1 not shown)')).toBeInTheDocument()
+  })
+
+  it('ticking an order decides select/deselect from the latest selection, not the click-time one', async () => {
+    const client = fakeClient({
+      listOrders: page([order]),
+      getOrderFiles: vi.fn(async () => [
+        { itemId: 'i1', printFileUrl: '/u/a.png', productType: 'g', sizeLabel: 'A4' },
+        { itemId: 'i2', printFileUrl: '/u/b.png', productType: 'g', sizeLabel: 'A3' },
+      ]),
+    })
+    open(client)
+    const dlg = await popOut()
+    await showTab(dlg, 'Gang sheets')
+    await userEvent.click(await within(dlg).findByRole('checkbox', { name: '#1042 Acme' }))
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Files of #1042' }))
+    expect(within(dlg).getByText('2 selected')).toBeInTheDocument()
+    // Order click (async) then a file click before it settles: the file untick makes A partial, so the order tick selects all.
+    act(() => {
+      fireEvent.click(within(dlg).getByRole('checkbox', { name: '#1042 Acme' }))
+      fireEvent.click(within(dlg).getByRole('checkbox', { name: '#1042 A4' }))
+    })
+    await waitFor(() => expect(within(dlg).getByRole('checkbox', { name: '#1042 Acme' })).toHaveAttribute('aria-checked', 'true'))
+    expect(within(dlg).getByRole('checkbox', { name: '#1042 A4' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(dlg).getByRole('checkbox', { name: '#1042 A3' })).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('canvas shortcuts do not fire while the browser is open', async () => {
     open(fakeClient())
     const onWindowKey = vi.fn()

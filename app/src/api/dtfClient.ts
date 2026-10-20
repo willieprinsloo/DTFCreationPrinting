@@ -189,7 +189,15 @@ export function createDtfClient(o: {
       const limit = q.limit ?? 50
       const offset = (page - 1) * limit
       const body = await request(
-        `/admin/catalog/products${query({ search: q.search, category_id: q.categoryId, status_filter: q.status, limit, offset })}`,
+        `/admin/catalog/products${query({
+          search: q.search,
+          category_id: q.categoryId,
+          status_filter: q.status,
+          // Archiving also sets deleted_at, which the list hides unless asked.
+          include_archived: q.status === 'archived' ? 'true' : undefined,
+          limit,
+          offset,
+        })}`,
       )
       const data: Json[] = Array.isArray(body?.data) ? body.data : []
       const total = typeof body?.meta?.total === 'number' ? body.meta.total : data.length
