@@ -2,47 +2,45 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createDtfClient } from '../api/dtfClient'
 import { createMemoryStore } from './persist'
 import { createSettingsStore } from './settingsStore'
-import { createPrintSizeSyncer, getPrintSizeSyncStatus, resetPrintSizeSyncStatusForTests, syncPrintSizes } from './printSizeSync'
+import {
+  createPrintSizeSyncer,
+  getPrintSizeSyncStatus,
+  mediaSizes,
+  resetPrintSizeSyncStatusForTests,
+  syncPrintSizes,
+  widthsFromMedia,
+} from './printSizeSync'
 
 const BASE = 'https://dtfcreations.co.za/api/v1'
-type Row = { size: string; position: string; width_mm: number }
-type Type = { category_id: string; one_size_only: boolean; sizes: Row[] }
+type Size = { label: string; print_width_mm: number; print_height_mm: number; [k: string]: unknown }
+type Media = { slug: string; name: string; sizes: Size[] }
 
-/** A DTF Creations server that follows docs/superpowers/specs/2026-10-20-print-sizes-endpoint.md. */
+const CATEGORIES = [
+  { id: 'cat-tee', name: 'T-Shirts', slug: 't-shirts' },
+  { id: 'cat-bag', name: 'Tote Bags', slug: 'tote-bags' },
+]
+
+/** DTF Creations as in backend/app/routers/print_media.py (public GET, admin PUT that replaces the entry). */
 function fakeServer(opts: { supported?: boolean; offline?: boolean; onRequest?: (call: string) => Promise<void> } = {}) {
-  const db = { revision: 0, default_size: 'M', types: [] as Type[] }
+  const db = { media: [] as Media[] }
   const calls: string[] = []
   const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-  const table = () => ({ revision: db.revision, default_size: db.default_size, types: db.types })
   const fetch = async (url: string | URL | Request, init?: RequestInit) => {
     if (opts.offline) throw new TypeError('network down')
     const path = String(url).slice(BASE.length)
     const method = init?.method ?? 'GET'
     calls.push(`${method} ${path}`)
     await opts.onRequest?.(`${method} ${path}`)
+    if (method === 'GET' && path === '/admin/catalog/categories') return reply({ success: true, data: CATEGORIES })
     if (opts.supported === false) return reply({ detail: 'Not Found' }, 404)
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined
-    const m = path.match(/^\/admin\/print-sizes\/types\/(.+)$/)
-    if (method === 'GET' && path === '/admin/print-sizes') return reply({ data: table() })
+    if (method === 'GET' && path === '/print-media') return reply({ success: true, data: db.media })
+    const m = path.match(/^\/admin\/print-media\/(.+)$/)
     if (method === 'PUT' && m) {
-      const id = decodeURIComponent(m[1])
-      db.types = [...db.types.filter((t) => t.category_id !== id), { category_id: id, ...body }]
-      db.revision++
-      return reply({ data: table() })
-    }
-    if (method === 'PATCH' && path === '/admin/print-sizes') {
-      db.default_size = body.default_size
-      db.revision++
-      return reply({ data: table() })
-    }
-    if (method === 'POST' && path === '/admin/print-sizes/import') {
-      for (const t of body.types as Type[]) {
-        const have = db.types.find((x) => x.category_id === t.category_id)
-        if (!have) db.types.push(t)
-        else for (const r of t.sizes) if (!have.sizes.some((h) => h.size === r.size && h.position === r.position)) have.sizes.push(r)
-      }
-      db.revision++
-      return reply({ data: { added: 1, skipped_existing: 0, unknown_categories: [], table: table() } })
+      const slug = decodeURIComponent(m[1])
+      const body = JSON.parse(String(init?.body))
+      const row = { slug, name: body.name, sizes: body.sizes }
+      db.media = [...db.media.filter((x) => x.slug !== slug), row]
+      return reply({ success: true, data: row })
     }
     return reply({}, 500)
   }
@@ -57,86 +55,87 @@ async function settingsWith(setup?: (s: ReturnType<typeof createSettingsStore>) 
   return s
 }
 
-const tee = (sizes: Record<string, number>, one = false): Type => ({
-  category_id: 'tee',
-  one_size_only: one,
-  sizes: Object.entries(sizes).map(([size, width_mm]) => ({ size, position: 'front', width_mm })),
-})
+const size = (label: string, w: number, h = Math.round(w * 1.25), extra: Record<string, unknown> = {}): Size => ({ label, print_width_mm: w, print_height_mm: h, ...extra })
+const tees = (...sizes: Size[]): Media => ({ slug: 't-shirts', name: 'T-shirts', sizes })
 
 beforeEach(() => resetPrintSizeSyncStatusForTests())
 
-describe('syncPrintSizes', () => {
-  it('keeps print sizes on this PC when DTF Creations has no endpoint for them', async () => {
-    const server = fakeServer({ supported: false })
-    const s = await settingsWith((s) => s.getState().setPrintWidth('tee', 'M', 260))
-    expect(await syncPrintSizes(server.client, s)).toBe('local')
-    expect(s.getState().printSizes.byType.tee).toEqual({ M: 260 })
+describe('print media mapping', () => {
+  it('matches media to categories by slug and reads One size and the one-size-only flag', () => {
+    const table = widthsFromMedia(
+      [tees(size('M', 260)), { slug: 'tote-bags', name: 'Bags', sizes: [size('one size', 250, 300, { one_size_only: true })] }, { slug: 'dtf', name: 'DTF', sizes: [size('Half-Meter', 580)] }],
+      CATEGORIES,
+    )
+    expect(table).toEqual({ byType: { 'cat-tee': { M: 260 }, 'cat-bag': { 'One size': 250 } }, oneSizeOnly: { 'cat-bag': true } })
   })
 
-  it('uploads this PC’s table once on first contact, filling gaps only', async () => {
+  it('keeps heights and extra fields of existing sizes, and gives new sizes a portrait zone', () => {
+    const existing = [size('M', 300, 380, { recommended_dpi: 300 }), size('S', 280, 350)]
+    expect(mediaSizes(existing, { m: 310, L: 320 }, false, 'replace')).toEqual([size('M', 310, 380, { recommended_dpi: 300 }), size('L', 320, 400)])
+    expect(mediaSizes(existing, { M: 999, L: 320 }, false, 'fill')).toEqual([...existing, size('L', 320, 400)])
+    expect(mediaSizes([size('One size', 250, 300)], { 'One size': 250 }, true, 'replace')).toEqual([size('One size', 250, 300, { one_size_only: true })])
+  })
+})
+
+describe('syncPrintSizes', () => {
+  it('keeps print sizes on this PC when DTF Creations has no print media endpoint', async () => {
+    const server = fakeServer({ supported: false })
+    const s = await settingsWith((s) => s.getState().setPrintWidth('cat-tee', 'M', 260))
+    expect(await syncPrintSizes(server.client, s)).toBe('local')
+    expect(s.getState().printSizes.byType['cat-tee']).toEqual({ M: 260 })
+  })
+
+  it('fills gaps in the shared media on first contact, without overwriting', async () => {
     const server = fakeServer()
-    server.db.types = [tee({ M: 270 })]
+    server.db.media = [tees(size('M', 270, 380))]
     const s = await settingsWith(async (s) => {
-      await s.getState().setPrintWidth('tee', 'M', 260)
-      await s.getState().setPrintWidth('tee', 'L', 280)
+      await s.getState().setPrintWidth('cat-tee', 'M', 260)
+      await s.getState().setPrintWidth('cat-tee', 'L', 280)
+      await s.getState().setPrintWidth('cat-bag', null, 250)
     })
     expect(await syncPrintSizes(server.client, s)).toBe('shared')
-    expect(server.calls).toEqual(['GET /admin/print-sizes', 'POST /admin/print-sizes/import'])
-    // The server's M wins; this PC's L filled the gap.
-    expect(s.getState().printSizes.byType.tee).toEqual({ M: 270, L: 280 })
-    expect(s.getState().printSizesSync).toEqual({ dirtyTypes: [], defaultDirty: false, imported: true })
+    expect(server.db.media).toEqual([
+      tees(size('M', 270, 380), size('L', 280, 350)),
+      { slug: 'tote-bags', name: 'Tote Bags', sizes: [size('One size', 250)] },
+    ])
+    expect(s.getState().printSizes.byType).toEqual({ 'cat-tee': { M: 270, L: 280 }, 'cat-bag': { 'One size': 250 } })
+    expect(s.getState().printSizesSync).toEqual({ dirtyTypes: [], imported: true })
     server.calls.length = 0
     await syncPrintSizes(server.client, s)
-    expect(server.calls).toEqual(['GET /admin/print-sizes'])
+    expect(server.calls.filter((c) => c.startsWith('PUT'))).toEqual([])
   })
 
-  it('uploads a changed type and the default size, then takes the server table', async () => {
+  it('uploads a changed type, keeping the server’s heights, and the default size stays on this PC', async () => {
     const server = fakeServer()
-    server.db.types = [{ category_id: 'bag', one_size_only: true, sizes: [{ size: 'One size', position: 'front', width_mm: 250 }] }]
+    server.db.media = [tees(size('M', 260, 380))]
     const s = await settingsWith()
     await syncPrintSizes(server.client, s)
-    expect(s.getState().printSizes.byType.bag).toEqual({ 'One size': 250 })
-    expect(s.getState().printSizes.oneSizeOnly.bag).toBe(true)
-
-    await s.getState().setPrintWidth('tee', 'XL', 290)
+    await s.getState().setPrintWidth('cat-tee', 'XL', 290)
+    await s.getState().setPrintWidth('cat-tee', 'M', null)
     await s.getState().setPrintSizes({ defaultSize: 'L' })
     expect(await syncPrintSizes(server.client, s)).toBe('shared')
-    expect(server.db.types.find((t) => t.category_id === 'tee')).toEqual(tee({ XL: 290 }))
-    expect(server.db.default_size).toBe('L')
-    expect(s.getState().printSizes).toMatchObject({ defaultSize: 'L', byType: { tee: { XL: 290 }, bag: { 'One size': 250 } } })
-  })
-
-  it('sends back sizes for other print positions untouched', async () => {
-    const server = fakeServer()
-    server.db.types = [{ ...tee({ M: 260 }), sizes: [...tee({ M: 260 }).sizes, { size: 'M', position: 'pocket', width_mm: 90 }] }]
-    const s = await settingsWith()
-    await syncPrintSizes(server.client, s)
-    await s.getState().setPrintWidth('tee', 'M', 265)
-    await syncPrintSizes(server.client, s)
-    expect(server.db.types[0].sizes).toEqual([
-      { size: 'M', position: 'front', width_mm: 265 },
-      { size: 'M', position: 'pocket', width_mm: 90 },
-    ])
+    expect(server.db.media).toEqual([tees(size('XL', 290))])
+    expect(s.getState().printSizes).toMatchObject({ defaultSize: 'L', byType: { 'cat-tee': { XL: 290 } } })
   })
 
   it('shows another station’s changes', async () => {
     const server = fakeServer()
     const s = await settingsWith()
     await syncPrintSizes(server.client, s)
-    server.db.types = [tee({ S: 240 })]
+    server.db.media = [tees(size('S', 240))]
     await syncPrintSizes(server.client, s)
-    expect(s.getState().printSizes.byType.tee).toEqual({ S: 240 })
+    expect(s.getState().printSizes.byType['cat-tee']).toEqual({ S: 240 })
   })
 
   it('keeps offline edits marked and uploads them later', async () => {
     const online = fakeServer()
     const s = await settingsWith()
     await syncPrintSizes(online.client, s)
-    await s.getState().setPrintWidth('tee', 'M', 260)
+    await s.getState().setPrintWidth('cat-tee', 'M', 260)
     expect(await syncPrintSizes(fakeServer({ offline: true }).client, s)).toBe('pending')
-    expect(s.getState().printSizesSync.dirtyTypes).toEqual(['tee'])
+    expect(s.getState().printSizesSync.dirtyTypes).toEqual(['cat-tee'])
     expect(await syncPrintSizes(online.client, s)).toBe('shared')
-    expect(online.db.types).toEqual([tee({ M: 260 })])
+    expect(online.db.media).toEqual([{ slug: 't-shirts', name: 'T-Shirts', sizes: [size('M', 260)] }])
   })
 
   it('keeps an edit made while uploading, for the next run', async () => {
@@ -146,18 +145,18 @@ describe('syncPrintSizes', () => {
       onRequest: async (call) => {
         if (editDuringUpload && call.startsWith('PUT')) {
           editDuringUpload = false
-          await s.getState().setPrintWidth('tee', 'M', 262)
+          await s.getState().setPrintWidth('cat-tee', 'M', 262)
         }
       },
     })
     await syncPrintSizes(server.client, s)
-    await s.getState().setPrintWidth('tee', 'M', 260)
+    await s.getState().setPrintWidth('cat-tee', 'M', 260)
     editDuringUpload = true
     expect(await syncPrintSizes(server.client, s)).toBe('pending')
-    expect(server.db.types).toEqual([tee({ M: 260 })])
-    expect(s.getState().printSizes.byType.tee).toEqual({ M: 262 })
+    expect(server.db.media[0].sizes).toEqual([size('M', 260)])
+    expect(s.getState().printSizes.byType['cat-tee']).toEqual({ M: 262 })
     await syncPrintSizes(server.client, s)
-    expect(server.db.types).toEqual([tee({ M: 262 })])
+    expect(server.db.media[0].sizes).toEqual([size('M', 262, 325)])
   })
 })
 
@@ -171,7 +170,7 @@ describe('createPrintSizeSyncer', () => {
     void sync()
     await first
     await new Promise((r) => setTimeout(r, 20))
-    expect(server.calls.filter((c) => c === 'GET /admin/print-sizes').length).toBe(2)
+    expect(server.calls.filter((c) => c === 'GET /print-media').length).toBe(2)
     expect(getPrintSizeSyncStatus()).toBe('shared')
   })
 })

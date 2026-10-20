@@ -1,5 +1,4 @@
-import type { Customer, GalleryCategory, GalleryDesign, OrderFile, OrderSummary, Page, ProductCategory, ProductPrintSource, ProductSummary, RemotePrintSizes, RemotePrintSizeType, RemoteSizeRow } from './types'
-import { ONE_SIZE, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
+import type { Customer, GalleryCategory, GalleryDesign, OrderFile, OrderSummary, Page, ProductCategory, ProductPrintSource, ProductSummary, PrintMedia, PrintMediaSize } from './types'
 
 export class AuthRequiredError extends Error {
   constructor(message = 'Sign in to DTF Creations to continue') {
@@ -16,7 +15,7 @@ export class HttpError extends Error {
   }
 }
 
-/** The server has no shared print sizes yet (endpoint missing): the app keeps them on this PC. */
+/** The server has no such endpoint (older DTF Creations). */
 export const isUnsupported = (e: unknown) => e instanceof HttpError && (e.status === 404 || e.status === 405)
 
 export interface Credentials { email: string; password: string }
@@ -54,13 +53,10 @@ export interface DtfClient {
   /** The order's current status, e.g. 'confirmed' or 'in_production'. */
   getOrderStatus(orderId: string): Promise<string>
   setOrderStatus(orderId: string, status: string): Promise<void>
-  /** Shared print-size table (docs/superpowers/specs/2026-10-20-print-sizes-endpoint.md). */
-  getPrintSizes(): Promise<RemotePrintSizes>
-  /** Replaces one type's options and sizes; `otherPositions` are rows the app doesn't edit, sent back unchanged. */
-  putPrintSizeType(categoryId: string, t: RemotePrintSizeType): Promise<RemotePrintSizes>
-  setDefaultPrintSize(size: string): Promise<RemotePrintSizes>
-  /** One-off upload of this PC's table; the server only fills gaps. */
-  importPrintSizes(ps: PrintSizes): Promise<RemotePrintSizes>
+  /** Print sizes per media type (GET /print-media); a media's slug matches a catalogue category's slug. */
+  listPrintMedia(): Promise<PrintMedia[]>
+  /** Creates or replaces one media entry with all its sizes (admin). */
+  putPrintMedia(slug: string, m: { name: string; sizes: PrintMediaSize[] }): Promise<PrintMedia>
   /** Resolves '/uploads/...' against the site origin. */
   absoluteUrl(pathOrUrl: string): string
   token(): string | null
@@ -94,41 +90,14 @@ function toPage<T>(body: Json, map: (r: Json) => T): Page<T> {
   }
 }
 
-const FRONT = 'front'
-
-function sizeRows(byType: Record<string, number> | undefined): RemoteSizeRow[] {
-  return Object.entries(byType ?? {}).map(([size, widthMm]) => ({ size, position: FRONT, widthMm }))
-}
-
-const toWireRows = (rows: RemoteSizeRow[]) => rows.map((r) => ({ size: r.size, position: r.position, width_mm: r.widthMm }))
-
-function toWireType(t: RemotePrintSizeType) {
-  return { one_size_only: t.oneSizeOnly, sizes: toWireRows([...sizeRows(t.widths), ...t.otherPositions]) }
-}
-
-/** Server table → the app's front-print table, keeping other positions aside. Size labels matching One size any case map to it. */
-function toRemotePrintSizes(data: Json): RemotePrintSizes {
-  const byType: Record<string, Record<string, number>> = {}
-  const oneSizeOnly: Record<string, boolean> = {}
-  const otherPositions: Record<string, RemoteSizeRow[]> = {}
-  for (const t of Array.isArray(data?.types) ? data.types : []) {
-    const cat = str(t?.category_id)
-    if (!cat) continue
-    if (t.one_size_only === true) oneSizeOnly[cat] = true
-    for (const r of Array.isArray(t.sizes) ? t.sizes : []) {
-      const label = str(r?.size).trim()
-      const size = label.toLowerCase() === ONE_SIZE.toLowerCase() ? ONE_SIZE : label
-      const widthMm = Number(r?.width_mm)
-      const position = str(r?.position) || FRONT
-      if (!size || !(widthMm > 0)) continue
-      if (position === FRONT) (byType[cat] ??= {})[size] = widthMm
-      else (otherPositions[cat] ??= []).push({ size, position, widthMm })
-    }
-  }
+function toPrintMedia(r: Json): PrintMedia {
+  const sizes: Json[] = Array.isArray(r?.sizes) ? r.sizes : []
   return {
-    revision: typeof data?.revision === 'number' ? data.revision : 0,
-    printSizes: sanitizePrintSizes({ defaultSize: str(data?.default_size) || undefined, byType, oneSizeOnly }),
-    otherPositions,
+    slug: str(r?.slug),
+    name: str(r?.name),
+    sizes: sizes
+      .filter((x) => x && typeof x === 'object' && str(x.label).trim() && Number(x.print_width_mm) > 0)
+      .map((x) => ({ ...x, label: str(x.label).trim(), print_width_mm: Number(x.print_width_mm), print_height_mm: Number(x.print_height_mm) })),
   }
 }
 
@@ -241,7 +210,7 @@ export function createDtfClient(o: {
     async listProductCategories() {
       const body = await request('/admin/catalog/categories')
       const data: Json[] = Array.isArray(body?.data) ? body.data : []
-      return data.map((r): ProductCategory => ({ id: str(r.id), name: str(r.name) }))
+      return data.map((r): ProductCategory => ({ id: str(r.id), name: str(r.name), ...(r.slug ? { slug: str(r.slug) } : {}) }))
     },
     async listProducts(q) {
       const page = q.page ?? 1
@@ -338,31 +307,13 @@ export function createDtfClient(o: {
       if (!status) throw new Error("DTF Creations did not say what status the order has")
       return status
     },
-    async getPrintSizes() {
-      return toRemotePrintSizes((await request('/admin/print-sizes'))?.data)
+    async listPrintMedia() {
+      const body = await request('/print-media')
+      return (Array.isArray(body?.data) ? body.data : []).map(toPrintMedia)
     },
-    async putPrintSizeType(categoryId, t) {
-      const body = await request(`/admin/print-sizes/types/${encodeURIComponent(categoryId)}`, {
-        method: 'PUT',
-        body: JSON.stringify(toWireType(t)),
-      })
-      return toRemotePrintSizes(body?.data)
-    },
-    async setDefaultPrintSize(size) {
-      const body = await request('/admin/print-sizes', { method: 'PATCH', body: JSON.stringify({ default_size: size }) })
-      return toRemotePrintSizes(body?.data)
-    },
-    async importPrintSizes(ps) {
-      const cats = new Set([...Object.keys(ps.byType), ...Object.keys(ps.oneSizeOnly)])
-      const types = [...cats].map((cat) => ({
-        category_id: cat,
-        ...toWireType({ oneSizeOnly: ps.oneSizeOnly[cat] === true, widths: ps.byType[cat] ?? {}, otherPositions: [] }),
-      }))
-      const body = await request('/admin/print-sizes/import', {
-        method: 'POST',
-        body: JSON.stringify({ default_size: ps.defaultSize, types }),
-      })
-      return toRemotePrintSizes(body?.data?.table)
+    async putPrintMedia(slug, m) {
+      const body = await request(`/admin/print-media/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify(m) })
+      return toPrintMedia(body?.data)
     },
     async setOrderStatus(orderId, status) {
       await request(`/orders/${encodeURIComponent(orderId)}/status`, {

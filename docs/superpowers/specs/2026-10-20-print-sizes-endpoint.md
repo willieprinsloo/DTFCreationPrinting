@@ -1,6 +1,17 @@
 # Print sizes on DTF Creations: server endpoint spec
 
-**Status:** proposed, 2026-10-20. Implements design spec §4.7 ("the size table lives in DTF Creations
+**Status:** replaced, 2026-10-20. DTF Creations shipped `print_media` instead
+(`backend/app/routers/print_media.py`): public `GET /print-media` and admin `PUT /admin/print-media/{slug}`, one
+entry per slug with `sizes: [{label, print_width_mm, print_height_mm, …}]`. The app uses that:
+
+- A media entry matches the catalogue category with the same slug.
+- Sizes are read by their width. A new size is given a height of 1.25 × its width, and heights
+  already stored are kept. Extra fields are sent back unchanged.
+- One-size-only is the extra field `one_size_only: true` on the media's sizes.
+- The default size stays on each PC.
+- See `app/src/state/printSizeSync.ts`. The original proposal follows for reference.
+
+**Original status:** proposed, 2026-10-20. Implements design spec §4.7 ("the size table lives in DTF Creations
 so every station uses the same sizes").
 
 ## 1. Purpose

@@ -93,8 +93,7 @@ export function DtfClientProvider({ children }: { children: ReactNode }) {
     let upload: ReturnType<typeof setTimeout> | undefined
     const unsubscribe = settings.subscribe((s, prev) => {
       if (s.printSizesSync === prev.printSizesSync) return
-      const { dirtyTypes, defaultDirty } = s.printSizesSync
-      if (dirtyTypes.length === 0 && !defaultDirty) return
+      if (s.printSizesSync.dirtyTypes.length === 0) return
       clearTimeout(upload)
       upload = setTimeout(() => void sync(), PRINT_SIZE_UPLOAD_DELAY_MS)
     })

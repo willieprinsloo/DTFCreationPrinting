@@ -188,11 +188,25 @@ describe('dtfClient', () => {
   })
 
   describe('products', () => {
-    it('listProductCategories maps id and name', async () => {
+    it('listProductCategories maps id, name and slug', async () => {
       const { client, fetchMock } = setup([loginOk(), json(200, { success: true, data: [{ id: 3, name: 'T-Shirts', slug: 't' }] })])
       await client.login({ email: 'a@b.c', password: 'pw' })
-      expect(await client.listProductCategories()).toEqual([{ id: '3', name: 'T-Shirts' }])
+      expect(await client.listProductCategories()).toEqual([{ id: '3', name: 'T-Shirts', slug: 't' }])
       expect(new URL(fetchMock.mock.calls[1][0] as string).pathname).toBe('/api/v1/admin/catalog/categories')
+    })
+
+    it('listPrintMedia reads sizes and drops ones without a width; putPrintMedia sends the whole entry', async () => {
+      const { client, fetchMock } = setup([
+        json(200, { success: true, data: [{ slug: 't-shirts', name: 'Tees', sizes: [{ label: 'M', print_width_mm: 300, print_height_mm: 380, safe_zone_mm: 5 }, { label: '', print_width_mm: 1 }] }] }),
+        json(200, { success: true, data: { slug: 't-shirts', name: 'Tees', sizes: [] } }),
+      ])
+      expect(await client.listPrintMedia()).toEqual([{ slug: 't-shirts', name: 'Tees', sizes: [{ label: 'M', print_width_mm: 300, print_height_mm: 380, safe_zone_mm: 5 }] }])
+      expect(new URL(fetchMock.mock.calls[0][0] as string).pathname).toBe('/api/v1/print-media')
+      await client.putPrintMedia('t-shirts', { name: 'Tees', sizes: [] })
+      const [url, init] = fetchMock.mock.calls[1]
+      expect(new URL(url as string).pathname).toBe('/api/v1/admin/print-media/t-shirts')
+      expect(init?.method).toBe('PUT')
+      expect(JSON.parse(init?.body as string)).toEqual({ name: 'Tees', sizes: [] })
     })
 
     it('listProducts builds offset query and extracts Size values', async () => {

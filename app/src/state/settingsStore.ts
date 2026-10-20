@@ -37,17 +37,15 @@ export const clampMinPreviewLength = (mm: number) =>
 export interface PrintSizesSync {
   /** Types changed here and not yet uploaded (also kept across restarts, for offline edits). */
   dirtyTypes: string[]
-  defaultDirty: boolean
   /** This PC's table was offered to the server once (the server only fills gaps). */
   imported: boolean
 }
 
-export const DEFAULT_PRINT_SIZES_SYNC: PrintSizesSync = { dirtyTypes: [], defaultDirty: false, imported: false }
+export const DEFAULT_PRINT_SIZES_SYNC: PrintSizesSync = { dirtyTypes: [], imported: false }
 
 function sanitizeSync(raw: Partial<PrintSizesSync> | undefined): PrintSizesSync {
   return {
     dirtyTypes: Array.isArray(raw?.dirtyTypes) ? raw.dirtyTypes.filter((c): c is string => typeof c === 'string') : [],
-    defaultDirty: raw?.defaultDirty === true,
     imported: raw?.imported === true,
   }
 }
@@ -95,10 +93,10 @@ export interface SettingsActions {
   /** Sets one cell (`size` null = One size); a null or non-positive width clears it. */
   setPrintWidth(categoryId: string, size: string | null, widthMm: number | null): Promise<void>
   /**
-   * Takes the server's table as the truth, except for types (and the default size) changed here since
-   * `pushed` was read: those keep the local values and stay marked for upload.
+   * Takes the server's widths as the truth, except for types changed here since `pushed` was read:
+   * those keep the local values and stay marked for upload. The default size is this PC's own.
    */
-  applyServerPrintSizes(server: PrintSizes, pushed: { types: string[]; defaultSize: boolean }): Promise<void>
+  applyServerPrintSizes(server: Omit<PrintSizes, 'defaultSize'>, pushedTypes: string[]): Promise<void>
   markPrintSizesImported(): Promise<void>
 }
 
@@ -180,11 +178,7 @@ export function createSettingsStore(kv: KeyValueStore) {
         const changed = [...Object.keys(patch.byType ?? {}), ...Object.keys(patch.oneSizeOnly ?? {})]
         return commit({
           printSizes: sanitizePrintSizes({ ...get().printSizes, ...patch }),
-          printSizesSync: {
-            ...sync,
-            dirtyTypes: addDirty(sync.dirtyTypes, ...changed),
-            defaultDirty: sync.defaultDirty || patch.defaultSize !== undefined,
-          },
+          printSizesSync: { ...sync, dirtyTypes: addDirty(sync.dirtyTypes, ...changed) },
         })
       },
       setOneSizeOnly(categoryId, on) {
@@ -205,10 +199,9 @@ export function createSettingsStore(kv: KeyValueStore) {
           printSizesSync: { ...sync, dirtyTypes: addDirty(sync.dirtyTypes, categoryId) },
         })
       },
-      applyServerPrintSizes(server, pushed) {
+      applyServerPrintSizes(server, pushedTypes) {
         const { printSizes: local, printSizesSync: sync } = get()
-        const dirtyTypes = sync.dirtyTypes.filter((c) => !pushed.types.includes(c))
-        const defaultDirty = sync.defaultDirty && !pushed.defaultSize
+        const dirtyTypes = sync.dirtyTypes.filter((c) => !pushedTypes.includes(c))
         const byType = { ...server.byType }
         const oneSizeOnly = { ...server.oneSizeOnly }
         for (const c of dirtyTypes) {
@@ -218,8 +211,8 @@ export function createSettingsStore(kv: KeyValueStore) {
           else delete oneSizeOnly[c]
         }
         return commit({
-          printSizes: sanitizePrintSizes({ defaultSize: defaultDirty ? local.defaultSize : server.defaultSize, byType, oneSizeOnly }),
-          printSizesSync: { ...sync, dirtyTypes, defaultDirty },
+          printSizes: sanitizePrintSizes({ defaultSize: local.defaultSize, byType, oneSizeOnly }),
+          printSizesSync: { ...sync, dirtyTypes },
         })
       },
       markPrintSizesImported: () => commit({ printSizesSync: { ...get().printSizesSync, imported: true } }),

@@ -8,8 +8,8 @@ import { usePrintSizeSyncStatus, type PrintSizeSyncStatus } from '../../state/pr
 
 const SYNC_TEXT: Record<PrintSizeSyncStatus, string | null> = {
   unknown: null,
-  local: 'Saved on this PC only. DTF Creations can’t store print sizes yet.',
-  shared: 'Shared with every print station through DTF Creations.',
+  local: 'Saved on this PC only. This DTF Creations server can’t store print sizes.',
+  shared: 'Shared with every print station through DTF Creations (print media). The default size is this PC’s own.',
   pending: 'Some changes are saved on this PC only for now. They’ll be shared when DTF Creations is reachable.',
 }
 
