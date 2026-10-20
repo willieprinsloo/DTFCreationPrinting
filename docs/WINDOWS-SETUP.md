@@ -38,7 +38,6 @@ cargo -V
 cd $HOME\Documents
 git clone https://github.com/willieprinsloo/DTFCreationPrinting.git DTFCreationPrinting
 cd DTFCreationPrinting
-git checkout feat/prn-engine    # PRN engine branch (until it is merged into main)
 ```
 
 ## 3. PDF support (pdfium library)
