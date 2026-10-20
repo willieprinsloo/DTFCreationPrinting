@@ -26,6 +26,8 @@ const cases: [string, ReturnType<typeof key>, ShortcutAction][] = [
   ['Backspace', key('Backspace'), 'delete'],
   ['Cmd+D', key('d', { metaKey: true }), 'duplicate'],
   ['Ctrl+D', key('d', { ctrlKey: true }), 'duplicate'],
+  ['[', key('['), 'sizePrev'],
+  [']', key(']'), 'sizeNext'],
   ['Cmd+A', key('a', { metaKey: true }), 'selectAll'],
   ['Ctrl+A', key('a', { ctrlKey: true }), 'selectAll'],
 ]

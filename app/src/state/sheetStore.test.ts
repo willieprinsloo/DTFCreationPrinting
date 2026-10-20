@@ -195,3 +195,20 @@ describe('sheetStore', () => {
     })
   })
 })
+
+describe('setItemSize', () => {
+  it('resizes about the centre, relabels, and undoes in one step', () => {
+    const store = fresh()
+    const s = store.getState()
+    s.addItems([{ ...mk(1, 200, 100), source: { kind: 'gallery', id: 'p', label: 'Tee — M', size: 'M', sizes: ['M', 'L'] } }])
+    const id = store.getState().sheet.items[0].id
+    const before = store.getState().sheet.items[0]
+    store.getState().setItemSize(id, 'L', 300)
+    const it = store.getState().sheet.items[0]
+    expect([it.widthMm, it.heightMm, it.source.size, it.source.label]).toEqual([300, 150, 'L', 'Tee — L'])
+    expect(it.xMm + 150).toBeCloseTo(before.xMm + 100)
+    expect(it.yMm + 75).toBeCloseTo(before.yMm + 50)
+    store.getState().undo()
+    expect(store.getState().sheet.items[0]).toEqual(before)
+  })
+})

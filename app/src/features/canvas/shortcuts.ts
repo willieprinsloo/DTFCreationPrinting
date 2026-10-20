@@ -9,6 +9,8 @@ export type ShortcutAction =
   | 'delete'
   | 'duplicate'
   | 'selectAll'
+  | 'sizePrev'
+  | 'sizeNext'
 
 export interface ShortcutKeyEvent {
   key: string
@@ -24,6 +26,8 @@ const PLAIN: Record<string, ShortcutAction> = {
   '+': 'zoomIn',
   '=': 'zoomIn',
   '-': 'zoomOut',
+  '[': 'sizePrev',
+  ']': 'sizeNext',
   Delete: 'delete',
   Backspace: 'delete',
 }

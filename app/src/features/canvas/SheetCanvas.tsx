@@ -9,6 +9,7 @@ import { snapPosition } from '../../domain/snapping'
 import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/types'
 import { screenToSheet } from '../../domain/viewport'
 import { ItemNode } from './ItemNode'
+import { stepItemSize } from '../properties/changeSize'
 import { shortcutFor } from './shortcuts'
 import { getViewportStore, pinchFactor, shouldAutoFit, useViewport, type FitInputs } from './useViewport'
 
@@ -171,6 +172,8 @@ export function SheetCanvas() {
         case 'redo': return ss.redo()
         case 'delete': return ss.selectedIds.length ? ss.removeItems(ss.selectedIds) : undefined
         case 'duplicate': return ss.selectedIds.length ? ss.duplicateItems(ss.selectedIds) : undefined
+        case 'sizePrev': return ss.selectedIds.length === 1 ? stepItemSize(ss.selectedIds[0], -1) : undefined
+        case 'sizeNext': return ss.selectedIds.length === 1 ? stepItemSize(ss.selectedIds[0], 1) : undefined
         case 'selectAll': return ss.select(ss.sheet.items.map((i) => i.id))
       }
     }

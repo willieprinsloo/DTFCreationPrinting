@@ -28,6 +28,8 @@ export interface SheetActions {
   /** Applies several patches as a single undo step. */
   updateItems(patches: Array<{ id: string; patch: ItemPatch }>): void
   resizeItem(id: string, widthMm: number, keepAspect?: boolean): void
+  /** Changes a product's garment size: new width (aspect kept, centre fixed), source size and label — one undo step. */
+  setItemSize(id: string, size: string | null, widthMm: number): void
   removeItems(ids: string[]): void
   duplicateItems(ids: string[]): void
   /** Throws InvalidSheetError (state unchanged) when the result has no printable width. */
@@ -161,6 +163,23 @@ export function createSheetStore() {
                 ? { ...it, widthMm, heightMm: keepAspect ? (widthMm * it.heightMm) / it.widthMm : it.heightMm }
                 : it,
             )
+          },
+          setItemSize(id, size, widthMm) {
+            mapItems((it) => {
+              if (it.id !== id) return it
+              const heightMm = (widthMm * it.heightMm) / it.widthMm
+              const old = it.source.size
+              const suffix = old ? ` — ${old}` : ''
+              const name = suffix && it.source.label.endsWith(suffix) ? it.source.label.slice(0, -suffix.length) : it.source.label
+              return {
+                ...it,
+                widthMm,
+                heightMm,
+                xMm: it.xMm + (it.widthMm - widthMm) / 2,
+                yMm: it.yMm + (it.heightMm - heightMm) / 2,
+                source: { ...it.source, size, label: size ? `${name} — ${size}` : name },
+              }
+            })
           },
           removeItems(ids) {
             const { sheet, selectedIds } = get()
