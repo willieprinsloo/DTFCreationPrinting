@@ -79,7 +79,7 @@ impl ErrorDiffuser {
     }
     pub fn process_row(&mut self, tones: &[u16], out: &mut [u8]) {
         let w = tones.len().min(out.len()).min(self.cur.len() - 2);
-        let ltr = self.row % 2 == 0;
+        let ltr = self.row.is_multiple_of(2);
         // Buffers are offset by one so x-1 / x+1 never go out of range.
         for k in 0..w {
             let x = if ltr { k } else { w - 1 - k };
@@ -168,19 +168,68 @@ mod tests {
     }
 
     #[test]
-    fn diffuser_bands_equal_one_pass() {
+    fn diffuser_state_carries_across_bands() {
         let n = 64usize;
-        let row: Vec<u16> = (0..n).map(|x| (x * 1000) as u16).collect();
-        let mut a = ErrorDiffuser::new(n);
-        let mut b = ErrorDiffuser::new(n);
-        let mut o1 = vec![0u8; n];
-        let mut o2 = vec![0u8; n];
-        for _ in 0..10 {
-            a.process_row(&row, &mut o1);
+        let img: Vec<Vec<u16>> = (0..64)
+            .map(|y| (0..n).map(|x| ((x * 700 + y * 311) % 60000 + 2000) as u16).collect())
+            .collect();
+        let mut one = ErrorDiffuser::new(n);
+        let mut a = Vec::new();
+        let mut o = vec![0u8; n];
+        for r in &img { one.process_row(r, &mut o); a.extend_from_slice(&o); }
+        // four bands of 16 rows on the SAME diffuser
+        let mut same = ErrorDiffuser::new(n);
+        let mut b = Vec::new();
+        for band in img.chunks(16) {
+            for r in band { same.process_row(r, &mut o); b.extend_from_slice(&o); }
         }
-        for _ in 0..4 { b.process_row(&row, &mut o2); }
-        for _ in 0..6 { b.process_row(&row, &mut o2); }
-        assert_eq!(o1, o2);
+        // four bands, a fresh diffuser per band
+        let mut c = Vec::new();
+        for band in img.chunks(16) {
+            let mut fresh = ErrorDiffuser::new(n);
+            for r in band { fresh.process_row(r, &mut o); c.extend_from_slice(&o); }
+        }
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    fn tile_variance(thr: &dyn Fn(usize, usize) -> u16, t: f64) -> f64 {
+        let tones = vec![tone(t); 256];
+        let mut out = vec![0u8; 256];
+        let mut sums = vec![0f64; 256];
+        for y in 0..256usize {
+            // Evaluate with the production comparison against an arbitrary rank source.
+            for x in 0..256usize {
+                let v = tones[x] as u32 * 3;
+                let rem = (v % 65535) as u64;
+                let up = (rem * 131072 > (2 * thr(x, y) as u64 + 1) * 65535) as u32;
+                out[x] = ((v / 65535 + up).min(3)) as u8;
+            }
+            for x in 0..256 { sums[(y / 16) * 16 + x / 16] += out[x] as f64; }
+        }
+        let means: Vec<f64> = sums.iter().map(|s| s / 256.0).collect();
+        let m = means.iter().sum::<f64>() / means.len() as f64;
+        means.iter().map(|v| (v - m).powi(2)).sum::<f64>() / means.len() as f64
+    }
+
+    #[test]
+    fn high_tone_uniformity_beats_white_noise() {
+        let mask = |x: usize, y: usize| {
+            let i = (y * MASK_SIZE + x) * 2;
+            u16::from_le_bytes([MASK_BYTES[i], MASK_BYTES[i + 1]])
+        };
+        // Deterministic white-noise threshold array (hash), same value range.
+        let white = |x: usize, y: usize| {
+            let mut h = (x as u64).wrapping_mul(0x9E3779B97F4A7C15) ^ (y as u64).wrapping_mul(0xC2B2AE3D27D4EB4F);
+            h ^= h >> 29; h = h.wrapping_mul(0xBF58476D1CE4E5B9); h ^= h >> 32;
+            (h & 0xFFFF) as u16
+        };
+        for t in [0.75, 0.9] {
+            let vm = tile_variance(&mask, t);
+            let vw = tile_variance(&white, t);
+            eprintln!("t={t} mask var {vm:.6} white var {vw:.6} ratio {:.1}", vw / vm);
+            assert!(vm * 3.0 < vw, "t={t}: mask var {vm} vs white {vw}");
+        }
     }
 
     #[test]
@@ -251,7 +300,10 @@ mod tests {
             o1[c] = false; splat(&mut e1, c, -1.0);
             rank[c] = r as u16;
         }
-        // Phases 2/3: fill voids from the initial pattern.
+        // Phases 2 and 3. Ulichney's phase 3 ("tightest cluster of zeros in the
+        // complemented pattern") selects the zero pixel with the highest zero-density,
+        // i.e. the lowest ones-energy, which is exactly the largest-void rule used
+        // here; so one loop covers both. Verified by high_tone_uniformity test.
         for r in initial..N * N {
             let v = largest_void(&energy, &ones);
             ones[v] = true; splat(&mut energy, v, 1.0);
@@ -266,7 +318,7 @@ mod tests {
     fn mask_is_a_permutation() {
         assert_eq!(MASK_BYTES.len(), MASK_SIZE * MASK_SIZE * 2);
         let mut seen = vec![false; MASK_SIZE * MASK_SIZE];
-        for c in MASK_BYTES.chunks_exact(2) {
+        for c in MASK_BYTES.as_chunks::<2>().0 {
             let r = u16::from_le_bytes([c[0], c[1]]) as usize;
             assert!(!seen[r], "duplicate rank {r}");
             seen[r] = true;
