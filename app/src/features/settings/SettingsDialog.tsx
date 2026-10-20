@@ -1,13 +1,21 @@
 import { useState } from 'react'
 import type { PrinterProfile } from '../../domain/types'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
+import type { SettingsTab } from '../../state/uiStore'
+import { PrintSizesPanel } from './PrintSizesPanel'
 import { ScreenCalibration } from './ScreenCalibration'
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 interface Props {
+  initialTab?: SettingsTab
   onClose(): void
 }
+
+const TABS: Array<[SettingsTab, string]> = [
+  ['general', 'General'],
+  ['print-sizes', 'Print sizes'],
+]
 
 function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile; canRemove: boolean; onDone(): void }) {
   const [p, setP] = useState(profile)
@@ -85,7 +93,8 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
   )
 }
 
-export function SettingsDialog({ onClose }: Props) {
+export function SettingsDialog({ initialTab = 'general', onClose }: Props) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
   const apiBaseUrl = useSettings((s) => s.apiBaseUrl)
   const thresholds = useSettings((s) => s.thresholds)
   const profiles = useSettings((s) => s.profiles)
@@ -152,86 +161,98 @@ export function SettingsDialog({ onClose }: Props) {
     <div className="dialog-backdrop">
       <div className="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <h2 id="settings-title">Settings</h2>
-
-        <section className="settings-section">
-          <h3>DTF Creations address</h3>
-          <label className="dialog-field">
-            Server address
-            <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} />
-          </label>
-          <div className="button-row">
-            <button type="button" onClick={() => void saveUrl()}>
-              Save address
+        <div className="settings-tabs" role="tablist" aria-label="Settings pages">
+          {TABS.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+              {label}
             </button>
-            {urlMsg && <span role="status">{urlMsg}</span>}
-          </div>
-        </section>
+          ))}
+        </div>
 
-        <section className="settings-section">
-          <h3>Print quality limits</h3>
-          <div className="field-grid">
+        {tab === 'print-sizes' && <PrintSizesPanel />}
+        {tab === 'general' && (
+          <>
+          <section className="settings-section">
+            <h3>DTF Creations address</h3>
             <label className="dialog-field">
-              Fine from (dpi)
-              <input type="number" value={fine} onChange={(e) => setFine(e.target.value)} />
+              Server address
+              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} />
             </label>
-            <label className="dialog-field">
-              Low from (dpi)
-              <input type="number" value={low} onChange={(e) => setLow(e.target.value)} />
-            </label>
-          </div>
-          <div className="button-row">
-            <button type="button" onClick={() => void saveThresholds()}>
-              Save limits
-            </button>
-            {dpiMsg && <span role="status">{dpiMsg}</span>}
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h3>Film preview</h3>
-          <label className="dialog-field">
-            Preview length when empty (mm)
-            <input type="number" min={100} step="any" value={previewLen} onChange={(e) => setPreviewLen(e.target.value)} />
-          </label>
-          <div className="button-row">
-            <button type="button" onClick={() => void savePreviewLength()}>
-              Save preview length
-            </button>
-            {previewMsg && <span role="status">{previewMsg}</span>}
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h3>Printers</h3>
-          {editing ? (
-            <ProfileEditor
-              key={editing.id}
-              profile={editing}
-              canRemove={profiles.length > 1 && profiles.some((p) => p.id === editing.id)}
-              onDone={() => setEditing(null)}
-            />
-          ) : (
-            <>
-              <ul className="profile-list">
-                {profiles.map((p) => (
-                  <li key={p.id}>
-                    <span>
-                      {p.name} — {p.widthMm} mm, {p.xDpi} × {p.yDpi} dpi
-                    </span>
-                    <button type="button" onClick={() => setEditing(p)}>
-                      Edit
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button type="button" onClick={() => setEditing(newProfile())}>
-                Add printer
+            <div className="button-row">
+              <button type="button" onClick={() => void saveUrl()}>
+                Save address
               </button>
-            </>
-          )}
-        </section>
+              {urlMsg && <span role="status">{urlMsg}</span>}
+            </div>
+          </section>
 
-        <ScreenCalibration />
+          <section className="settings-section">
+            <h3>Print quality limits</h3>
+            <div className="field-grid">
+              <label className="dialog-field">
+                Fine from (dpi)
+                <input type="number" value={fine} onChange={(e) => setFine(e.target.value)} />
+              </label>
+              <label className="dialog-field">
+                Low from (dpi)
+                <input type="number" value={low} onChange={(e) => setLow(e.target.value)} />
+              </label>
+            </div>
+            <div className="button-row">
+              <button type="button" onClick={() => void saveThresholds()}>
+                Save limits
+              </button>
+              {dpiMsg && <span role="status">{dpiMsg}</span>}
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <h3>Film preview</h3>
+            <label className="dialog-field">
+              Preview length when empty (mm)
+              <input type="number" min={100} step="any" value={previewLen} onChange={(e) => setPreviewLen(e.target.value)} />
+            </label>
+            <div className="button-row">
+              <button type="button" onClick={() => void savePreviewLength()}>
+                Save preview length
+              </button>
+              {previewMsg && <span role="status">{previewMsg}</span>}
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <h3>Printers</h3>
+            {editing ? (
+              <ProfileEditor
+                key={editing.id}
+                profile={editing}
+                canRemove={profiles.length > 1 && profiles.some((p) => p.id === editing.id)}
+                onDone={() => setEditing(null)}
+              />
+            ) : (
+              <>
+                <ul className="profile-list">
+                  {profiles.map((p) => (
+                    <li key={p.id}>
+                      <span>
+                        {p.name} — {p.widthMm} mm, {p.xDpi} × {p.yDpi} dpi
+                      </span>
+                      <button type="button" onClick={() => setEditing(p)}>
+                        Edit
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" onClick={() => setEditing(newProfile())}>
+                  Add printer
+                </button>
+              </>
+            )}
+          </section>
+
+          <ScreenCalibration />
+          </>
+        )}
 
         <div className="dialog-actions">
           <button type="button" className="primary" onClick={onClose}>

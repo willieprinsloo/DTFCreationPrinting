@@ -6,6 +6,7 @@ import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
+import { ONE_SIZE, defaultWidthMm } from '../../domain/printSizes'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
 import { useProductSources } from './queries/useProductSources'
@@ -23,6 +24,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const { client, requireLogin } = useDtfClient()
   const sources = useProductSources()
   const thresholds = useSettings((s) => s.thresholds)
+  const table = useSettings((s) => s.printSizes.byType)
   const settings = useSheet((s) => s.sheet.settings)
   const [designUrl, setDesignUrl] = useState<string | null | undefined>(undefined)
   const [sizes, setSizes] = useState<string[]>([])
@@ -31,7 +33,9 @@ export function AddProductDialog({ product, onClose }: Props) {
   const [loading, setLoading] = useState(false)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [single, setSingle] = useState(1)
-  const [widthCm, setWidthCm] = useState<number | null>(null)
+  /** Per-size print width in cm (key ONE_SIZE for products without sizes); unset rows use the native width. */
+  const [widthsCm, setWidthsCm] = useState<Record<string, number | null>>({})
+  const [nativeCm, setNativeCm] = useState<number | null>(null)
 
   const maxWidthCm = useMemo(() => {
     try {
@@ -57,7 +61,7 @@ export function AddProductDialog({ product, onClose }: Props) {
         const url = client.absoluteUrl(path)
         const a = await cacheAsset(url, client.bearerFor(url))
         setAsset(a)
-        setWidthCm((w) => w ?? Math.round(Math.min((a.widthPx / 300) * 2.54, maxWidthCm) * 100) / 100)
+        setNativeCm(Math.round(Math.min((a.widthPx / 300) * 2.54, maxWidthCm) * 100) / 100)
         return a
       } catch (e) {
         fail(e)
@@ -93,13 +97,22 @@ export function AddProductDialog({ product, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const rows = sizes.length > 0 ? sizes.map((s) => ({ size: s as string | null, qty: quantities[s] ?? 0 })) : [{ size: null, qty: single }]
+  const widthCmOf = (size: string | null): number | null => {
+    const key = size ?? ONE_SIZE
+    if (key in widthsCm) return widthsCm[key]
+    const mm = defaultWidthMm(table, product.categoryId, size)
+    return mm !== undefined ? mm / 10 : nativeCm
+  }
+  const rows = (sizes.length > 0 ? sizes.map((s) => ({ size: s as string | null, qty: quantities[s] ?? 0 })) : [{ size: null, qty: single }]).map(
+    (r) => {
+      const widthMm = (widthCmOf(r.size) ?? 0) * 10
+      const heightMm = asset ? (widthMm * asset.heightPx) / asset.widthPx : 0
+      const dpi = asset && widthMm > 0 ? effectiveDpi({ asset, widthMm, heightMm }) : null
+      return { ...r, widthMm, heightMm, dpi, status: dpi === null ? null : dpiStatus(dpi, thresholds) }
+    },
+  )
   const total = rows.reduce((n, r) => n + r.qty, 0)
-  const widthMm = (widthCm ?? 0) * 10
-  const heightMm = asset ? (widthMm * asset.heightPx) / asset.widthPx : 0
-  const valid = !!asset && widthMm > 0 && total > 0
-  const dpi = asset && widthMm > 0 ? effectiveDpi({ asset, widthMm, heightMm }) : null
-  const status = dpi === null ? null : dpiStatus(dpi, thresholds)
+  const valid = !!asset && total > 0 && rows.every((r) => r.qty === 0 || r.widthMm > 0)
   const noDesign = designUrl === null
 
   const confirm = async () => {
@@ -108,12 +121,42 @@ export function AddProductDialog({ product, onClose }: Props) {
     const items = rows
       .filter((r) => r.qty > 0)
       .map((r) => {
-        const source: SourceRef = { kind: 'gallery', id: product.id, label: r.size ? `${product.name} — ${r.size}` : product.name }
-        return { asset: a, source, widthMm, heightMm, quantity: r.qty }
+        const source: SourceRef = {
+          kind: 'gallery',
+          id: product.id,
+          productId: product.id,
+          categoryId: product.categoryId,
+          size: r.size,
+          sizes,
+          label: r.size ? `${product.name} — ${r.size}` : product.name,
+        }
+        return { asset: a, source, widthMm: r.widthMm, heightMm: r.heightMm, quantity: r.qty }
       })
     getSheetStore().getState().addItems(items)
     onClose()
   }
+
+  const widthInput = (size: string | null, label?: string) => {
+    const cm = widthCmOf(size)
+    return (
+      <input
+        type="number"
+        min={0.1}
+        step={0.1}
+        aria-label={label}
+        value={cm ?? ''}
+        disabled={!asset}
+        onChange={(e) => setWidthsCm((w) => ({ ...w, [size ?? ONE_SIZE]: e.target.value === '' ? null : Number(e.target.value) }))}
+      />
+    )
+  }
+  const dpiBadge = (r: (typeof rows)[number]) =>
+    r.dpi !== null &&
+    r.status && (
+      <p className={`dpi-badge dpi-${r.status}`}>
+        <span>{Math.round(r.dpi)} dpi</span> <span>{LABELS[r.status]}</span>
+      </p>
+    )
 
   return (
     <div className="dialog-backdrop">
@@ -129,44 +172,51 @@ export function AddProductDialog({ product, onClose }: Props) {
       >
         <h2 id="add-product-title">Add {product.name}</h2>
         {noDesign && <p className="inline-error">No design file</p>}
-        <label className="dialog-field">
-          Print width (cm)
-          <input
-            type="number"
-            min={0.1}
-            step={0.1}
-            value={widthCm ?? ''}
-            disabled={!asset}
-            onChange={(e) => setWidthCm(e.target.value === '' ? null : Number(e.target.value))}
-          />
-        </label>
         {sizes.length > 0 ? (
-          sizes.map((s) => (
-            <label key={s} className="dialog-field">
-              Size {s}
-              <input
-                type="number"
-                min={0}
-                max={MAX_QUANTITY}
-                step={1}
-                aria-label={`Quantity ${s}`}
-                value={quantities[s] ?? 0}
-                onChange={(e) => setQuantities((q) => ({ ...q, [s]: clampQty(e.target.value) }))}
-              />
-            </label>
-          ))
+          <table className="size-rows">
+            <thead>
+              <tr>
+                <th scope="col">Size</th>
+                <th scope="col">Quantity</th>
+                <th scope="col">Width (cm)</th>
+                <th scope="col">Quality</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.size}>
+                  <th scope="row">{r.size}</th>
+                  <td>
+                    <input
+                      type="number"
+                      min={0}
+                      max={MAX_QUANTITY}
+                      step={1}
+                      aria-label={`Quantity ${r.size}`}
+                      value={r.qty}
+                      onChange={(e) => setQuantities((q) => ({ ...q, [r.size!]: clampQty(e.target.value) }))}
+                    />
+                  </td>
+                  <td>{widthInput(r.size, `Width ${r.size} (cm)`)}</td>
+                  <td>{dpiBadge(r)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : (
-          <label className="dialog-field">
-            Quantity
-            <input type="number" min={1} max={MAX_QUANTITY} step={1} value={single} onChange={(e) => setSingle(clampQty(e.target.value))} />
-          </label>
+          <>
+            <label className="dialog-field">
+              Print width (cm)
+              {widthInput(null)}
+            </label>
+            <label className="dialog-field">
+              Quantity
+              <input type="number" min={1} max={MAX_QUANTITY} step={1} value={single} onChange={(e) => setSingle(clampQty(e.target.value))} />
+            </label>
+            {dpiBadge(rows[0])}
+          </>
         )}
         {loading && <p className="muted">Downloading…</p>}
-        {dpi !== null && status && (
-          <p className={`dpi-badge dpi-${status}`}>
-            <span>{Math.round(dpi)} dpi</span> <span>{LABELS[status]}</span>
-          </p>
-        )}
         {error && (
           <p className="inline-error" role="alert">
             {error}
@@ -176,7 +226,7 @@ export function AddProductDialog({ product, onClose }: Props) {
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={loading || noDesign || designUrl === undefined || total <= 0}>
+          <button type="submit" className="primary" disabled={loading || noDesign || designUrl === undefined || (!!asset && !valid) || total <= 0}>
             Add
           </button>
         </div>

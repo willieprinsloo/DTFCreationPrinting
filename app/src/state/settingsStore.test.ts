@@ -147,3 +147,31 @@ describe('settingsStore libraryPrefs', () => {
     expect(s.getState().libraryPrefs.designs).toEqual(DEFAULT_LIBRARY_PREFS.designs)
   })
 })
+
+describe('settingsStore printSizes', () => {
+  it('defaults to M with an empty table; set/clear widths persist', async () => {
+    const kv = createMemoryStore()
+    const a = createSettingsStore(kv)
+    await a.getState().load()
+    expect(a.getState().printSizes).toEqual({ defaultSize: 'M', byType: {} })
+    await a.getState().setPrintWidth('3', 'M', 280)
+    await a.getState().setPrintWidth('3', null, 250)
+    await a.getState().setPrintWidth('4', 'L', 300)
+    await a.getState().setPrintWidth('4', 'L', null)
+    await a.getState().setPrintSizes({ ...a.getState().printSizes, defaultSize: 'L' })
+    const b = createSettingsStore(kv)
+    await b.getState().load()
+    expect(b.getState().printSizes).toEqual({ defaultSize: 'L', byType: { '3': { M: 280, 'One size': 250 } } })
+  })
+
+  it('ignores non-positive widths and repairs bad saved data', async () => {
+    const kv = createMemoryStore()
+    await kv.set('settings', { printSizes: { defaultSize: 'huge', byType: { '3': { M: -5, L: 300 } } } })
+    const s = createSettingsStore(kv)
+    await s.getState().load()
+    expect(s.getState().printSizes).toEqual({ defaultSize: 'M', byType: { '3': { L: 300 } } })
+    await s.getState().setPrintWidth('3', 'S', 0)
+    await s.getState().setPrintWidth('3', 'XL', Number.NaN)
+    expect(s.getState().printSizes.byType['3']).toEqual({ L: 300 })
+  })
+})

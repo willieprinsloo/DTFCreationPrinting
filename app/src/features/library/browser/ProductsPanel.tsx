@@ -4,6 +4,7 @@ import type { ProductSummary } from '../../../api/types'
 import { DEFAULT_PRODUCT_PREFS, type ProductPrefs, type ProductSort } from '../../../state/libraryPrefs'
 import { AddProductDialog } from '../AddProductDialog'
 import { formatDate } from '../format'
+import { useQuickAdd } from '../quickAdd'
 import { useLookup } from '../queries/useLookup'
 import { useProductSources } from '../queries/useProductSources'
 import { useProductsQuery } from '../queries/useProductsQuery'
@@ -40,6 +41,8 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
   const dialogs = useDialogQueue<ProductSummary>(onAdded)
   const sources = useProductSources()
   const [notice, setNotice] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const quickAdd = useQuickAdd((id) => categories.find((c) => c.id === id)?.name ?? '')
 
   const typeName = (p: ProductSummary) => categories.find((c) => c.id === p.categoryId)?.name ?? ''
   const sorted = sortItems(query.items, f.sort === 'name' ? (p) => p.name : f.sort === 'type' ? typeName : f.sort, (p) => p.createdAt)
@@ -59,11 +62,22 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
     f.status && `Status: ${STATUS_LABELS[f.status]}`,
   ].filter((x): x is string => !!x)
 
-  const add = () => {
+  /** Quick add (1 × default size each), or with `options` one add dialog per product. */
+  const add = async (options: boolean) => {
     const all = [...selection.map.values()]
     const missing = all.filter((p) => sources.hasNoDesign(p.id))
     setNotice(missing.length > 0 ? `No design file for ${missing.map((p) => p.name).join(', ')}` : null)
-    dialogs.start(all.filter((p) => !missing.includes(p)))
+    const picked = all.filter((p) => !missing.includes(p))
+    if (options) return dialogs.start(picked)
+    if (picked.length === 0) return
+    setAdding(true)
+    try {
+      const res = await quickAdd(picked)
+      if (res.error) setNotice((cur) => (cur ? `${cur}. ${res.error}` : res.error))
+      if (res.added > 0) onAdded()
+    } finally {
+      setAdding(false)
+    }
   }
   const closeDialog = () => {
     if (dialogs.current) selection.remove([dialogs.current.id])
@@ -122,13 +136,19 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
               if (p) selection.toggle(k, p)
             }}
             onSelectPage={(on) => selection.setMany(query.items.map((p) => [p.id, p]), on)}
-            onAdd={add}
+            onAdd={() => void add(false)}
           />
         }
         paging={{ page: query.page, offset: (query.page - 1) * prefs.pageSize, count: query.items.length, total: query.total, hasNext: query.hasNext, loading: query.loading, onPage: query.goTo }}
         selectedCount={selection.size}
         hiddenCount={[...selection.map.keys()].filter((k) => !query.items.some((x) => x.id === k)).length}
-        onAdd={add}
+        adding={adding}
+        onAdd={(e) => void add(!!e?.shiftKey)}
+        footerActions={
+          <button type="button" disabled={selection.size === 0 || adding} onClick={() => void add(true)}>
+            Add with options…
+          </button>
+        }
       />
       {dialogs.current && <AddProductDialog key={dialogs.current.id} product={dialogs.current} onClose={closeDialog} />}
     </>

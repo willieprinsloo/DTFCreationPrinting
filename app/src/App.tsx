@@ -10,6 +10,7 @@ import { useSettings } from "./state/settingsStore";
 import { PreflightDialog } from "./features/prn/PreflightDialog";
 import { installCloseGuard } from "./features/sheets/closeGuard";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
+import { uiStore, useUi } from "./state/uiStore";
 
 // react-konva needs a real canvas; jsdom tests render the shell without it.
 const SheetCanvas =
@@ -18,7 +19,7 @@ const SheetCanvas =
     : lazy(() => import("./features/canvas/SheetCanvas").then((m) => ({ default: m.SheetCanvas })));
 
 export default function App() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsTab = useUi((s) => s.settingsTab);
   const [preflightOpen, setPreflightOpen] = useState(false);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const drawerHeight = useSettings((s) => s.drawerHeightPx);
@@ -44,7 +45,7 @@ export default function App() {
       style={{ "--drawer-h": `${drawerCollapsed ? 34 : drawerHeight}px` } as React.CSSProperties}
     >
       <header className="region topbar" data-testid="topbar">
-        <TopBar onCreatePrn={() => setPreflightOpen(true)} onOpenSettings={() => setSettingsOpen(true)} />
+        <TopBar onCreatePrn={() => setPreflightOpen(true)} onOpenSettings={() => uiStore.getState().openSettings()} />
       </header>
       <main className="region canvas-area" data-testid="canvas-area">
         {SheetCanvas ? (
@@ -65,7 +66,9 @@ export default function App() {
         <StatusBar />
       </footer>
       {preflightOpen && <PreflightDialog onClose={() => setPreflightOpen(false)} />}
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {settingsTab && (
+        <SettingsDialog key={settingsTab} initialTab={settingsTab} onClose={() => uiStore.getState().closeSettings()} />
+      )}
     </div>
     </DtfClientProvider>
   );

@@ -15,6 +15,7 @@ import { getSheetStore } from '../../../state/sheetStore'
 import { getViewportStore } from '../../canvas/useViewport'
 import { cacheAsset } from '../../../platform/tauri'
 import type { DtfClient } from '../../../api/dtfClient'
+import { uiStore } from '../../../state/uiStore'
 
 const page = <T,>(items: T[]) => vi.fn(async () => ({ items, total: items.length, page: 1, hasNext: false }))
 const design = (id: string, name: string) => ({ id, name, imageUrl: `/u/${id}.png`, designType: 'sticker', galleryCategoryId: 'c', tags: [] })
@@ -276,5 +277,62 @@ describe('LibraryBrowser', () => {
     const strip = (await screen.findAllByRole('button', { name: 'Tee' }))[0]
     await waitFor(() => expect(strip.querySelector('img')).toHaveAttribute('src', 'https://x.test/uploads/design-p1.png'))
     expect(getProductPrintSource).toHaveBeenCalledTimes(1)
+  })
+
+  describe('products quick add', () => {
+    const asset = { assetId: 'a', path: '/a.png', previewPath: '/a.jpg', widthPx: 3000, heightPx: 3000 }
+    const client = () =>
+      fakeClient({
+        listProductCategories: vi.fn(async () => [{ id: '3', name: 'T-Shirts' }]),
+        listProducts: page([product('p1', 'Tee'), product('p2', 'Cap')]),
+        getProductPrintSource: vi.fn(async () => ({ designUrl: '/uploads/d.png', sizes: ['S', 'M'] })),
+      })
+    beforeEach(async () => {
+      vi.mocked(cacheAsset).mockResolvedValue(asset)
+      uiStore.setState({ printSizeNotice: null, settingsTab: null })
+      await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 280 } } })
+    })
+
+    it('Add puts 1 × M of each selected product at the table width and closes', async () => {
+      open(client())
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Cap' }))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add 2 to sheet' }))
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Library browser' })).toBeNull())
+      const items = getSheetStore().getState().sheet.items
+      expect(items.map((i) => [i.source.label, i.widthMm])).toEqual([
+        ['Tee — M', 280],
+        ['Cap — M', 280],
+      ])
+      expect(items[0].source).toMatchObject({ productId: 'p1', categoryId: '3', size: 'M', sizes: ['S', 'M'] })
+    })
+
+    it('missing default: adds anyway and the drawer shows the Print sizes notice', async () => {
+      await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { S: 250 } } })
+      open(client())
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add 1 to sheet' }))
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Library browser' })).toBeNull())
+      expect(getSheetStore().getState().sheet.items[0].widthMm).toBeCloseTo(254)
+      expect(await screen.findByText('No default print size for T-Shirts · M — set it in Settings › Print sizes')).toBeInTheDocument()
+    })
+
+    it('Shift+Add and "Add with options…" open the add dialog instead', async () => {
+      open(client())
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      const user = userEvent.setup()
+      await user.keyboard('{Shift>}')
+      await user.click(within(dlg).getByRole('button', { name: 'Add 1 to sheet' }))
+      await user.keyboard('{/Shift}')
+      expect(await screen.findByRole('dialog', { name: 'Add Tee' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add with options…' }))
+      expect(await screen.findByRole('dialog', { name: 'Add Tee' })).toBeInTheDocument()
+      expect(getSheetStore().getState().sheet.items).toHaveLength(0)
+    })
   })
 })

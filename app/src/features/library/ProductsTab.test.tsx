@@ -1,17 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../platform/tauri', () => ({ cacheAsset: vi.fn(), importLocalFile: vi.fn(), assetSrc: (p: string) => p }))
+vi.mock('../../state/persist', async (orig) => {
+  const m = await orig<typeof import('../../state/persist')>()
+  return { ...m, createTauriStore: () => m.createMemoryStore() }
+})
+vi.mock('./dragAdd', () => ({ beginLibraryDrag: vi.fn() }))
 import { cacheAsset } from '../../platform/tauri'
 import { AuthRequiredError } from '../../api/dtfClient'
 import { ProductsTab } from './ProductsTab'
+import { PrintSizeNotice } from './PrintSizeNotice'
+import { beginLibraryDrag } from './dragAdd'
 import { fakeClient, withClient } from './testUtils'
+import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
+import { getSheetStore } from '../../state/sheetStore'
+import { uiStore } from '../../state/uiStore'
 
 const tee = { id: 'p1', name: 'Tee', categoryId: '3', sizes: ['S', 'M'], thumbnailUrl: '/uploads/t.png' }
 const list = (items = [tee]) => vi.fn(async () => ({ items, total: items.length, page: 1, hasNext: false }))
 
-beforeEach(() => vi.clearAllMocks())
+const asset = { assetId: 'a1', path: '/a.png', previewPath: '/a.jpg', widthPx: 3000, heightPx: 1500 }
+const sized = (sizes = ['S', 'M', 'L']) => ({
+  listProductCategories: vi.fn(async () => [{ id: '3', name: 'T-Shirts' }]),
+  listProducts: list([{ ...tee, sizes }]),
+  getProductPrintSource: vi.fn(async () => ({ designUrl: '/uploads/d.png', sizes })),
+})
+const items = () => getSheetStore().getState().sheet.items
+
+beforeEach(async () => {
+  vi.clearAllMocks()
+  getSheetStore().getState().newSheet(DEFAULT_PROFILE)
+  uiStore.setState({ printSizeNotice: null, settingsTab: null })
+  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 280, L: 300 } } })
+})
 
 describe('ProductsTab', () => {
   it('searches once after the 300 ms debounce', async () => {
@@ -75,16 +98,98 @@ describe('ProductsTab', () => {
     expect(screen.getByTestId('thumb-placeholder')).toBeInTheDocument()
   })
 
-  it('opens the dialog on Add using the cached print source', async () => {
-    vi.mocked(cacheAsset).mockResolvedValue({ id: 'a', widthPx: 300, heightPx: 300 } as never)
-    const client = fakeClient({ listProducts: list(), getProductPrintSource: vi.fn(async () => ({ designUrl: '/uploads/d.png', sizes: ['M'] })) })
+  it('Add quick-adds 1 × the default size at the table width, with the product source fields', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    const client = fakeClient(sized())
     render(<ProductsTab />, { wrapper: withClient(client) })
-    const btn = await screen.findByRole('button', { name: 'Tee' })
-    await waitFor(() => expect(btn.querySelector('img')).not.toBeNull())
-    await userEvent.click(btn)
+    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
-    expect(await screen.findByRole('dialog')).toBeInTheDocument()
-    expect(await screen.findByLabelText('Quantity M')).toBeInTheDocument()
+    await waitFor(() => expect(items()).toHaveLength(1))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(items()[0]).toMatchObject({ widthMm: 280, heightMm: 140 })
+    expect(items()[0].source).toEqual({ kind: 'gallery', id: 'p1', productId: 'p1', categoryId: '3', size: 'M', sizes: ['S', 'M', 'L'], label: 'Tee — M' })
+    expect(cacheAsset).toHaveBeenCalledWith('https://x.test/uploads/d.png', 'tok')
+    expect(uiStore.getState().printSizeNotice).toBeNull()
     expect(client.getProductPrintSource).toHaveBeenCalledTimes(1)
+  })
+
+  it('without a table entry adds at the native 300 dpi width and shows a notice that opens Settings › Print sizes', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    render(
+      <>
+        <ProductsTab />
+        <PrintSizeNotice />
+      </>,
+      { wrapper: withClient(fakeClient(sized(['XL', '2XL']))) },
+    )
+    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
+    await screen.findByRole('option', { name: 'T-Shirts' })
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(items()).toHaveLength(1))
+    // 3000 px at 300 dpi = 254 mm (inside the 590 mm printable width)
+    expect(items()[0].widthMm).toBeCloseTo(254)
+    expect(items()[0].source).toMatchObject({ size: 'XL', label: 'Tee — XL' })
+    const note = await screen.findByRole('status')
+    expect(note).toHaveTextContent('No default print size for T-Shirts · XL — set it in Settings › Print sizes')
+    await userEvent.click(within(note).getByRole('button', { name: 'Open Print sizes' }))
+    expect(uiStore.getState().settingsTab).toBe('print-sizes')
+  })
+
+  it('a product without sizes uses the One size width', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    await getSettingsStore().getState().setPrintWidth('3', null, 90)
+    render(<ProductsTab />, { wrapper: withClient(fakeClient(sized([]))) })
+    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(items()).toHaveLength(1))
+    expect(items()[0].widthMm).toBe(90)
+    expect(items()[0].source).toMatchObject({ size: null, sizes: [], label: 'Tee' })
+  })
+
+  it('dragging a product quick-adds it; Shift+drag opens the dialog', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    render(<ProductsTab />, { wrapper: withClient(fakeClient(sized())) })
+    const btn = await screen.findByRole('button', { name: 'Tee' })
+    fireEvent.pointerDown(btn, { button: 0 })
+    vi.mocked(beginLibraryDrag).mock.calls[0][2]()
+    await waitFor(() => expect(items()).toHaveLength(1))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.pointerDown(btn, { button: 0, shiftKey: true })
+    vi.mocked(beginLibraryDrag).mock.calls[1][2]()
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(items()).toHaveLength(1)
+  })
+
+  it('Shift+Add and "Add with options…" open the dialog with per-size widths from the table', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    const client = fakeClient(sized())
+    render(<ProductsTab />, { wrapper: withClient(client) })
+    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
+    const user = userEvent.setup()
+    await user.keyboard('{Shift>}')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await user.keyboard('{/Shift}')
+    const dlg = await screen.findByRole('dialog')
+    await waitFor(() => expect(within(dlg).getByLabelText('Width M (cm)')).toHaveValue(28))
+    expect(within(dlg).getByLabelText('Width L (cm)')).toHaveValue(30)
+    expect(within(dlg).getByLabelText('Width S (cm)')).toHaveValue(25.4)
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tee' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add with options…' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(items()).toHaveLength(0)
+    expect(client.getProductPrintSource).toHaveBeenCalledTimes(1)
+  })
+
+  it('Add with several products selected quick-adds each', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    const client = fakeClient({ ...sized(), listProducts: list([{ ...tee, sizes: ['M'] }, { ...tee, id: 'p2', name: 'Hoodie', sizes: ['M'] }]) })
+    render(<ProductsTab />, { wrapper: withClient(client) })
+    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hoodie' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(items()).toHaveLength(2))
+    expect(items().map((i) => i.source.label)).toEqual(['Tee — M', 'Hoodie — M'])
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

@@ -5,6 +5,7 @@ import { ProductsTab } from './ProductsTab'
 import { CatalogueTab } from './CatalogueTab'
 import { GangSheetsTab } from './GangSheetsTab'
 import { LocalTab } from './LocalTab'
+import { PrintSizeNotice } from './PrintSizeNotice'
 import { useLocalFiles } from './useLocalFiles'
 import { LibraryBrowser } from './browser/LibraryBrowser'
 import { LIBRARY_TABS as TABS, type LibraryTab as Tab } from './tabs'
@@ -100,6 +101,7 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
       </div>
       {!collapsed && (
         <div className="library-body" role="tabpanel">
+          <PrintSizeNotice />
           {tab === 'products' && <ProductsTab />}
           {tab === 'catalogue' && <CatalogueTab />}
           {tab === 'gang' && <GangSheetsTab />}

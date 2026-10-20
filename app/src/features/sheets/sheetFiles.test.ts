@@ -37,6 +37,16 @@ describe('parseSheet shape validation', () => {
     expect(() => parseSheet(wrap({ id: 1, name: 'n', items: [], settings: { widthMm: 600, margins: {} } }))).toThrow('Not a DTF Print Studio sheet')
     expect(() => parseSheet(wrap(null))).toThrow('Not a DTF Print Studio sheet')
   })
+
+  it('accepts items with or without the product size fields', () => {
+    const settings = { widthMm: 600, margins: { topMm: 0, rightMm: 0, bottomMm: 0, leftMm: 0 } }
+    const item = (source: object) => ({ id: 'i', asset: {}, source, xMm: 0, yMm: 0, widthMm: 10, heightMm: 10, rotationDeg: 0, whiteEnabled: true })
+    const old = { kind: 'gallery', id: 'p1', label: 'Tee — M' }
+    const withSize = { ...old, productId: 'p1', categoryId: '3', size: 'M', sizes: ['S', 'M'] }
+    const sheet = parseSheet(wrap({ id: 'a', name: 'n', settings, items: [item(old), item(withSize)] }))
+    expect(sheet.items[0].source).toEqual(old)
+    expect(sheet.items[1].source).toEqual(withSize)
+  })
 })
 
 describe('unsaved changes guard', () => {

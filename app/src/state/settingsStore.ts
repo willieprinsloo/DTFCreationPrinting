@@ -4,6 +4,7 @@ import type { DpiThresholds, PrinterProfile } from '../domain/types'
 import { DEFAULT_THRESHOLDS } from '../domain/dpi'
 import { createTauriStore, type KeyValueStore } from './persist'
 import { DEFAULT_LIBRARY_PREFS, mergeLibraryPrefs, type LibraryPrefs, type LibraryPrefsPatch } from './libraryPrefs'
+import { DEFAULT_PRINT_SIZES, ONE_SIZE, isValidWidth, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
 
 export { DEFAULT_LIBRARY_PREFS }
 export type { LibraryPrefs, LibraryPrefsPatch }
@@ -37,6 +38,8 @@ export interface SettingsData {
   recentSheets: string[]
   lastPrnFolder?: string
   libraryPrefs: LibraryPrefs
+  /** Default print widths per product type × garment size. */
+  printSizes: PrintSizes
   loaded: boolean
 }
 
@@ -57,6 +60,10 @@ export interface SettingsActions {
   setLastPrnFolder(folder: string): Promise<void>
   /** Merged over the current prefs (per tab). */
   setLibraryPrefs(patch: LibraryPrefsPatch): Promise<void>
+  /** Replaces the whole print-size table; invalid widths are dropped. */
+  setPrintSizes(next: PrintSizes): Promise<void>
+  /** Sets one cell (`size` null = One size); a null or non-positive width clears it. */
+  setPrintWidth(categoryId: string, size: string | null, widthMm: number | null): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
@@ -75,6 +82,7 @@ function defaults(): SettingsData {
     minPreviewLengthMm: 1000,
     recentSheets: [],
     libraryPrefs: DEFAULT_LIBRARY_PREFS,
+    printSizes: DEFAULT_PRINT_SIZES,
     loaded: false,
   }
 }
@@ -93,6 +101,7 @@ export function createSettingsStore(kv: KeyValueStore) {
         const saved = await kv.get<Partial<SettingsData>>(SETTINGS_KEY)
         const merged = { ...defaults(), ...saved, loaded: true }
         merged.libraryPrefs = mergeLibraryPrefs(DEFAULT_LIBRARY_PREFS, saved?.libraryPrefs)
+        merged.printSizes = sanitizePrintSizes(saved?.printSizes)
         if (merged.profiles.length === 0) merged.profiles = [DEFAULT_PROFILE]
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
           merged.activeProfileId = merged.profiles[0].id
@@ -126,6 +135,14 @@ export function createSettingsStore(kv: KeyValueStore) {
         commit({ recentSheets: [path, ...get().recentSheets.filter((p) => p !== path)].slice(0, MAX_RECENT_SHEETS) }),
       setLastPrnFolder: (folder) => commit({ lastPrnFolder: folder }),
       setLibraryPrefs: (patch) => commit({ libraryPrefs: mergeLibraryPrefs(get().libraryPrefs, patch) }),
+      setPrintSizes: (next) => commit({ printSizes: sanitizePrintSizes(next) }),
+      setPrintWidth(categoryId, size, widthMm) {
+        const { printSizes } = get()
+        const row = { ...printSizes.byType[categoryId] }
+        if (isValidWidth(widthMm)) row[size ?? ONE_SIZE] = widthMm
+        else delete row[size ?? ONE_SIZE]
+        return commit({ printSizes: sanitizePrintSizes({ ...printSizes, byType: { ...printSizes.byType, [categoryId]: row } }) })
+      },
     }
   })
 }
@@ -142,6 +159,7 @@ function pickData(s: SettingsState): SettingsData {
     recentSheets: s.recentSheets,
     lastPrnFolder: s.lastPrnFolder,
     libraryPrefs: s.libraryPrefs,
+    printSizes: s.printSizes,
     loaded: s.loaded,
   }
 }

@@ -25,7 +25,10 @@ interface Props {
   /** Selected items not on the current page / filter. */
   hiddenCount?: number
   adding?: boolean
-  onAdd(): void
+  /** `shiftKey` is true for a Shift-click on the Add button. */
+  onAdd(opts?: { shiftKey: boolean }): void
+  /** Extra footer buttons shown before the Add button. */
+  footerActions?: ReactNode
 }
 
 /** Toolbar, active-filter summary, results, pager and the "Add N to sheet" footer shared by every tab. */
@@ -90,7 +93,8 @@ export function BrowserLayout(p: Props) {
       <div className="lib-browser-footer">
         <span>{p.selectedCount > 0 ? `${p.selectedCount} selected${p.hiddenCount ? ` (${p.hiddenCount} not shown)` : ''}` : 'Nothing selected'}</span>
         <span className="spacer" />
-        <button type="button" className="primary" disabled={p.selectedCount === 0 || p.adding} onClick={p.onAdd}>
+        {p.footerActions}
+        <button type="button" className="primary" disabled={p.selectedCount === 0 || p.adding} onClick={(e) => p.onAdd({ shiftKey: e.shiftKey })}>
           {p.adding ? 'Adding…' : `Add ${p.selectedCount} to sheet`}
         </button>
       </div>

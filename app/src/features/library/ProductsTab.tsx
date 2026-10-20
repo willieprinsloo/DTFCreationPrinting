@@ -5,6 +5,7 @@ import { AddProductDialog } from './AddProductDialog'
 import { Thumb } from './Thumb'
 import { beginLibraryDrag } from './dragAdd'
 import { useProductSources } from './queries/useProductSources'
+import { useQuickAdd } from './quickAdd'
 import { useLookup } from './queries/useLookup'
 import { useProductsQuery } from './queries/useProductsQuery'
 import { useDebounced } from './useDebounced'
@@ -25,7 +26,9 @@ export function ProductsTab() {
   const [queue, setQueue] = useState<ProductSummary[]>([])
   const sources = useProductSources()
   const [notice, setNotice] = useState<string | null>(null)
-  const latest = useLatest({ items: query.items, selected, hasNoDesign: sources.hasNoDesign })
+  const [adding, setAdding] = useState(false)
+  const quickAdd = useQuickAdd((id) => categories.find((c) => c.id === id)?.name ?? '')
+  const latest = useLatest({ items: query.items, selected, hasNoDesign: sources.hasNoDesign, quickAdd })
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
@@ -33,12 +36,23 @@ export function ProductsTab() {
   }
 
   const toggle = (id: string) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
-  const enqueue = (ids: string[]) => {
+  /** Quick add (1 × default size each), or with `options` one add dialog per product. */
+  const add = async (ids: string[], options: boolean) => {
     const all = latest.current.items.filter((d) => ids.includes(d.id))
     const missing = all.filter((d) => latest.current.hasNoDesign(d.id))
     setNotice(missing.length > 0 ? `No design file for ${missing.map((d) => d.name).join(', ')}` : null)
     const picked = all.filter((d) => !missing.includes(d))
-    if (picked.length > 0) setQueue(picked)
+    if (picked.length === 0) return
+    if (options) return setQueue(picked)
+    setAdding(true)
+    try {
+      const res = await latest.current.quickAdd(picked)
+      if (res.error) setNotice((cur) => (cur ? `${cur}. ${res.error}` : res.error))
+      const done = new Set(picked.map((d) => d.id))
+      if (res.added > 0) setSelected((cur) => cur.filter((id) => !done.has(id)))
+    } finally {
+      setAdding(false)
+    }
   }
   const closeDialog = () => {
     setQueue((q) => q.slice(1))
@@ -59,7 +73,16 @@ export function ProductsTab() {
           ))}
         </select>
         <span className="spacer" />
-        <button type="button" className="primary" disabled={selected.length === 0} onClick={() => enqueue(selected)}>
+        <button type="button" disabled={selected.length === 0} onClick={() => void add(selected, true)}>
+          Add with options…
+        </button>
+        <button
+          type="button"
+          className="primary"
+          title="Shift-click to choose sizes and widths"
+          disabled={selected.length === 0 || adding}
+          onClick={(e) => void add(selected, e.shiftKey)}
+        >
           Add
         </button>
       </div>
@@ -76,7 +99,8 @@ export function ProductsTab() {
             onToggle={() => toggle(d.id)}
             onPointerDown={(e) => {
               const ids = latest.current.selected.includes(d.id) ? latest.current.selected : [d.id]
-              beginLibraryDrag(e, d.name, () => enqueue(ids))
+              const options = e.shiftKey
+              beginLibraryDrag(e, d.name, () => void add(ids, options))
             }}
           />
         ))}
