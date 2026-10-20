@@ -4,6 +4,14 @@ import { ONE_SIZE, STANDARD_SIZES } from '../../domain/printSizes'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import { useLookup } from '../library/queries/useLookup'
 import { useErrorHandler } from '../library/useErrorHandler'
+import { usePrintSizeSyncStatus, type PrintSizeSyncStatus } from '../../state/printSizeSync'
+
+const SYNC_TEXT: Record<PrintSizeSyncStatus, string | null> = {
+  unknown: null,
+  local: 'Saved on this PC only. DTF Creations can’t store print sizes yet.',
+  shared: 'Shared with every print station through DTF Creations.',
+  pending: 'Some changes are saved on this PC only for now. They’ll be shared when DTF Creations is reachable.',
+}
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const COLUMNS = [...STANDARD_SIZES, ONE_SIZE]
@@ -17,6 +25,7 @@ export function PrintSizesPanel() {
   const categories = useLookup(client.listProductCategories, onLookupError)
   const printSizes = useSettings((s) => s.printSizes)
   const printerWidthMm = useSettings((s) => s.profiles.find((p) => p.id === s.activeProfileId)?.widthMm ?? Infinity)
+  const syncText = SYNC_TEXT[usePrintSizeSyncStatus()]
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
 
@@ -47,6 +56,7 @@ export function PrintSizesPanel() {
     <section className="settings-section">
       <h3>Print sizes</h3>
       <p className="muted">Width the design is printed at for each garment size. Height follows the design.</p>
+      {syncText && <p className="field-help" role="status">{syncText}</p>}
       <label className="dialog-field">
         Default size
         <select value={printSizes.defaultSize} onChange={(e) => void run(store().setPrintSizes({ defaultSize: e.target.value }))}>

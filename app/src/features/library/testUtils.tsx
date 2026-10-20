@@ -2,6 +2,9 @@ import type { ReactNode } from 'react'
 import { vi } from 'vitest'
 import { DtfClientContext } from '../../api/DtfClientContext'
 import type { DtfClient } from '../../api/dtfClient'
+import { DEFAULT_PRINT_SIZES } from '../../domain/printSizes'
+
+const noPrintSizes = { revision: 0, printSizes: DEFAULT_PRINT_SIZES, otherPositions: {} }
 
 export function fakeClient(over: Partial<DtfClient> = {}): DtfClient {
   return {
@@ -17,6 +20,10 @@ export function fakeClient(over: Partial<DtfClient> = {}): DtfClient {
     getOrderFiles: vi.fn(async () => []),
     getOrderStatus: vi.fn(async () => 'confirmed'),
     setOrderStatus: vi.fn(async () => {}),
+    getPrintSizes: vi.fn(async () => noPrintSizes),
+    putPrintSizeType: vi.fn(async () => noPrintSizes),
+    setDefaultPrintSize: vi.fn(async () => noPrintSizes),
+    importPrintSizes: vi.fn(async () => noPrintSizes),
     absoluteUrl: (p: string) => `https://x.test${p}`,
     token: () => 'tok',
     bearerFor: (u: string) => (u.startsWith('https://x.test/') ? 'tok' : undefined),

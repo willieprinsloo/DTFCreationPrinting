@@ -1,3 +1,5 @@
+import type { PrintSizes } from '../domain/printSizes'
+
 export interface Page<T> { items: T[]; total: number; page: number; hasNext: boolean }
 export interface GalleryDesign {
   id: string
@@ -25,3 +27,13 @@ export interface ProductSummary {
   createdAt?: string
 }
 export interface ProductPrintSource { designUrl: string | null; sizes: string[] }
+export interface RemoteSizeRow { size: string; position: string; widthMm: number }
+/** One product type's entry for PUT /admin/print-sizes/types/{id}: front widths by size, plus untouched other positions. */
+export interface RemotePrintSizeType { oneSizeOnly: boolean; widths: Record<string, number>; otherPositions: RemoteSizeRow[] }
+export interface RemotePrintSizes {
+  revision: number
+  /** Front-print widths, in the app's own shape. */
+  printSizes: PrintSizes
+  /** Rows for back / pocket / sleeve, by category; the app doesn't edit these yet. */
+  otherPositions: Record<string, RemoteSizeRow[]>
+}

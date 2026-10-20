@@ -5,6 +5,12 @@ import { loadCredentials } from '../platform/tauri'
 import { getSettingsStore, useSettings } from '../state/settingsStore'
 import { adoptActiveProfile } from '../features/sheets/sheetFiles'
 import { LoginDialog } from '../features/auth/LoginDialog'
+import { createPrintSizeSyncer } from '../state/printSizeSync'
+
+/** How often print sizes are re-read from DTF Creations, so other stations' changes show up. */
+const PRINT_SIZE_POLL_MS = 2 * 60_000
+/** Edits in Settings come in bursts (one per cell); upload once they settle. */
+const PRINT_SIZE_UPLOAD_DELAY_MS = 800
 
 export interface DtfClientValue {
   client: DtfClient
@@ -74,6 +80,28 @@ export function DtfClientProvider({ children }: { children: ReactNode }) {
     })()
     return () => {
       cancelled = true
+    }
+  }, [ready, client])
+
+  // Shared print sizes: read them after sign-in and every few minutes; upload local edits soon after they're made.
+  useEffect(() => {
+    if (!ready) return
+    const settings = getSettingsStore()
+    const sync = createPrintSizeSyncer(client, settings)
+    void sync()
+    const poll = setInterval(() => void sync(), PRINT_SIZE_POLL_MS)
+    let upload: ReturnType<typeof setTimeout> | undefined
+    const unsubscribe = settings.subscribe((s, prev) => {
+      if (s.printSizesSync === prev.printSizesSync) return
+      const { dirtyTypes, defaultDirty } = s.printSizesSync
+      if (dirtyTypes.length === 0 && !defaultDirty) return
+      clearTimeout(upload)
+      upload = setTimeout(() => void sync(), PRINT_SIZE_UPLOAD_DELAY_MS)
+    })
+    return () => {
+      clearInterval(poll)
+      clearTimeout(upload)
+      unsubscribe()
     }
   }, [ready, client])
 

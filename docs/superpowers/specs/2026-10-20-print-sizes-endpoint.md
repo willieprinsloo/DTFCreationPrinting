@@ -175,11 +175,13 @@ Round `width_mm` to 0.1 mm on save.
 
 - After sign-in, `GET /admin/print-sizes` and use it as the source of truth; keep the last copy
   locally for offline work.
-- The first time it connects, if the local table has entries, offer **"Upload this PC's print sizes"**,
-  which sends 4.5.
-- Settings › Print sizes and "Save as default" send 4.2 with `If-Match`. On `409`, apply the
-  returned table, re-apply the user's one change and retry once.
-- Offline: edits are saved locally, flagged "not synced", and sent when the server is reachable.
+- The first time it connects, if the local table has entries, it sends them with 4.5 automatically.
+  This is safe because import only fills gaps.
+- Settings › Print sizes and "Save as default" send 4.2 for each changed type about a second after
+  the edit, without `If-Match` (the user's explicit change wins). It re-reads the table every
+  2 minutes so other stations' changes show up.
+- Offline, or while the endpoint is missing (`404`/`405`): edits are saved locally, flagged as not
+  shared, and sent when the server is reachable. Settings › Print sizes shows which state it's in.
 - The app currently uses only `position: "front"`. The other positions are reserved for the
   position picker that comes later.
 

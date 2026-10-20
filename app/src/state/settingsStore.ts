@@ -33,6 +33,25 @@ export const MIN_PREVIEW_LENGTH_FLOOR_MM = 100
 export const clampMinPreviewLength = (mm: number) =>
   Number.isFinite(mm) ? Math.max(MIN_PREVIEW_LENGTH_FLOOR_MM, mm) : 1000
 
+/** Bookkeeping for sharing print sizes with DTF Creations. */
+export interface PrintSizesSync {
+  /** Types changed here and not yet uploaded (also kept across restarts, for offline edits). */
+  dirtyTypes: string[]
+  defaultDirty: boolean
+  /** This PC's table was offered to the server once (the server only fills gaps). */
+  imported: boolean
+}
+
+export const DEFAULT_PRINT_SIZES_SYNC: PrintSizesSync = { dirtyTypes: [], defaultDirty: false, imported: false }
+
+function sanitizeSync(raw: Partial<PrintSizesSync> | undefined): PrintSizesSync {
+  return {
+    dirtyTypes: Array.isArray(raw?.dirtyTypes) ? raw.dirtyTypes.filter((c): c is string => typeof c === 'string') : [],
+    defaultDirty: raw?.defaultDirty === true,
+    imported: raw?.imported === true,
+  }
+}
+
 export interface SettingsData {
   profiles: PrinterProfile[]
   activeProfileId: string
@@ -48,6 +67,7 @@ export interface SettingsData {
   libraryPrefs: LibraryPrefs
   /** Default print widths per product type × garment size. */
   printSizes: PrintSizes
+  printSizesSync: PrintSizesSync
   loaded: boolean
 }
 
@@ -74,6 +94,12 @@ export interface SettingsActions {
   setOneSizeOnly(categoryId: string, on: boolean): Promise<void>
   /** Sets one cell (`size` null = One size); a null or non-positive width clears it. */
   setPrintWidth(categoryId: string, size: string | null, widthMm: number | null): Promise<void>
+  /**
+   * Takes the server's table as the truth, except for types (and the default size) changed here since
+   * `pushed` was read: those keep the local values and stay marked for upload.
+   */
+  applyServerPrintSizes(server: PrintSizes, pushed: { types: string[]; defaultSize: boolean }): Promise<void>
+  markPrintSizesImported(): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
@@ -93,6 +119,7 @@ function defaults(): SettingsData {
     recentSheets: [],
     libraryPrefs: DEFAULT_LIBRARY_PREFS,
     printSizes: DEFAULT_PRINT_SIZES,
+    printSizesSync: DEFAULT_PRINT_SIZES_SYNC,
     loaded: false,
   }
 }
@@ -112,6 +139,7 @@ export function createSettingsStore(kv: KeyValueStore) {
         const merged = { ...defaults(), ...saved, loaded: true }
         merged.libraryPrefs = mergeLibraryPrefs(DEFAULT_LIBRARY_PREFS, saved?.libraryPrefs)
         merged.printSizes = sanitizePrintSizes(saved?.printSizes)
+        merged.printSizesSync = sanitizeSync(saved?.printSizesSync)
         merged.profiles = Array.isArray(merged.profiles) ? merged.profiles.map(sanitizeProfile) : []
         if (merged.profiles.length === 0) merged.profiles = [DEFAULT_PROFILE]
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
@@ -147,18 +175,54 @@ export function createSettingsStore(kv: KeyValueStore) {
         commit({ recentSheets: [path, ...get().recentSheets.filter((p) => p !== path)].slice(0, MAX_RECENT_SHEETS) }),
       setLastPrnFolder: (folder) => commit({ lastPrnFolder: folder }),
       setLibraryPrefs: (patch) => commit({ libraryPrefs: mergeLibraryPrefs(get().libraryPrefs, patch) }),
-      setPrintSizes: (patch) => commit({ printSizes: sanitizePrintSizes({ ...get().printSizes, ...patch }) }),
+      setPrintSizes(patch) {
+        const { printSizesSync: sync } = get()
+        const changed = [...Object.keys(patch.byType ?? {}), ...Object.keys(patch.oneSizeOnly ?? {})]
+        return commit({
+          printSizes: sanitizePrintSizes({ ...get().printSizes, ...patch }),
+          printSizesSync: {
+            ...sync,
+            dirtyTypes: addDirty(sync.dirtyTypes, ...changed),
+            defaultDirty: sync.defaultDirty || patch.defaultSize !== undefined,
+          },
+        })
+      },
       setOneSizeOnly(categoryId, on) {
-        const { printSizes } = get()
-        return commit({ printSizes: sanitizePrintSizes({ ...printSizes, oneSizeOnly: { ...printSizes.oneSizeOnly, [categoryId]: on } }) })
+        const { printSizes, printSizesSync: sync } = get()
+        return commit({
+          printSizes: sanitizePrintSizes({ ...printSizes, oneSizeOnly: { ...printSizes.oneSizeOnly, [categoryId]: on } }),
+          printSizesSync: { ...sync, dirtyTypes: addDirty(sync.dirtyTypes, categoryId) },
+        })
       },
       setPrintWidth(categoryId, size, widthMm) {
         const { printSizes } = get()
         const row = { ...printSizes.byType[categoryId] }
         if (isValidWidth(widthMm)) row[size ?? ONE_SIZE] = widthMm
         else delete row[size ?? ONE_SIZE]
-        return commit({ printSizes: sanitizePrintSizes({ ...printSizes, byType: { ...printSizes.byType, [categoryId]: row } }) })
+        const { printSizesSync: sync } = get()
+        return commit({
+          printSizes: sanitizePrintSizes({ ...printSizes, byType: { ...printSizes.byType, [categoryId]: row } }),
+          printSizesSync: { ...sync, dirtyTypes: addDirty(sync.dirtyTypes, categoryId) },
+        })
       },
+      applyServerPrintSizes(server, pushed) {
+        const { printSizes: local, printSizesSync: sync } = get()
+        const dirtyTypes = sync.dirtyTypes.filter((c) => !pushed.types.includes(c))
+        const defaultDirty = sync.defaultDirty && !pushed.defaultSize
+        const byType = { ...server.byType }
+        const oneSizeOnly = { ...server.oneSizeOnly }
+        for (const c of dirtyTypes) {
+          if (local.byType[c]) byType[c] = local.byType[c]
+          else delete byType[c]
+          if (local.oneSizeOnly[c]) oneSizeOnly[c] = true
+          else delete oneSizeOnly[c]
+        }
+        return commit({
+          printSizes: sanitizePrintSizes({ defaultSize: defaultDirty ? local.defaultSize : server.defaultSize, byType, oneSizeOnly }),
+          printSizesSync: { ...sync, dirtyTypes, defaultDirty },
+        })
+      },
+      markPrintSizesImported: () => commit({ printSizesSync: { ...get().printSizesSync, imported: true } }),
     }
   })
 }
@@ -176,9 +240,12 @@ function pickData(s: SettingsState): SettingsData {
     lastPrnFolder: s.lastPrnFolder,
     libraryPrefs: s.libraryPrefs,
     printSizes: s.printSizes,
+    printSizesSync: s.printSizesSync,
     loaded: s.loaded,
   }
 }
+
+const addDirty = (list: string[], ...ids: string[]) => [...new Set([...list, ...ids])]
 
 let tauriSettings: ReturnType<typeof createSettingsStore> | undefined
 /** Tauri-backed store, created on first use. */
