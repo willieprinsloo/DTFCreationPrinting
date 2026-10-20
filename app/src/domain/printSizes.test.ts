@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_PRINT_SIZES, ONE_SIZE, defaultWidthMm, pickSize, sanitizePrintSizes } from './printSizes'
+import { DEFAULT_PRINT_SIZES, ONE_SIZE, defaultWidthMm, estimateWidthMm, pickSize, sanitizePrintSizes } from './printSizes'
 
 describe('pickSize', () => {
   it('returns the preferred size when available (case-insensitive)', () => {
@@ -44,5 +44,18 @@ describe('sanitizePrintSizes', () => {
   it('keeps only true oneSizeOnly flags', () => {
     expect(sanitizePrintSizes({ oneSizeOnly: { '3': true, '4': false, '5': 'yes' } }).oneSizeOnly).toEqual({ '3': true })
     expect(sanitizePrintSizes({ oneSizeOnly: 'bad' }).oneSizeOnly).toEqual({})
+  })
+})
+
+describe('estimateWidthMm', () => {
+  it('scales 6 % per standard size step, both ways, any case', () => {
+    expect(estimateWidthMm(200, 'M', 'L')).toBe(212)
+    expect(estimateWidthMm(200, 'm', 'xl')).toBe(224.7)
+    expect(estimateWidthMm(212, 'L', 'M')).toBe(200)
+    expect(estimateWidthMm(200, 'M', 'M')).toBe(200)
+  })
+  it('gives up on non-standard sizes', () => {
+    expect(estimateWidthMm(200, 'M', 'Kids 8')).toBeUndefined()
+    expect(estimateWidthMm(0, 'M', 'L')).toBeUndefined()
   })
 })

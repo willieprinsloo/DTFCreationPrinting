@@ -1,4 +1,5 @@
-import { ONE_SIZE, resolveWidthMm, widthKey } from '../../domain/printSizes'
+import { ONE_SIZE, estimateWidthMm, resolveWidthMm, widthKey } from '../../domain/printSizes'
+import { printableArea } from '../../domain/geometry'
 import { getSettingsStore } from '../../state/settingsStore'
 import { getSheetStore } from '../../state/sheetStore'
 import { uiStore } from '../../state/uiStore'
@@ -10,9 +11,9 @@ export function rememberTypeNames(categories: Array<{ id: string; name: string }
 }
 
 /**
- * Switches a placed product to another garment size: width from Settings › Print sizes (kept as is,
- * with a notice, when none is set; one-size-only types use their One size width). One undo step;
- * the item's centre stays put.
+ * Switches a placed product to another garment size: width from Settings › Print sizes; when none is
+ * set, estimated from the current size (see estimateWidthMm) with a notice; one-size-only types use
+ * their One size width. Never wider than the printable area. One undo step; the item's centre stays put.
  */
 export function changeItemSize(id: string, size: string | null, typeName = ''): void {
   const sheet = getSheetStore()
@@ -21,12 +22,25 @@ export function changeItemSize(id: string, size: string | null, typeName = ''): 
   const categoryId = item.source.categoryId
   const { printSizes } = getSettingsStore().getState()
   const width = categoryId ? resolveWidthMm(printSizes, categoryId, size) : undefined
-  sheet.getState().setItemSize(id, size, width ?? item.widthMm)
+  const oneSizeOnly = !!categoryId && !!printSizes.oneSizeOnly?.[categoryId]
+  const from = item.source.size
+  const estimate = width === undefined && !oneSizeOnly && from && size ? estimateWidthMm(item.widthMm, from, size) : undefined
+  let next = width ?? estimate ?? item.widthMm
+  try {
+    next = Math.min(next, printableArea(sheet.getState().sheet.settings).widthMm)
+  } catch {
+    // No printable width: leave it to the sheet's own error.
+  }
+  sheet.getState().setItemSize(id, size, next)
   const name = typeName || (categoryId ? typeNames.get(categoryId) : '') || 'this type'
   const key = categoryId ? widthKey(printSizes, categoryId, size) : size
   uiStore
     .getState()
-    .setPrintSizeNotice(width === undefined ? `No default print size for ${name} · ${key ?? ONE_SIZE} — set it in Settings › Print sizes` : null)
+    .setPrintSizeNotice(
+      width === undefined
+        ? `No default print size for ${name} · ${key ?? ONE_SIZE} — ${estimate !== undefined ? `estimated from ${from}; ` : ''}set it in Settings › Print sizes`
+        : null,
+    )
 }
 
 /** Steps the selected product's size by `delta` within its offered sizes (no wrap). Without a size yet, ] picks the first and [ the last. */

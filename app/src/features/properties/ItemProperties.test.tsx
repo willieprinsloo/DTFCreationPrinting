@@ -212,10 +212,10 @@ describe('ItemProperties garment size', () => {
     expect([back.widthMm, back.xMm, back.source.size, back.source.label]).toEqual([200, 50, 'M', 'Tee — M'])
   })
 
-  it('keeps the width and shows a notice when the size has no default', async () => {
+  it('estimates the width from the current size and shows a notice when the size has no default', async () => {
     render(<ItemProperties ids={[pid]} />, { wrapper })
     await userEvent.selectOptions(screen.getByLabelText('Garment size'), 'S')
-    expect(getSheetStore().getState().sheet.items[0].widthMm).toBe(200)
+    expect(getSheetStore().getState().sheet.items[0].widthMm).toBeCloseTo(200 / 1.06, 0)
     expect(getSheetStore().getState().sheet.items[0].source.size).toBe('S')
     expect(uiStore.getState().printSizeNotice).toMatch(/No default print size for T-Shirts · S/)
   })

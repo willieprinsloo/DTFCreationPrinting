@@ -67,3 +67,30 @@ describe('stepItemSize', () => {
     expect(item().source.size).toBe('S')
   })
 })
+
+describe('sizes with no saved width', () => {
+  it('estimates from the current size, 6 % per step, and says so', async () => {
+    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: {}, oneSizeOnly: {} })
+    changeItemSize(item().id, 'L')
+    expect(item().source.size).toBe('L')
+    expect(item().widthMm).toBeCloseTo(212)
+    expect(item().heightMm).toBeCloseTo(106)
+    expect(uiStore.getState().printSizeNotice).toMatch(/estimated from M; set it in Settings › Print sizes/)
+    changeItemSize(item().id, 'S')
+    expect(item().widthMm).toBeCloseTo(212 * 1.06 ** -2, 0)
+  })
+
+  it('a saved width still wins over the estimate', async () => {
+    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { L: 300 } }, oneSizeOnly: {} })
+    changeItemSize(item().id, 'L')
+    expect(item().widthMm).toBe(300)
+    expect(uiStore.getState().printSizeNotice).toBeNull()
+  })
+
+  it('never grows past the printable width', async () => {
+    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: {}, oneSizeOnly: {} })
+    getSheetStore().getState().setItemSize(item().id, 'S', 589)
+    changeItemSize(item().id, 'L')
+    expect(item().widthMm).toBe(590)
+  })
+})

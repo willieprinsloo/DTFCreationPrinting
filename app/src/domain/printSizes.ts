@@ -84,3 +84,17 @@ export function sanitizePrintSizes(raw: unknown): PrintSizes {
   }
   return { defaultSize, byType, oneSizeOnly }
 }
+
+/** Width change per garment size step when no width is saved for the new size. An estimate: saved widths always win. */
+export const SIZE_STEP_RATIO = 1.06
+
+/**
+ * Estimated print width for garment size `to`, scaling a print `fromWidthMm` wide at size `from` by
+ * SIZE_STEP_RATIO per standard size step (M → L is 6 % wider). Undefined unless both are standard sizes.
+ */
+export function estimateWidthMm(fromWidthMm: number, from: string, to: string): number | undefined {
+  const a = standardIndex(from)
+  const b = standardIndex(to)
+  if (a < 0 || b < 0 || !(fromWidthMm > 0)) return undefined
+  return Math.round(fromWidthMm * SIZE_STEP_RATIO ** (b - a) * 10) / 10
+}
