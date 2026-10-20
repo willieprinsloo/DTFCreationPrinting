@@ -11,14 +11,16 @@ interface Props {
   expanded: boolean
   onVisible(): void
   onClick(): void
+  onDoubleClick?(): void
+  onPointerDown?(e: React.PointerEvent<HTMLButtonElement>): void
 }
 
-export function OrderCard({ order, name, files, thumbSrc, expanded, onVisible, onClick }: Props) {
+export function OrderCard({ order, name, files, thumbSrc, expanded, onVisible, onClick, onDoubleClick, onPointerDown }: Props) {
   const ref = useRef<HTMLButtonElement>(null)
   useOnVisible(ref, onVisible)
   const date = formatDate(order.createdAt)
   return (
-    <button ref={ref} type="button" className="order-card" aria-expanded={expanded} onClick={onClick}>
+    <button ref={ref} type="button" className="order-card" aria-expanded={expanded} onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}>
       <span className="order-card-thumb">{thumbSrc && <img src={thumbSrc} alt="" loading="lazy" draggable={false} />}</span>
       <strong>{order.orderNumber}</strong>
       <span className="muted">{name || 'Unknown customer'}</span>

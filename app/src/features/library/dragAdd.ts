@@ -20,6 +20,8 @@ export function beginLibraryDrag(
   e: { clientX: number; clientY: number; button: number },
   label: string,
   action: () => void,
+  /** Called on release with whether the press turned into a drag (so callers can swallow the click that follows). */
+  onEnd?: (dragged: boolean) => void,
 ): void {
   if (e.button !== 0) return
   const start = { x: e.clientX, y: e.clientY }
@@ -47,6 +49,7 @@ export function beginLibraryDrag(
   const up = (ev: PointerEvent) => {
     const dragged = ghost !== null
     cleanup()
+    onEnd?.(dragged)
     if (!dragged) return
     const canvas = document.querySelector('[data-testid="canvas-area"]')
     if (canvas && pointInRect({ x: ev.clientX, y: ev.clientY }, canvas.getBoundingClientRect())) action()

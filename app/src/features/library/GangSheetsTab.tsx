@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
-import type { OrderSummary } from '../../api/types'
+import type { OrderFile, OrderSummary } from '../../api/types'
 import { getSheetStore } from '../../state/sheetStore'
 import { OrderCard } from './OrderCard'
 import { Thumb } from './Thumb'
 import { beginLibraryDrag } from './dragAdd'
+import { fileCount } from './format'
 import { downloadOrderFiles, orderFileKey, type OrderFileRef } from './orderFileItems'
 import { useOrderDetails } from './queries/useOrderDetails'
 import { useOrdersQuery } from './queries/useOrdersQuery'
@@ -22,6 +23,8 @@ export function GangSheetsTab() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const justDragged = useRef(false)
   const latest = useLatest({ orders: query.items, details, selected })
 
   const expand = async (order: OrderSummary) => {
@@ -39,14 +42,9 @@ export function GangSheetsTab() {
     }
   }
 
-  const addSelected = async (keys: string[]) => {
-    const { orders, details: d } = latest.current
-    const refs: OrderFileRef[] = orders.flatMap((o) =>
-      (d.files[o.id] ?? [])
-        .map((file) => ({ order: o, file, customerName: d.customerName(o), key: orderFileKey(o.id, file) }))
-        .filter((r) => keys.includes(r.key)),
-    )
+  const addRefs = async (refs: OrderFileRef[]) => {
     setError(null)
+    setNotice(null)
     const res = await downloadOrderFiles(client, refs)
     if (res.authFailed) requireLogin()
     if (res.failed.length > 0) setError(`Couldn't download ${res.failed.join(', ')} — try again`)
@@ -54,6 +52,37 @@ export function GangSheetsTab() {
       getSheetStore().getState().addItems(res.items)
       setSelected((cur) => cur.filter((k) => !res.done.includes(k)))
     }
+  }
+
+  const addSelected = async (keys: string[]) => {
+    const { orders, details: d } = latest.current
+    await addRefs(
+      orders.flatMap((o) =>
+        (d.files[o.id] ?? [])
+          .map((file) => ({ order: o, file, customerName: d.customerName(o), key: orderFileKey(o.id, file) }))
+          .filter((r) => keys.includes(r.key)),
+      ),
+    )
+  }
+
+  /** Adds the ticked files of an order, or all of its files when none are ticked (loading them if needed). */
+  const addOrder = async (order: OrderSummary) => {
+    let files: OrderFile[]
+    try {
+      files = await details.loadFiles(order.id)
+    } catch (e) {
+      if (e instanceof AuthRequiredError) requireLogin()
+      setError(e instanceof Error ? e.message : String(e))
+      return
+    }
+    if (files.length === 0) {
+      setNotice(`Order ${order.orderNumber} has no print files yet`)
+      return
+    }
+    const ticked = files.filter((f) => latest.current.selected.includes(orderFileKey(order.id, f)))
+    const chosen = ticked.length > 0 ? ticked : files
+    const customerName = latest.current.details.customerName(order)
+    await addRefs(chosen.map((file) => ({ order, file, customerName, key: orderFileKey(order.id, file) })))
   }
 
   const toggle = (k: string) => setSelected((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
@@ -77,6 +106,7 @@ export function GangSheetsTab() {
         </button>
       </div>
       {shownError && <p className="inline-error">{shownError}</p>}
+      {notice && !shownError && <p className="muted" role="status">{notice}</p>}
       <div className="thumb-strip" onScroll={onScroll}>
         {query.items.map((o) => {
           const files = details.files[o.id]
@@ -89,7 +119,23 @@ export function GangSheetsTab() {
                 thumbSrc={files?.[0] ? client.absoluteUrl(files[0].printFileUrl) : undefined}
                 expanded={expanded === o.id}
                 onVisible={() => details.prefetch(o)}
-                onClick={() => void expand(o)}
+                onClick={() => {
+                  if (justDragged.current) return
+                  void expand(o)
+                }}
+                onDoubleClick={() => void addOrder(o)}
+                onPointerDown={(e) =>
+                  beginLibraryDrag(
+                    e,
+                    `${o.orderNumber} · ${files ? fileCount(files.length) : 'files'}`,
+                    () => void addOrder(o),
+                    (dragged) => {
+                      if (!dragged) return
+                      justDragged.current = true
+                      setTimeout(() => (justDragged.current = false), 0)
+                    },
+                  )
+                }
               />
               {expanded === o.id &&
                 (files ?? []).map((f) => {

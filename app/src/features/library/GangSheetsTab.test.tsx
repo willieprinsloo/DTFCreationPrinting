@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../platform/tauri', () => ({ cacheAsset: vi.fn(), importLocalFile: vi.fn(), assetSrc: (p: string) => p }))
@@ -156,5 +156,74 @@ describe('GangSheetsTab', () => {
     render(<GangSheetsTab />, { wrapper: withClient(client, requireLogin) })
     await waitFor(() => expect(requireLogin).toHaveBeenCalled())
     expect(screen.getByRole('button', { name: /#1/ })).toBeInTheDocument()
+  })
+  describe('dragging an order card', () => {
+    const files2 = [
+      { itemId: 'i1', printFileUrl: '/u/a.png', productType: 'g', sizeLabel: 'A' },
+      { itemId: 'i2', printFileUrl: '/u/b.png', productType: 'g', sizeLabel: 'B' },
+    ]
+    const ptr = (type: string, x: number, y: number) => fireEvent(window, Object.assign(new Event(type), { clientX: x, clientY: y }))
+    let canvas: HTMLDivElement
+    const setup = (files = files2) => {
+      vi.mocked(cacheAsset).mockResolvedValue({ assetId: 'as1', path: '/a.png', previewPath: '/a.jpg', widthPx: 300, heightPx: 300 })
+      canvas = document.createElement('div')
+      canvas.setAttribute('data-testid', 'canvas-area')
+      canvas.getBoundingClientRect = () => ({ left: 0, top: 0, right: 100, bottom: 50, x: 0, y: 0, width: 100, height: 50, toJSON() {} })
+      document.body.appendChild(canvas)
+      const client = fakeClient({
+        listOrders: vi.fn(async () => ({ items: [order], total: 1, page: 1, hasNext: false })),
+        getOrderFiles: vi.fn(async () => files),
+      })
+      render(<GangSheetsTab />, { wrapper: withClient(client) })
+      return client
+    }
+    const dragCard = async () => {
+      await screen.findByText('#1042')
+      const card = document.querySelector('.order-card') as HTMLElement
+      fireEvent.pointerDown(card, { clientX: 300, clientY: 300, button: 0 })
+      ptr('pointermove', 200, 200)
+      ptr('pointermove', 50, 20)
+      ptr('pointerup', 50, 20)
+      return card
+    }
+    afterEach(() => canvas.remove())
+
+    it('adds every file of the order when the card is dropped on the canvas', async () => {
+      const client = setup()
+      await dragCard()
+      await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(2))
+      expect(client.getOrderFiles).toHaveBeenCalledTimes(1)
+      expect(getSheetStore().getState().sheet.items[0].source).toMatchObject({ kind: 'order-file', orderNumber: '#1042' })
+    })
+
+    it('adds only the ticked files of that order', async () => {
+      setup()
+      await userEvent.click(await screen.findByRole('button', { name: /#1042/ }))
+      await userEvent.click(await screen.findByRole('button', { name: '#1042 B' }))
+      await dragCard()
+      await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(1))
+      expect(getSheetStore().getState().sheet.items[0].source).toMatchObject({ id: 'i2' })
+    })
+
+    it('double-click adds the order files', async () => {
+      setup()
+      await userEvent.dblClick(await screen.findByRole('button', { name: /#1042/ }))
+      await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(2))
+    })
+
+    it('a drag does not also expand the card', async () => {
+      setup()
+      const card = await dragCard()
+      fireEvent.click(card)
+      await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(2))
+      expect(card).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('says so when the order has no print files', async () => {
+      setup([])
+      await dragCard()
+      expect(await screen.findByText('Order #1042 has no print files yet')).toBeInTheDocument()
+      expect(getSheetStore().getState().sheet.items).toHaveLength(0)
+    })
   })
 })
