@@ -16,6 +16,8 @@ fn main() -> ExitCode {
         Some("inspect") if args.len() == 2 => inspect(Path::new(&args[1])),
         Some("preview") if args.len() >= 3 => preview(&args[1..]),
         Some("chart") if args.len() >= 3 && args[1] == "channels" => chart_channels(&args[2..]),
+        Some("chart") if args.len() >= 3 && args[1] == "white" => chart_white(&args[2..]),
+        Some("chart") if args.len() >= 3 && args[1] == "colour" => chart_colour(&args[2..]),
         _ => Err(USAGE.into()),
     };
     match r {
@@ -27,7 +29,7 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "usage:\n  prn-tool inspect <file>\n  prn-tool preview <file> <out.png> [--scale 0.1]\n  prn-tool chart channels <out.prn> [--width-mm 600]";
+const USAGE: &str = "usage:\n  prn-tool inspect <file>\n  prn-tool preview <file> <out.png> [--scale 0.1]\n  prn-tool chart channels <out.prn> [--width-mm 600]\n  prn-tool chart white <out.prn> [--width-mm 600]\n  prn-tool chart colour <out.prn> [--png chart.png] [--width-mm 600]";
 
 type R<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -215,5 +217,33 @@ fn chart_channels(args: &[String]) -> R<()> {
     wr.finish().map_err(|e| e.to_string())?;
     std::fs::rename(&part, &out)?;
     println!("wrote {} ({} lines x {} px)", out.display(), lines, w);
+    Ok(())
+}
+
+fn str_flag<'a>(args: &'a [String], name: &str) -> R<Option<&'a str>> {
+    match args.iter().position(|a| a == name) {
+        None => Ok(None),
+        Some(i) => Ok(Some(args.get(i + 1).ok_or(format!("{name} needs a value"))?.as_str())),
+    }
+}
+
+fn chart_white(args: &[String]) -> R<()> {
+    let out = PathBuf::from(&args[0]);
+    let width_mm = flag_value(args, "--width-mm")?.unwrap_or(600.0);
+    let (lines, w) = dtf_engine::charts::white_chart(&out, width_mm).map_err(|e| e.to_string())?;
+    println!("wrote {} ({} lines x {} px)", out.display(), lines, w);
+    println!("rows (top to bottom): white density 60, 80, 100 %; columns (left to right): choke 0, 0.1, 0.2, 0.4 mm");
+    Ok(())
+}
+
+fn chart_colour(args: &[String]) -> R<()> {
+    let out = PathBuf::from(&args[0]);
+    let width_mm = flag_value(args, "--width-mm")?.unwrap_or(600.0);
+    let png = str_flag(args, "--png")?.map(PathBuf::from);
+    let (lines, w) = dtf_engine::charts::colour_chart(&out, png.as_deref(), width_mm).map_err(|e| e.to_string())?;
+    println!("wrote {} ({} lines x {} px)", out.display(), lines, w);
+    if let Some(p) = png {
+        println!("wrote {} (280 x 200 mm at 508 dpi; print at 100 % size)", p.display());
+    }
     Ok(())
 }

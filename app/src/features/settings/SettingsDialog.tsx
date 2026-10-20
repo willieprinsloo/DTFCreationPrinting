@@ -3,6 +3,7 @@ import type { PrinterProfile } from '../../domain/types'
 import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import type { SettingsTab } from '../../state/uiStore'
+import { EngineSettings } from './EngineSettings'
 import { PrintSizesPanel } from './PrintSizesPanel'
 import { ScreenCalibration } from './ScreenCalibration'
 
@@ -16,6 +17,7 @@ interface Props {
 const TABS: Array<[SettingsTab, string]> = [
   ['general', 'General'],
   ['print-sizes', 'Print sizes'],
+  ['printer-ink', 'Printer & ink'],
 ]
 
 function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile; canRemove: boolean; onDone(): void }) {
@@ -172,6 +174,7 @@ export function SettingsDialog({ initialTab = 'general', onClose }: Props) {
         </div>
 
         {tab === 'print-sizes' && <PrintSizesPanel />}
+        {tab === 'printer-ink' && <EngineSettings />}
         {tab === 'general' && (
           <>
           <section className="settings-section">

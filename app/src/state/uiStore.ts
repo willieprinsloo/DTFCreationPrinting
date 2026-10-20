@@ -1,7 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 
-export type SettingsTab = 'general' | 'print-sizes'
+export type SettingsTab = 'general' | 'print-sizes' | 'printer-ink'
 
 interface UiState {
   /** Open Settings page, or null when Settings is closed. */

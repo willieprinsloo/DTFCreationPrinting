@@ -1,3 +1,4 @@
+pub mod charts;
 pub mod colour;
 pub mod compose;
 pub mod prn;
