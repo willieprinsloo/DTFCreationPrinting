@@ -86,15 +86,44 @@ describe('sheetStore', () => {
     expect(findProblems(sheet)).toEqual([{ kind: 'outside', itemId: sheet.items[0].id }])
   })
 
-  it('resizeItem keeps aspect by default', () => {
+  it('resizeItem always keeps the asset aspect, even if the item was distorted', () => {
     const store = fresh()
     store.getState().addItems([mk(1, 100, 50)])
     const id = store.getState().sheet.items[0].id
     store.getState().resizeItem(id, 200)
     const it = store.getState().sheet.items[0]
     expect([it.widthMm, it.heightMm]).toEqual([200, 100])
-    store.getState().resizeItem(id, 50, false)
-    expect([store.getState().sheet.items[0].widthMm, store.getState().sheet.items[0].heightMm]).toEqual([50, 100])
+    store.setState({ sheet: { ...store.getState().sheet, items: [{ ...it, heightMm: 300 }] } })
+    store.getState().resizeItem(id, 50)
+    expect([store.getState().sheet.items[0].widthMm, store.getState().sheet.items[0].heightMm]).toEqual([50, 25])
+  })
+
+  it('updateItem normalises size patches to the asset aspect', () => {
+    const store = fresh()
+    store.getState().addItems([mk(1, 100, 50)])
+    const id = store.getState().sheet.items[0].id
+    store.getState().updateItem(id, { widthMm: 80, heightMm: 400 })
+    expect(store.getState().sheet.items[0]).toMatchObject({ widthMm: 80, heightMm: 40 })
+    store.getState().updateItem(id, { heightMm: 100 })
+    expect(store.getState().sheet.items[0]).toMatchObject({ widthMm: 200, heightMm: 100 })
+  })
+
+  it('updateItems normalises size patches in one undo step', () => {
+    const store = fresh()
+    store.getState().addItems([mk(2, 100, 50)])
+    const [a, b] = store.getState().sheet.items.map((i) => i.id)
+    store.getState().updateItems([{ id: a, patch: { widthMm: 40, heightMm: 999 } }, { id: b, patch: { widthMm: 60 } }])
+    expect(store.getState().sheet.items.map((i) => [i.widthMm, i.heightMm])).toEqual([[40, 20], [60, 30]])
+    store.getState().undo()
+    expect(store.getState().sheet.items.map((i) => [i.widthMm, i.heightMm])).toEqual([[100, 50], [100, 50]])
+  })
+
+  it('loadSheet normalises distorted items (keeps width, fixes height)', () => {
+    const store = fresh()
+    store.getState().addItems([mk(1, 100, 50)])
+    const sheet = store.getState().sheet
+    store.getState().loadSheet({ ...sheet, items: [{ ...sheet.items[0], widthMm: 120, heightMm: 500 }] })
+    expect(store.getState().sheet.items[0]).toMatchObject({ widthMm: 120, heightMm: 60 })
   })
 
   it('setSettings throws on invalid margins and leaves state unchanged', () => {

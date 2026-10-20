@@ -75,3 +75,37 @@ export function findProblems(sheet: Sheet): Problem[] {
   }
   return problems
 }
+
+type Sized = Pick<SheetItem, 'asset' | 'widthMm' | 'heightMm'>
+
+/** Print aspect (height / width) is always the source image's; falls back to the item's own if the asset has no size. */
+function aspect(item: Sized): number {
+  const { widthPx, heightPx } = item.asset
+  return widthPx > 0 && heightPx > 0 ? heightPx / widthPx : item.heightMm / item.widthMm
+}
+
+export const heightForWidth = (item: Sized, widthMm: number): number => widthMm * aspect(item)
+export const widthForHeight = (item: Sized, heightMm: number): number => heightMm / aspect(item)
+
+/**
+ * New print size after a canvas transform. Scales on both axes may disagree (side handles); the one that moved
+ * furthest from 1 wins and the height is derived from the width.
+ */
+export function sizeAfterTransform(item: Sized, scaleX: number, scaleY: number): { widthMm: number; heightMm: number } {
+  const sx = Math.abs(scaleX)
+  const sy = Math.abs(scaleY)
+  const widthMm = Math.abs(sy - 1) > Math.abs(sx - 1) ? widthForHeight(item, item.heightMm * sy) : item.widthMm * sx
+  return { widthMm, heightMm: heightForWidth(item, widthMm) }
+}
+
+/** Keeps each item's width and re-derives its height; returns the same sheet when nothing was distorted. */
+export function normaliseSheetAspect(sheet: Sheet): Sheet {
+  let changed = false
+  const items = sheet.items.map((it) => {
+    const heightMm = heightForWidth(it, it.widthMm)
+    if (Math.abs(heightMm - it.heightMm) < 1e-6) return it
+    changed = true
+    return { ...it, heightMm }
+  })
+  return changed ? { ...sheet, items } : sheet
+}

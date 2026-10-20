@@ -2,7 +2,7 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import { temporal } from 'zundo'
 import type { Asset, PrinterProfile, Sheet, SheetItem, SheetSettings, SourceRef } from '../domain/types'
-import { itemBounds, printableArea } from '../domain/geometry'
+import { heightForWidth, itemBounds, normaliseSheetAspect, printableArea, widthForHeight } from '../domain/geometry'
 import { autoPlace, type Placement } from '../domain/autoplace'
 
 export interface NewItem {
@@ -27,7 +27,8 @@ export interface SheetActions {
   updateItem(id: string, patch: ItemPatch): void
   /** Applies several patches as a single undo step. */
   updateItems(patches: Array<{ id: string; patch: ItemPatch }>): void
-  resizeItem(id: string, widthMm: number, keepAspect?: boolean): void
+  /** Sets the print width; height always follows the asset aspect. */
+  resizeItem(id: string, widthMm: number): void
   /** Changes a product's garment size: new width (aspect kept, centre fixed), source size and label — one undo step. */
   setItemSize(id: string, size: string | null, widthMm: number): void
   removeItems(ids: string[]): void
@@ -45,6 +46,17 @@ export interface SheetActions {
 export type SheetState = SheetData & SheetActions
 
 const DUPLICATE_OFFSET_MM = 10
+
+/** Applies a patch; any size change is normalised so height = heightForWidth(width) (height-only patches derive width). */
+function applyPatch(it: SheetItem, patch: ItemPatch): SheetItem {
+  const next = { ...it, ...patch }
+  if (patch.widthMm !== undefined) next.heightMm = heightForWidth(next, next.widthMm)
+  else if (patch.heightMm !== undefined) {
+    next.widthMm = widthForHeight(next, next.heightMm)
+    next.heightMm = heightForWidth(next, next.widthMm)
+  }
+  return next
+}
 
 function makeSheet(profile: PrinterProfile, name = 'Untitled sheet'): Sheet {
   return {
@@ -114,7 +126,7 @@ export function createSheetStore() {
             store.temporal.getState().clear()
           },
           loadSheet(sheet) {
-            set({ sheet, selectedIds: [] })
+            set({ sheet: normaliseSheetAspect(sheet), selectedIds: [] })
             store.temporal.getState().clear()
           },
           addItems(newItems) {
@@ -146,7 +158,7 @@ export function createSheetStore() {
             setSheet({ ...sheet, items: [...sheet.items, ...placed] })
           },
           updateItem(id, patch) {
-            mapItems((it) => (it.id === id ? { ...it, ...patch } : it))
+            mapItems((it) => (it.id === id ? applyPatch(it, patch) : it))
           },
           updateItems(patches) {
             if (patches.length === 0) return
@@ -154,20 +166,16 @@ export function createSheetStore() {
             for (const { id, patch } of patches) byId.set(id, { ...byId.get(id), ...patch })
             mapItems((it) => {
               const patch = byId.get(it.id)
-              return patch ? { ...it, ...patch } : it
+              return patch ? applyPatch(it, patch) : it
             })
           },
-          resizeItem(id, widthMm, keepAspect = true) {
-            mapItems((it) =>
-              it.id === id
-                ? { ...it, widthMm, heightMm: keepAspect ? (widthMm * it.heightMm) / it.widthMm : it.heightMm }
-                : it,
-            )
+          resizeItem(id, widthMm) {
+            mapItems((it) => (it.id === id ? applyPatch(it, { widthMm }) : it))
           },
           setItemSize(id, size, widthMm) {
             mapItems((it) => {
               if (it.id !== id) return it
-              const heightMm = (widthMm * it.heightMm) / it.widthMm
+              const heightMm = heightForWidth(it, widthMm)
               const old = it.source.size
               const suffix = old ? ` — ${old}` : ''
               const name = suffix && it.source.label.endsWith(suffix) ? it.source.label.slice(0, -suffix.length) : it.source.label

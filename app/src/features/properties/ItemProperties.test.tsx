@@ -42,6 +42,47 @@ describe('ItemProperties', () => {
     expect(item().heightMm).toBeCloseTo(254)
   })
 
+  it('derives width from height and shows no lock toggle', async () => {
+    render(<ItemProperties ids={[id]} />)
+    expect(screen.queryByRole('button', { name: /lock aspect/i })).toBeNull()
+    expect(screen.getByText('Proportions locked')).toBeInTheDocument()
+    const h = screen.getByLabelText('Height')
+    await userEvent.clear(h)
+    await userEvent.type(h, '5{Enter}')
+    expect(item().heightMm).toBeCloseTo(50)
+    expect(item().widthMm).toBeCloseTo(100)
+  })
+
+  it('width stays aspect-locked even for a previously distorted item', async () => {
+    getSheetStore().getState().updateItem(id, { rotationDeg: 0 })
+    const sh = getSheetStore().getState().sheet
+    getSheetStore().setState({ sheet: { ...sh, items: [{ ...sh.items[0], heightMm: 999 }] } })
+    render(<ItemProperties ids={[id]} />)
+    const w = screen.getByLabelText('Width')
+    await userEvent.clear(w)
+    await userEvent.type(w, '10{Enter}')
+    expect(item().heightMm).toBeCloseTo(50)
+  })
+
+  it('multi-select width applies to all selected in one undo step, keeping centres', async () => {
+    getSheetStore().getState().addItems([{ asset, source, widthMm: 254, heightMm: 127, quantity: 1 }])
+    const ids = getSheetStore().getState().sheet.items.map((i) => i.id)
+    const centres = getSheetStore().getState().sheet.items.map((i) => [i.xMm + i.widthMm / 2, i.yMm + i.heightMm / 2])
+    render(<ItemProperties ids={ids} />)
+    const w = screen.getByLabelText('Width for all selected (cm)')
+    await userEvent.clear(w)
+    await userEvent.type(w, '10{Enter}')
+    const items = getSheetStore().getState().sheet.items
+    items.forEach((i, n) => {
+      expect(i.widthMm).toBeCloseTo(100)
+      expect(i.heightMm).toBeCloseTo(50)
+      expect(i.xMm + i.widthMm / 2).toBeCloseTo(centres[n][0])
+      expect(i.yMm + i.heightMm / 2).toBeCloseTo(centres[n][1])
+    })
+    getSheetStore().getState().undo()
+    expect(getSheetStore().getState().sheet.items.map((i) => i.widthMm)).toEqual([254, 254])
+  })
+
   it('rotates by 90 and duplicates / deletes', async () => {
     render(<ItemProperties ids={[id]} />)
     await userEvent.click(screen.getByRole('button', { name: 'Rotate right 90 degrees' }))
@@ -54,6 +95,7 @@ describe('ItemProperties', () => {
     render(<ItemProperties ids={['x', 'y']} />)
     expect(screen.getByText('2 designs selected')).toBeInTheDocument()
     expect(screen.queryByLabelText('Width')).toBeNull()
+    expect(screen.getByLabelText('Width for all selected (cm)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Delete/ })).toBeInTheDocument()
   })
 
@@ -72,8 +114,8 @@ describe('ItemProperties', () => {
     expect(item().rotationDeg).toBe(270)
   })
 
-  it('uses the lower axis for dpi (150 dpi is Low)', () => {
-    getSheetStore().getState().updateItem(id, { widthMm: 254, heightMm: 254 })
+  it('150 dpi is Low (size is always aspect-locked, so both axes agree)', () => {
+    getSheetStore().getState().updateItem(id, { widthMm: 508 })
     render(<ItemProperties ids={[id]} />)
     expect(screen.getByText('150 dpi')).toBeInTheDocument()
     expect(screen.getByText('Low')).toBeInTheDocument()

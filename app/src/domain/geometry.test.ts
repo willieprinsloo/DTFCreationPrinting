@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { InvalidSheetError, findProblems, itemBounds, printableArea, sheetLengthMm, displayLengthMm } from './geometry'
+import { InvalidSheetError, findProblems, itemBounds, printableArea, sheetLengthMm, displayLengthMm, heightForWidth, widthForHeight, sizeAfterTransform } from './geometry'
 import type { Sheet, SheetItem, SheetSettings } from './types'
 
 const m = (n: number) => ({ topMm: n, rightMm: n, bottomMm: n, leftMm: n })
@@ -91,5 +91,20 @@ describe('displayLengthMm', () => {
   })
   it('fixed: exactly the fixed length, no minimum', () => {
     expect(displayLengthMm(sheet([], settings({ lengthMode: 'fixed', fixedLengthMm: 800 })), 1000)).toBe(800)
+  })
+})
+
+describe('aspect helpers', () => {
+  const it0 = { asset: { assetId: 'a', path: '', previewPath: '', widthPx: 3000, heightPx: 1500 }, widthMm: 100, heightMm: 80 } as unknown as SheetItem
+  it('derive from the asset aspect, not the current item size', () => {
+    expect(heightForWidth(it0, 200)).toBe(100)
+    expect(widthForHeight(it0, 100)).toBe(200)
+  })
+  it('sizeAfterTransform ignores mismatched scales and yields the asset aspect', () => {
+    const r = sizeAfterTransform(it0, 2, 1.1)
+    expect(r.widthMm).toBe(200)
+    expect(r.heightMm).toBe(100)
+    const r2 = sizeAfterTransform(it0, 1, 2)
+    expect(r2.heightMm / r2.widthMm).toBeCloseTo(0.5)
   })
 })

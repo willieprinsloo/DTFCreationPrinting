@@ -3,7 +3,7 @@ import { Layer, Rect, Shape, Stage, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
-import { findProblems, itemBounds, printableArea, displayLengthMm } from '../../domain/geometry'
+import { findProblems, itemBounds, printableArea, displayLengthMm, sizeAfterTransform } from '../../domain/geometry'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
 import { snapPosition } from '../../domain/snapping'
 import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/types'
@@ -270,8 +270,7 @@ export function SheetCanvas() {
   }, [queuePatch])
 
   const onTransformEnd = useCallback((item: SheetItem, node: Konva.Group) => {
-    const widthMm = item.widthMm * Math.abs(node.scaleX())
-    const heightMm = item.heightMm * Math.abs(node.scaleY())
+    const { widthMm, heightMm } = sizeAfterTransform(item, node.scaleX(), node.scaleY())
     node.scale({ x: 1, y: 1 })
     const rotationDeg = ((node.rotation() % 360) + 360) % 360
     queuePatch(item.id, {
@@ -409,7 +408,6 @@ export function SheetCanvas() {
             <Transformer
               ref={transformerRef}
               keepRatio
-              shiftBehavior="inverted"
               rotationSnaps={ROTATION_SNAPS}
               rotationSnapTolerance={ROTATION_SNAP_TOLERANCE_DEG}
               borderStroke={colors.accent}

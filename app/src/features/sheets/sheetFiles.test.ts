@@ -115,3 +115,12 @@ describe('adoptActiveProfile (startup sheet)', () => {
     expect(getSheetStore().getState().sheet).toBe(withItem)
   })
 })
+
+describe('parseSheet aspect normalisation', () => {
+  it('fixes a distorted item height on load', () => {
+    const items = [{ id: 'i', asset: { assetId: 'a', path: '', previewPath: '', widthPx: 1000, heightPx: 500 }, source: { kind: 'local', id: 's', label: 'x' }, xMm: 0, yMm: 0, widthMm: 100, heightMm: 400, rotationDeg: 0, whiteEnabled: true }]
+    const sheet = { id: 'a', name: 'n', profileId: 'p', settings: { widthMm: 600, margins: {} }, items }
+    const out = parseSheet(JSON.stringify({ format: 'dtf-print-studio-sheet', version: 1, sheet }))
+    expect(out.items[0].heightMm).toBe(50)
+  })
+})

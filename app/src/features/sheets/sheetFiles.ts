@@ -1,4 +1,5 @@
 import { ask, open, save } from '@tauri-apps/plugin-dialog'
+import { normaliseSheetAspect } from '../../domain/geometry'
 import type { Sheet } from '../../domain/types'
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
@@ -32,7 +33,7 @@ export function parseSheet(text: string): Sheet {
     typeof sh.settings.margins === 'object' &&
     Array.isArray(sh.items)
   if (!valid) throw new Error('Not a DTF Print Studio sheet')
-  return sh as Sheet
+  return normaliseSheetAspect(sh as Sheet)
 }
 
 export const sanitizeName = (name: string) => name.replace(/[^A-Za-z0-9 _-]/g, '').trim()
