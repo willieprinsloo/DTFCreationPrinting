@@ -1,5 +1,8 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
+import { TopBar } from "./features/topbar/TopBar";
+import { PropertiesPanel } from "./features/properties/PropertiesPanel";
+import { StatusBar } from "./features/status/StatusBar";
 import { lazy, Suspense } from "react";
 
 // react-konva needs a real canvas; jsdom tests render the shell without it.
@@ -12,7 +15,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="region topbar" data-testid="topbar">
-        DTF Print Studio
+        <TopBar />
       </header>
       <main className="region canvas-area" data-testid="canvas-area">
         {SheetCanvas ? (
@@ -24,13 +27,13 @@ export default function App() {
         )}
       </main>
       <aside className="region properties-panel" data-testid="properties-panel">
-        Properties
+        <PropertiesPanel />
       </aside>
       <section className="region library-drawer" data-testid="library-drawer">
         Library
       </section>
       <footer className="region status-bar" data-testid="status-bar">
-        Ready
+        <StatusBar />
       </footer>
     </div>
   );
