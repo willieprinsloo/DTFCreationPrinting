@@ -67,7 +67,7 @@ export function GangSheetsTab() {
   return (
     <div className="library-tab">
       <div className="library-toolbar">
-        <input type="search" placeholder="Search orders" aria-label="Search orders" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="search" placeholder="Order no. or delivery name" aria-label="Search orders" value={search} onChange={(e) => setSearch(e.target.value)} />
         <label className="dialog-check">
           <input type="checkbox" checked={inProduction} onChange={(e) => setInProduction(e.target.checked)} /> Include in production
         </label>

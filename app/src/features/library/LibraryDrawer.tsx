@@ -25,6 +25,7 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+        if (document.querySelector('.dialog')) return
         e.preventDefault()
         setBrowserOpen(true)
       }

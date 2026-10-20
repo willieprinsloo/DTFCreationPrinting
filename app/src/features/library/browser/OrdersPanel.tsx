@@ -68,6 +68,12 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
     selection.toggleAll(refsOf(o, await filesFor(o)))
   }
   const selectPage = async (on: boolean) => {
+    if (!on) {
+      // Deselecting needs no file lists: drop every selected file that belongs to this page's orders.
+      const ids = new Set(query.items.map((o) => o.id))
+      selection.remove([...selection.map.entries()].filter(([, r]) => ids.has(r.order.id)).map(([k]) => k))
+      return
+    }
     const lists = await Promise.all(query.items.map(async (o) => refsOf(o, await filesFor(o))))
     selection.setMany(lists.flat(), on)
   }
@@ -154,6 +160,7 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
   return (
     <BrowserLayout
       searchLabel="Search orders"
+      searchPlaceholder="Order no. or delivery name"
       search={search}
       onSearch={setSearch}
       noun="orders"

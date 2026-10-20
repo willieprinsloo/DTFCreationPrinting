@@ -8,6 +8,8 @@ export interface PagingInfo { page: number; offset: number; count: number; total
 
 interface Props {
   searchLabel: string
+  /** Placeholder text; defaults to the label. */
+  searchPlaceholder?: string
   search: string
   onSearch(v: string): void
   /** Filter selects shown after the search box. */
@@ -36,7 +38,7 @@ export function BrowserLayout(p: Props) {
         <input
           type="search"
           autoFocus
-          placeholder={p.searchLabel}
+          placeholder={p.searchPlaceholder ?? p.searchLabel}
           aria-label={p.searchLabel}
           value={p.search}
           onChange={(e) => p.onSearch(e.target.value)}

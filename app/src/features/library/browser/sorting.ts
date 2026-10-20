@@ -11,14 +11,12 @@ export function sortItems<T>(items: T[], by: 'newest' | 'oldest' | ((x: T) => st
   return copy.sort((a, b) => collator.compare(by(a), by(b)))
 }
 
-const isoDate = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
-/** The `date_from` (local calendar date) for an order date filter. */
+/** The `date_from` for an order date filter: local midnight as a full ISO timestamp (a bare date would mean UTC midnight). */
 export function dateFromFor(filter: OrderDateFilter, now = new Date()): string | undefined {
   const days = { today: 0, '7d': 7, '30d': 30, all: null }[filter]
   if (days === null) return undefined
   const d = new Date(now)
   d.setDate(d.getDate() - days)
-  return isoDate(d)
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
 }

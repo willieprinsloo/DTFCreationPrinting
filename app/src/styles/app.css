@@ -487,6 +487,13 @@ button.danger {
   background: var(--surface-alt);
 }
 
+.thumb-placeholder {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--surface-alt);
+}
+
 .thumb-caption {
   font-size: var(--font-size-small);
   overflow: hidden;

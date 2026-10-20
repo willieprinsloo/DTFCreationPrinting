@@ -63,6 +63,16 @@ describe('LibraryBrowser', () => {
     expect(screen.getByRole('dialog', { name: 'Library browser' })).toBeInTheDocument()
   })
 
+  it('ignores ⌘F while a dialog is open', () => {
+    open(fakeClient())
+    const dialog = document.createElement('div')
+    dialog.className = 'dialog'
+    document.body.appendChild(dialog)
+    fireEvent.keyDown(window, { key: 'f', metaKey: true })
+    expect(screen.queryByRole('dialog', { name: 'Library browser' })).toBeNull()
+    dialog.remove()
+  })
+
   it('asks for designs newest first', async () => {
     const client = fakeClient()
     open(client)
@@ -81,12 +91,41 @@ describe('LibraryBrowser', () => {
       expect(client.listOrders).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'confirmed', sort: 'created_at', order: 'desc', limit: 50 })),
     )
     await userEvent.selectOptions(within(dlg).getByLabelText('Date'), '7d')
-    await waitFor(() => expect(client.listOrders).toHaveBeenLastCalledWith(expect.objectContaining({ dateFrom: '2026-10-13' })))
+    await waitFor(() => expect(client.listOrders).toHaveBeenLastCalledWith(expect.objectContaining({ dateFrom: new Date(2026, 9, 13).toISOString() })))
     vi.mocked(client.listOrders).mockClear()
     await userEvent.selectOptions(within(dlg).getByLabelText('Status'), 'both')
     await waitFor(() => expect(client.listOrders).toHaveBeenCalledTimes(2))
     expect(vi.mocked(client.listOrders).mock.calls.map((c) => c[0].status).sort()).toEqual(['confirmed', 'in_production'])
     expect(within(dlg).getByText(/Filtered by Status: Confirmed \+ in production · Date: Last 7 days/)).toBeInTheDocument()
+  })
+
+  it('orders: untick-all on the page deselects without fetching files', async () => {
+    const getOrderFiles = vi.fn(async () => [{ itemId: 'i1', printFileUrl: '/u/a.png', productType: 'g', sizeLabel: 'A4' }])
+    open(fakeClient({ listOrders: page([order]), getOrderFiles }))
+    const dlg = await popOut()
+    await showTab(dlg, 'Gang sheets')
+    await userEvent.click(await within(dlg).findByRole('checkbox', { name: '#1042 Acme' }))
+    expect(await within(dlg).findByText('1 selected')).toBeInTheDocument()
+    getOrderFiles.mockClear()
+    getOrderFiles.mockImplementation(() => new Promise<never>(() => {}))
+    await userEvent.click(within(dlg).getByLabelText('Select all on page'))
+    await waitFor(() => expect(within(dlg).queryByText('1 selected')).toBeNull())
+    expect(getOrderFiles).not.toHaveBeenCalled()
+  })
+
+  it('orders search placeholder names the searchable fields', async () => {
+    open(fakeClient())
+    const dlg = await popOut()
+    await showTab(dlg, 'Gang sheets')
+    expect(within(dlg).getByLabelText('Search orders')).toHaveAttribute('placeholder', 'Order no. or delivery name')
+  })
+
+  it('renders with corrupted saved prefs by falling back to defaults', async () => {
+    await getSettingsStore().getState().setLibraryPrefs({ view: 'bogus', pageSize: 7, orders: { status: 'nope', date: 'x', sort: 'y' }, products: { sort: 'z' } } as never)
+    expect(getSettingsStore().getState().libraryPrefs).toEqual(DEFAULT_LIBRARY_PREFS)
+    open(fakeClient({ listProducts: page([product('p1', 'Tee')]) }))
+    const dlg = await popOut()
+    expect(await within(dlg).findByRole('checkbox', { name: 'Tee' })).toBeInTheDocument()
   })
 
   it('products: Status Live maps to active; Clear filters resets and persists', async () => {

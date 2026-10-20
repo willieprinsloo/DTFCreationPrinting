@@ -19,7 +19,7 @@ export function Thumb({ src, label, caption, selected, onToggle, onPointerDown }
       onClick={onToggle}
       onPointerDown={onPointerDown}
     >
-      <img src={src} alt="" loading="lazy" draggable={false} />
+      {src ? <img src={src} alt="" loading="lazy" draggable={false} /> : <span className="thumb-placeholder" data-testid="thumb-placeholder" />}
       <span className="thumb-caption">{caption ?? label}</span>
     </button>
   )

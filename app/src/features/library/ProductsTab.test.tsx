@@ -36,6 +36,13 @@ describe('ProductsTab', () => {
     expect(btn.querySelector('img')).toHaveAttribute('src', 'https://x.test/uploads/t.png')
   })
 
+  it('products without a thumbnail get a placeholder instead of an empty img', async () => {
+    render(<ProductsTab />, { wrapper: withClient(fakeClient({ listProducts: list([{ ...tee, thumbnailUrl: undefined as never }]) })) })
+    const btn = await screen.findByRole('button', { name: 'Tee' })
+    expect(btn.querySelector('img')).toBeNull()
+    expect(screen.getByTestId('thumb-placeholder')).toBeInTheDocument()
+  })
+
   it('opens the dialog on Add; a product without a design file cannot be added', async () => {
     const client = fakeClient({ listProducts: list(), getProductPrintSource: vi.fn(async () => ({ designUrl: null, sizes: ['M'] })) })
     render(<ProductsTab />, { wrapper: withClient(client) })

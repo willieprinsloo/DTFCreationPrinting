@@ -42,14 +42,46 @@ export const DEFAULT_LIBRARY_PREFS: LibraryPrefs = {
   orders: DEFAULT_ORDER_PREFS,
 }
 
-/** Merges a patch (or older saved prefs) over a base, one level deep per tab. */
-export function mergeLibraryPrefs(base: LibraryPrefs, patch: LibraryPrefsPatch | undefined): LibraryPrefs {
-  if (!patch) return base
+const oneOf = <T extends string | number>(v: unknown, allowed: readonly T[], dflt: T): T => (allowed.includes(v as T) ? (v as T) : dflt)
+const str = (v: unknown, dflt: string) => (typeof v === 'string' ? v : dflt)
+
+/** Replaces any value outside its allowed set (e.g. from corrupted or older saved settings) with the default. */
+function sanitize(p: LibraryPrefs): LibraryPrefs {
+  const D = DEFAULT_LIBRARY_PREFS
   return {
+    view: oneOf(p.view, ['grid', 'list'], D.view),
+    thumbSize: oneOf(p.thumbSize, ['S', 'M', 'L'], D.thumbSize),
+    pageSize: oneOf(p.pageSize, PAGE_SIZES, D.pageSize),
+    products: {
+      categoryId: str(p.products?.categoryId, D.products.categoryId),
+      status: oneOf(p.products?.status, ['', 'draft', 'active', 'archived'], D.products.status),
+      sort: oneOf(p.products?.sort, ['newest', 'oldest', 'name', 'type'], D.products.sort),
+    },
+    designs: {
+      customerId: str(p.designs?.customerId, D.designs.customerId),
+      customerName: str(p.designs?.customerName, D.designs.customerName),
+      designType: str(p.designs?.designType, D.designs.designType),
+      categoryId: str(p.designs?.categoryId, D.designs.categoryId),
+      sort: oneOf(p.designs?.sort, ['newest', 'oldest', 'name'], D.designs.sort),
+    },
+    orders: {
+      status: oneOf(p.orders?.status, ['confirmed', 'in_production', 'both'], D.orders.status),
+      date: oneOf(p.orders?.date, ['today', '7d', '30d', 'all'], D.orders.date),
+      sort: oneOf(p.orders?.sort, ['newest', 'oldest', 'number', 'customer'], D.orders.sort),
+    },
+  }
+}
+
+const obj = (v: unknown) => (v && typeof v === 'object' ? (v as object) : {})
+
+/** Merges a patch (or older saved prefs) over a base, one level deep per tab; invalid values fall back to defaults. */
+export function mergeLibraryPrefs(base: LibraryPrefs, patch: LibraryPrefsPatch | undefined): LibraryPrefs {
+  if (!patch || typeof patch !== 'object') return base
+  return sanitize({
     ...base,
     ...patch,
-    products: { ...base.products, ...patch.products },
-    designs: { ...base.designs, ...patch.designs },
-    orders: { ...base.orders, ...patch.orders },
-  }
+    products: { ...base.products, ...obj(patch.products) },
+    designs: { ...base.designs, ...obj(patch.designs) },
+    orders: { ...base.orders, ...obj(patch.orders) },
+  })
 }
