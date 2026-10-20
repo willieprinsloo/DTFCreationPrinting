@@ -7,7 +7,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { DtfClientProvider } from "./api/DtfClientContext";
 import { LibraryDrawer } from "./features/library/LibraryDrawer";
 import { useSettings } from "./state/settingsStore";
-import { PreflightDialog } from "./features/prn/PreflightDialog";
+import { PreflightDialog } from "./features/preflight/PreflightDialog";
 import { installCloseGuard } from "./features/sheets/closeGuard";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { uiStore, useUi } from "./state/uiStore";

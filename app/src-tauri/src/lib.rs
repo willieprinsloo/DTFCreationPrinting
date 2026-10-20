@@ -2,6 +2,8 @@ use tauri::Manager;
 
 mod assets;
 mod credentials;
+// "prn" is a reserved device name on Windows, so the file can't be prn.rs.
+#[path = "prn_jobs.rs"]
 mod prn;
 mod sheet_files;
 

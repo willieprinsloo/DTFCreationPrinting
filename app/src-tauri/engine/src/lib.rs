@@ -2,6 +2,8 @@ pub mod charts;
 pub mod colour;
 pub mod compose;
 pub mod pdf;
+// "prn" is a reserved device name on Windows, so the files can't live at prn/.
+#[path = "prn_format/mod.rs"]
 pub mod prn;
 pub mod profile;
 pub mod screen;
