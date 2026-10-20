@@ -3,6 +3,8 @@ use image::ImageReader;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io;
+use std::time::Duration;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
@@ -54,7 +56,11 @@ pub fn ensure_preview(src: &Path, dst: &Path, max_side: u32) -> Result<(), Strin
         fs::copy(src, &tmp).map_err(|e| format!("Could not write preview: {e}"))?;
     } else {
         let mut reader = ImageReader::open(src).map_err(|e| format!("Could not open image: {e}"))?;
-        reader.no_limits();
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(30000);
+        limits.max_image_height = Some(30000);
+        limits.max_alloc = Some(2 * 1024 * 1024 * 1024);
+        reader.limits(limits);
         let img = reader
             .with_guessed_format()
             .map_err(|e| format!("Could not read image: {e}"))?
@@ -66,12 +72,9 @@ pub fn ensure_preview(src: &Path, dst: &Path, max_side: u32) -> Result<(), Strin
             let scale = max_side as f64 / w.max(h) as f64;
             let nw = ((w as f64 * scale).round() as u32).max(1);
             let nh = ((h as f64 * scale).round() as u32).max(1);
-            image::DynamicImage::ImageRgba8(image::imageops::resize(
-                &img.to_rgba8(),
-                nw,
-                nh,
-                FilterType::Triangle,
-            ))
+            let resized = image::imageops::resize(&img, nw, nh, FilterType::Triangle);
+            drop(img);
+            image::DynamicImage::ImageRgba8(resized)
         };
         out.save_with_format(&tmp, image::ImageFormat::Png)
             .map_err(|e| format!("Could not write preview: {e}"))?;
@@ -114,23 +117,42 @@ fn url_extension(url: &str) -> Result<String, String> {
     supported_ext(ext)
 }
 
+/// Rejects files whose header cannot be read as an image.
+fn validate_image(path: &Path) -> Result<(), String> {
+    read_dimensions(path)
+        .map(|_| ())
+        .map_err(|_| "Downloaded file is not a valid image".to_string())
+}
+
 fn download_into(dir: &Path, url: &str, bearer: Option<&str>, name: &str) -> Result<PathBuf, String> {
     let dest = dir.join(name);
     if dest.exists() {
         return Ok(dest);
     }
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(None)
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Download failed: {e}"))?;
     let mut req = client.get(url);
     if let Some(t) = bearer {
         req = req.bearer_auth(t);
     }
-    let resp = req.send().map_err(|e| format!("Download failed: {e}"))?;
+    let mut resp = req.send().map_err(|e| format!("Download failed: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("Download failed (HTTP {})", resp.status().as_u16()));
     }
-    let bytes = resp.bytes().map_err(|e| format!("Download failed: {e}"))?;
     let tmp = dir.join(format!("{name}.tmp"));
-    fs::write(&tmp, &bytes).map_err(|e| format!("Could not save download: {e}"))?;
+    let result = (|| {
+        let mut f = fs::File::create(&tmp).map_err(|e| format!("Could not save download: {e}"))?;
+        io::copy(&mut resp, &mut f).map_err(|e| format!("Download failed: {e}"))?;
+        drop(f);
+        validate_image(&tmp)
+    })();
+    if let Err(e) = result {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
     fs::rename(&tmp, &dest).map_err(|e| format!("Could not save download: {e}"))?;
     Ok(dest)
 }
@@ -146,7 +168,9 @@ pub async fn cache_asset(
         let ext = url_extension(&url)?;
         let name = cache_file_name(url.as_bytes(), &ext);
         let file = download_into(&dir, &url, bearer.as_deref(), &name)?;
-        build_info(&file)
+        build_info(&file).inspect_err(|_| {
+            let _ = fs::remove_file(&file);
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -215,6 +239,16 @@ mod tests {
         let out = d.path().join("s.preview.png");
         ensure_preview(&p, &out, 2048).unwrap();
         assert_eq!(read_dimensions(&out).unwrap(), (500, 500));
+    }
+
+    #[test]
+    fn validate_image_rejects_non_image() {
+        let d = tempfile::tempdir().unwrap();
+        let bad = d.path().join("x.tmp");
+        fs::write(&bad, b"<html>not an image</html>").unwrap();
+        assert_eq!(validate_image(&bad).unwrap_err(), "Downloaded file is not a valid image");
+        let good = make_png(d.path(), "g.png", 10, 10);
+        assert!(validate_image(&good).is_ok());
     }
 
     #[test]
