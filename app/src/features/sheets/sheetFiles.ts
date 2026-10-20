@@ -1,8 +1,8 @@
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { ask, open, save } from '@tauri-apps/plugin-dialog'
 import type { Sheet } from '../../domain/types'
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
-import { readTextFile, writeTextFile } from '../../platform/tauri'
+import { readSheetFile, writeSheetFile } from '../../platform/tauri'
 
 const FORMAT = 'dtf-print-studio-sheet'
 const FILTERS = [{ name: 'DTF Print Studio sheet', extensions: ['dtfsheet'] }]
@@ -18,10 +18,21 @@ export function parseSheet(text: string): Sheet {
   } catch {
     throw new Error('Not a DTF Print Studio sheet')
   }
-  if (!data || data.format !== FORMAT || data.version !== 1 || !data.sheet || typeof data.sheet !== 'object') {
-    throw new Error('Not a DTF Print Studio sheet')
-  }
-  return data.sheet as Sheet
+  const sh = data?.sheet as Partial<Sheet> | undefined
+  const valid =
+    data?.format === FORMAT &&
+    data.version === 1 &&
+    !!sh &&
+    typeof sh.id === 'string' &&
+    typeof sh.name === 'string' &&
+    !!sh.settings &&
+    typeof sh.settings === 'object' &&
+    typeof sh.settings.widthMm === 'number' &&
+    !!sh.settings.margins &&
+    typeof sh.settings.margins === 'object' &&
+    Array.isArray(sh.items)
+  if (!valid) throw new Error('Not a DTF Print Studio sheet')
+  return sh as Sheet
 }
 
 export const sanitizeName = (name: string) => name.replace(/[^A-Za-z0-9 _-]/g, '').trim()
@@ -37,17 +48,36 @@ export function defaultPrnName(sheetName: string, now = new Date()): string {
 export const folderOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '')
 
 let currentPath: string | null = null
+/** The sheet object as of the last new/load/save; any edit replaces the sheet reference. */
+let savedSheet: Sheet | null = getSheetStore().getState().sheet
 
-export function newSheetFile() {
+const markClean = () => {
+  savedSheet = getSheetStore().getState().sheet
+}
+
+export const isDirty = () => getSheetStore().getState().sheet !== savedSheet
+
+/** True when it is fine to replace the current sheet (clean, or the user agreed to discard). */
+async function confirmDiscard(): Promise<boolean> {
+  if (!isDirty()) return true
+  const { name } = getSheetStore().getState().sheet
+  return ask(`Discard unsaved changes to ${name}?`, { title: 'Unsaved changes', kind: 'warning' })
+}
+
+export async function newSheetFile() {
+  if (!(await confirmDiscard())) return
   const { profiles, activeProfileId } = getSettingsStore().getState()
   const profile = profiles.find((p) => p.id === activeProfileId) ?? DEFAULT_PROFILE
   getSheetStore().getState().newSheet(profile)
   currentPath = null
+  markClean()
 }
 
 async function writeTo(path: string) {
-  await writeTextFile(path, serializeSheet(getSheetStore().getState().sheet))
+  const sheet = getSheetStore().getState().sheet
+  await writeSheetFile(path, serializeSheet(sheet))
   currentPath = path
+  savedSheet = sheet
   await getSettingsStore().getState().addRecentSheet(path)
 }
 
@@ -63,9 +93,11 @@ export async function saveSheet(): Promise<void> {
 }
 
 export async function openSheetAt(path: string): Promise<void> {
-  const sheet = parseSheet(await readTextFile(path))
+  if (!(await confirmDiscard())) return
+  const sheet = parseSheet(await readSheetFile(path))
   getSheetStore().getState().loadSheet(sheet)
   currentPath = path
+  markClean()
   await getSettingsStore().getState().addRecentSheet(path)
 }
 

@@ -14,8 +14,8 @@ pub fn run() {
             credentials::load_credentials,
             credentials::clear_credentials,
             prn::create_prn,
-            sheet_files::write_text_file,
-            sheet_files::read_text_file
+            sheet_files::write_sheet_file,
+            sheet_files::read_sheet_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -31,10 +31,10 @@ export function createPrn(sheet: Sheet, outPath: string): Promise<void> {
   return invoke<void>('create_prn', { sheetJson: JSON.stringify(sheet), outPath })
 }
 
-export function writeTextFile(path: string, contents: string): Promise<void> {
-  return invoke<void>('write_text_file', { path, contents })
+export function writeSheetFile(path: string, contents: string): Promise<void> {
+  return invoke<void>('write_sheet_file', { path, contents })
 }
 
-export function readTextFile(path: string): Promise<string> {
-  return invoke<string>('read_text_file', { path })
+export function readSheetFile(path: string): Promise<string> {
+  return invoke<string>('read_sheet_file', { path })
 }

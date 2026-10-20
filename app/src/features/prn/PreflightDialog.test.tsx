@@ -8,7 +8,7 @@ import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: vi.fn().mockResolvedValue('/out/x.prn'), open: vi.fn() }))
 vi.mock('../../platform/tauri', () => ({
   createPrn: vi.fn().mockRejectedValue('The PRN engine is not installed yet (coming in the next release)'),
-  writeTextFile: vi.fn(), readTextFile: vi.fn(),
+  writeSheetFile: vi.fn(), readSheetFile: vi.fn(),
 }))
 import { createPrn } from '../../platform/tauri'
 

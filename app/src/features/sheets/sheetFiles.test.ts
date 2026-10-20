@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { parseSheet, serializeSheet, defaultPrnName, sanitizeName } from './sheetFiles'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseSheet, serializeSheet, defaultPrnName, sanitizeName, newSheetFile, openSheetAt, saveSheet } from './sheetFiles'
+import { ask, save } from '@tauri-apps/plugin-dialog'
+import { readSheetFile, writeSheetFile } from '../../platform/tauri'
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({ ask: vi.fn(), save: vi.fn(), open: vi.fn() }))
+vi.mock('../../platform/tauri', () => ({ readSheetFile: vi.fn(), writeSheetFile: vi.fn() }))
 import { getSheetStore } from '../../state/sheetStore'
-import { DEFAULT_PROFILE } from '../../state/settingsStore'
+import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
 
 describe('sheet files', () => {
   it('round-trips a sheet', () => {
@@ -21,5 +26,55 @@ describe('sheet files', () => {
   it('builds the default PRN name from local time and a sanitised sheet name', () => {
     expect(sanitizeName('Order #12/ab')).toBe('Order 12ab')
     expect(defaultPrnName('Order #12', new Date(2026, 9, 20, 9, 5))).toBe('20261020-0905_Order 12.prn')
+  })
+})
+
+describe('parseSheet shape validation', () => {
+  const wrap = (sheet: unknown) => JSON.stringify({ format: 'dtf-print-studio-sheet', version: 1, sheet })
+  it('rejects a sheet without items or settings', () => {
+    expect(() => parseSheet(wrap({ id: 'a', name: 'n', settings: { widthMm: 600, margins: {} } }))).toThrow('Not a DTF Print Studio sheet')
+    expect(() => parseSheet(wrap({ id: 'a', name: 'n', items: [] }))).toThrow('Not a DTF Print Studio sheet')
+    expect(() => parseSheet(wrap({ id: 1, name: 'n', items: [], settings: { widthMm: 600, margins: {} } }))).toThrow('Not a DTF Print Studio sheet')
+    expect(() => parseSheet(wrap(null))).toThrow('Not a DTF Print Studio sheet')
+  })
+})
+
+describe('unsaved changes guard', () => {
+  beforeEach(async () => {
+    vi.mocked(ask).mockReset()
+    vi.mocked(save).mockResolvedValue('/s/job.dtfsheet')
+    vi.mocked(writeSheetFile).mockResolvedValue(undefined)
+    getSettingsStore().setState({ addRecentSheet: vi.fn().mockResolvedValue(undefined) })
+    vi.mocked(ask).mockResolvedValue(true)
+    await newSheetFile() // reset to a clean state
+    vi.mocked(ask).mockReset()
+  })
+
+  const edit = () => getSheetStore().setState({ sheet: { ...getSheetStore().getState().sheet, name: 'Edited' } })
+
+  it('does not prompt when the sheet is clean', async () => {
+    await newSheetFile()
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('keeps a dirty sheet when the user cancels', async () => {
+    edit()
+    vi.mocked(ask).mockResolvedValue(false)
+    await newSheetFile()
+    expect(ask).toHaveBeenCalledWith('Discard unsaved changes to Edited?', expect.anything())
+    expect(getSheetStore().getState().sheet.name).toBe('Edited')
+    await openSheetAt('/s/other.dtfsheet')
+    expect(readSheetFile).not.toHaveBeenCalled()
+  })
+
+  it('replaces a dirty sheet when the user agrees, and saving makes it clean', async () => {
+    edit()
+    vi.mocked(ask).mockResolvedValue(true)
+    await newSheetFile()
+    expect(getSheetStore().getState().sheet.name).toBe('Untitled sheet')
+    edit()
+    await saveSheet()
+    await newSheetFile()
+    expect(ask).toHaveBeenCalledTimes(1)
   })
 })

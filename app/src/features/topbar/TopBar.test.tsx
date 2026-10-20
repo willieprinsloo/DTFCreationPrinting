@@ -45,6 +45,8 @@ describe('TopBar profile select', () => {
   })
 })
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({ ask: vi.fn().mockResolvedValue(true), save: vi.fn(), open: vi.fn() }))
+
 describe('TopBar File menu', () => {
   beforeEach(() => setup())
 
