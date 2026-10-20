@@ -36,7 +36,7 @@ cargo -V
 
 ```powershell
 cd $HOME\Documents
-git clone <REPO URL> DTFCreationPrinting
+git clone https://github.com/willieprinsloo/DTFCreationPrinting.git DTFCreationPrinting
 cd DTFCreationPrinting
 git checkout feat/prn-engine    # PRN engine branch (until it is merged into main)
 ```
