@@ -13,8 +13,12 @@ pub const HEADER_LEN: usize = 48;
 /// Pack levels (0..=3) at 2 bits per pixel, MSB first, into `out` (zero padded).
 pub(crate) fn pack_levels(levels: &[u8], out: &mut [u8]) {
     out.fill(0);
-    for (i, &v) in levels.iter().enumerate() {
-        out[i / 4] |= (v & 3) << (6 - 2 * (i % 4));
+    let (quads, rest) = levels.as_chunks::<4>();
+    for (o, q) in out.iter_mut().zip(quads) {
+        *o = (q[0] & 3) << 6 | (q[1] & 3) << 4 | (q[2] & 3) << 2 | (q[3] & 3);
+    }
+    for (i, &v) in rest.iter().enumerate() {
+        out[quads.len()] |= (v & 3) << (6 - 2 * i);
     }
 }
 

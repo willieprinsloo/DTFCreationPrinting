@@ -7,7 +7,8 @@
 const MASK_SIZE: usize = 256;
 static MASK_BYTES: &[u8] = include_bytes!("assets/bluenoise256.bin");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Screening {
     BlueNoise,
     ErrorDiffusion,

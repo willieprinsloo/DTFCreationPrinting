@@ -34,6 +34,18 @@ impl<W: Write> PrnWriter<W> {
         Ok(())
     }
 
+    /// Write whole lines that are already packed: each line is six channels of
+    /// `bytes_per_line` bytes, in channel order.
+    pub fn write_packed_lines(&mut self, data: &[u8]) -> Result<(), EngineError> {
+        let line = self.header.bytes_per_line as usize * CHANNELS;
+        if !data.len().is_multiple_of(line) {
+            return Err(EngineError::BadLine(format!("{} bytes is not a whole number of lines", data.len())));
+        }
+        self.w.write_all(data)?;
+        self.written += (data.len() / line) as u32;
+        Ok(())
+    }
+
     /// Verify the declared line count was written, flush, and return the sink.
     pub fn finish(mut self) -> Result<W, EngineError> {
         if self.written != self.header.lines {

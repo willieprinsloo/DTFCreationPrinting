@@ -1,8 +1,13 @@
 pub mod colour;
+pub mod compose;
 pub mod prn;
 pub mod screen;
 pub mod source;
+pub mod spec;
 pub mod white;
+
+pub use compose::render_prn;
+pub use spec::{EngineSettings, ItemSpec, JobSpec, PrnStats};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -22,4 +27,10 @@ pub enum EngineError {
     Decode(String),
     #[error("colour profile problem: {0}")]
     Icc(String),
+    #[error("there is nothing to print")]
+    NothingToPrint,
+    #[error("cancelled")]
+    Cancelled,
+    #[error("invalid print settings: {0}")]
+    BadSettings(String),
 }
