@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { open } from '@tauri-apps/plugin-dialog'
+import { open, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { DotGain, EngineSettings as Engine, InkChannel, PrinterProfile } from '../../domain/types'
 import { curveFromThree, curveToThree, validateEngineSettings } from '../../domain/engineSettings'
+import { createChartPrn } from '../../platform/tauri'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -27,6 +28,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   )
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [chartMsg, setChartMsg] = useState<string | null>(null)
   const touch = () => {
     setSaved(false)
     setError(null)
@@ -44,7 +46,10 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     }
   }
 
-  const save = async () => {
+  /** The settings as typed, or the plain-English reason they can't be used. */
+  const build = (): Engine | string => {
+    const numbers = [ink, density, choke, leadIn, ...INKS.flatMap((k) => curves[k])]
+    if (numbers.some((v) => v.trim() === '')) return 'Enter a number in every box'
     const dotGain = Object.fromEntries(
       INKS.map((k) => [k, curveFromThree(curves[k].map(Number) as [number, number, number])]),
     ) as DotGain
@@ -58,10 +63,14 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       leadInMm: Number(leadIn),
       ...(icc ? { iccProfilePath: icc } : {}),
     }
-    const problem = validateEngineSettings(engine)
-    if (problem) {
+    return validateEngineSettings(engine) ?? engine
+  }
+
+  const save = async () => {
+    const engine = build()
+    if (typeof engine === 'string') {
       setSaved(false)
-      return setError(problem)
+      return setError(engine)
     }
     const { iccProfilePath: _old, ...rest } = profile
     try {
@@ -70,6 +79,24 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       setSaved(true)
     } catch (e) {
       setError(`Could not save: ${errorText(e)}`)
+    }
+  }
+
+  const makeChart = async (kind: 'colour' | 'white') => {
+    const engine = build()
+    if (typeof engine === 'string') return setError(engine)
+    setChartMsg(null)
+    try {
+      const out = await saveDialog({ defaultPath: `${kind}-chart.prn`, filters: [{ name: 'PRN file', extensions: ['prn'] }] })
+      if (!out) return
+      setChartMsg(`Creating the ${kind} chart…`)
+      const { iccProfilePath: _old, ...rest } = profile
+      await createChartPrn(kind, { ...rest, ...engine }, out)
+      setError(null)
+      setChartMsg(`Saved ${out}`)
+    } catch (e) {
+      setChartMsg(null)
+      setError(`Could not create the chart: ${errorText(e)}`)
     }
   }
 
@@ -106,25 +133,25 @@ function Editor({ profile }: { profile: PrinterProfile }) {
         <h3>Ink and white</h3>
         <div className="field-grid">
           {num('Ink limit (%)', ink, setInk, 'Most ink allowed on any spot, from 100 to 400. Lower it if dark areas look wet or crack.')}
-          {num('White density (%)', density, setDensity, 'How solid the white under the design is, from 0 to 100. Lower it for a softer feel.')}
+          {num('White density (%)', density, setDensity, 'How solid the white under the design is, from 0 to 100. Lower white makes colours look duller on dark garments.')}
           {num('White choke (mm)', choke, setChoke, 'Pulls the white in from the edge of the design, from 0 to 2 mm. Raise it if you see a white halo around the colour.', '0.05')}
           {num('Lead-in (mm)', leadIn, setLeadIn, 'Blank film added before the first design, from 0 to 1000 mm.')}
           <div>
             <label className="dialog-field">
               Screening
               <select value={screening} onChange={(e) => { setScreening(e.target.value as Engine['screening']); touch() }}>
-                <option value="blueNoise">Blue noise (smooth, default)</option>
-                <option value="errorDiffusion">Error diffusion (sharper detail)</option>
+                <option value="blueNoise">Smooth (fast) — recommended</option>
+                <option value="errorDiffusion">Fine detail (slower)</option>
               </select>
             </label>
-            <Help>How the printer's dots are scattered to make shades. Try the other one if you see patterns.</Help>
+            <Help>How the printer's dots are scattered to make shades. Try Fine detail if small text or thin lines look soft.</Help>
           </div>
         </div>
       </section>
 
       <section className="settings-section">
-        <h3>Colour profile</h3>
-        <Help>Optional. Load the ICC file from Maintop to match its colours. Without one, a built-in colour model is used.</Help>
+        <h3>Colour profile (ICC file from Maintop or ink supplier)</h3>
+        <Help>Optional. Load the ICC file to match Maintop's colours. Without one, a built-in colour model is used.</Help>
         <p>{icc ?? 'No colour profile — the built-in colour model is used'}</p>
         <div className="button-row">
           <button type="button" onClick={() => void pickIcc()}>Choose colour profile…</button>
@@ -141,7 +168,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
           {INKS.map((k) =>
             POINTS.map((p, i) => (
               <label key={`${k}${p}`} className="dialog-field">
-                {`${k} curve at ${p} %`}
+                {`${INK_NAMES[k]} curve at ${p} %`}
                 <input
                   type="number"
                   min={0}
@@ -153,6 +180,16 @@ function Editor({ profile }: { profile: PrinterProfile }) {
               </label>
             )),
           )}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>Test charts</h3>
+        <Help>Creates a chart PRN with the settings shown above (even before you save them), so you can print it and see the effect. Print the same chart again after each change.</Help>
+        <div className="button-row">
+          <button type="button" onClick={() => void makeChart('colour')}>Create colour chart PRN</button>
+          <button type="button" onClick={() => void makeChart('white')}>Create white chart PRN</button>
+          {chartMsg && <span>{chartMsg}</span>}
         </div>
       </section>
 

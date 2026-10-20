@@ -68,6 +68,13 @@ export function createPrn(sheet: Sheet, profile: PrinterProfile, outPath: string
   }
 }
 
+/** Renders a calibration chart PRN ("white" or "colour") using the profile's current settings. */
+export function createChartPrn(kind: 'white' | 'colour', profile: PrinterProfile, outPath: string): Promise<PrnStats> {
+  return invoke<PrnStats>('create_chart_prn', { kind, profileJson: JSON.stringify(profile), outPath }).catch((e) => {
+    throw e instanceof Error ? e : new Error(String(e))
+  })
+}
+
 /** Opens Finder / Explorer with the file selected. */
 export function revealInFolder(path: string): Promise<void> {
   return invoke<void>('reveal_in_folder', { path })

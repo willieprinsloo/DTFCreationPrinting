@@ -15,6 +15,7 @@ pub fn run() {
             credentials::load_credentials,
             credentials::clear_credentials,
             prn::create_prn,
+            prn::create_chart_prn,
             prn::cancel_prn,
             prn::reveal_in_folder,
             sheet_files::write_sheet_file,

@@ -7,7 +7,9 @@ vi.mock('../../state/persist', async (orig) => {
   return { ...m, createTauriStore: () => m.createMemoryStore() }
 })
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }))
-import { open } from '@tauri-apps/plugin-dialog'
+vi.mock('../../platform/tauri', () => ({ createChartPrn: vi.fn() }))
+import { createChartPrn } from '../../platform/tauri'
+import { open, save } from '@tauri-apps/plugin-dialog'
 import { SettingsDialog } from './SettingsDialog'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
 
@@ -15,6 +17,8 @@ const saved = () => getSettingsStore().getState().profiles.find((p) => p.id === 
 
 beforeEach(async () => {
   vi.mocked(open).mockReset()
+  vi.mocked(save).mockReset()
+  vi.mocked(createChartPrn).mockReset()
   await getSettingsStore().getState().upsertProfile(DEFAULT_PROFILE)
 })
 
@@ -32,6 +36,11 @@ describe('Settings › Printer & ink', () => {
     expect(screen.getByLabelText('Channel 0 ink')).toHaveValue('K')
     expect(screen.getByLabelText('Channel 5 ink')).toHaveValue('W')
     expect(screen.getByText(/white halo/i)).toBeInTheDocument()
+    expect(screen.getByText(/Lower white makes colours look duller on dark garments/)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Smooth (fast) — recommended' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Fine detail (slower)' })).toBeInTheDocument()
+    expect(screen.getByText('Colour profile (ICC file from Maintop or ink supplier)')).toBeInTheDocument()
+    for (const n of ['Black', 'Cyan', 'Magenta', 'Yellow', 'White']) expect(screen.getByLabelText(`${n} curve at 25 %`)).toBeInTheDocument()
   })
 
   it('saves edited values onto the printer profile', async () => {
@@ -45,7 +54,7 @@ describe('Settings › Printer & ink', () => {
     await userEvent.selectOptions(screen.getByLabelText('Screening'), 'errorDiffusion')
     await userEvent.selectOptions(screen.getByLabelText('Channel 0 ink'), 'C')
     await userEvent.selectOptions(screen.getByLabelText('Channel 1 ink'), 'K')
-    const mid = screen.getByLabelText('M curve at 50 %')
+    const mid = screen.getByLabelText('Magenta curve at 50 %')
     await userEvent.clear(mid)
     await userEvent.type(mid, '58')
     await userEvent.click(screen.getByRole('button', { name: 'Save printer & ink settings' }))
@@ -89,5 +98,41 @@ describe('Settings › Printer & ink', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save printer & ink settings' }))
     await screen.findByRole('status')
     expect(saved().iccProfilePath).toBeUndefined()
+  })
+
+  it('rejects a blank number with "Enter a number"', async () => {
+    page()
+    await userEvent.clear(screen.getByLabelText('White choke (mm)'))
+    await userEvent.click(screen.getByRole('button', { name: 'Save printer & ink settings' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a number')
+    await userEvent.clear(screen.getByLabelText('Cyan curve at 25 %'))
+    await userEvent.type(screen.getByLabelText('White choke (mm)'), '0.2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save printer & ink settings' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a number')
+  })
+
+  it('creates the colour and white charts from the settings on screen', async () => {
+    vi.mocked(save).mockResolvedValueOnce('/out/colour.prn').mockResolvedValueOnce('/out/white.prn')
+    vi.mocked(createChartPrn).mockResolvedValue({ lines: 10, bytes: 1, millis: 1 })
+    page()
+    const ink = screen.getByLabelText('Ink limit (%)')
+    await userEvent.clear(ink)
+    await userEvent.type(ink, '200')
+    await userEvent.click(screen.getByRole('button', { name: 'Create colour chart PRN' }))
+    expect(await screen.findByText(/Saved .*colour\.prn/)).toBeInTheDocument()
+    expect(createChartPrn).toHaveBeenCalledWith('colour', expect.objectContaining({ inkLimitPct: 200 }), '/out/colour.prn')
+    await userEvent.click(screen.getByRole('button', { name: 'Create white chart PRN' }))
+    expect(await screen.findByText(/Saved .*white\.prn/)).toBeInTheDocument()
+    expect(createChartPrn).toHaveBeenLastCalledWith('white', expect.objectContaining({ inkLimitPct: 200 }), '/out/white.prn')
+  })
+
+  it('shows the error when chart creation fails, and does nothing if Save as is cancelled', async () => {
+    vi.mocked(save).mockResolvedValueOnce(null).mockResolvedValueOnce('/out/c.prn')
+    vi.mocked(createChartPrn).mockRejectedValue(new Error('disk full'))
+    page()
+    await userEvent.click(screen.getByRole('button', { name: 'Create colour chart PRN' }))
+    expect(createChartPrn).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Create colour chart PRN' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('disk full')
   })
 })

@@ -71,22 +71,29 @@ fn white_cell_png(path: &Path, col: usize, row: usize) -> Result<(), EngineError
     for i in 0..=row {
         fill(&mut img, 10.0 + i as f64 * 4.0, 4.0, 3.0, 3.0, black);
     }
-    // 40 mm square: 1 mm black outline around a mid-blue fill
+    // 40 mm square: 1 mm black outline around a dark blue fill
     fill(&mut img, 10.0, 8.0, 40.0, 40.0, black);
-    fill(&mut img, 11.0, 9.0, 38.0, 38.0, Rgba([60, 120, 200, 255]));
+    fill(&mut img, 11.0, 9.0, 38.0, 38.0, Rgba([20, 60, 160, 255]));
     img.save(path).map_err(|e| EngineError::Decode(e.to_string()))
 }
 
-/// Writes `white.prn`: a grid of squares, rows = white density (60/80/100 %, top to
+/// Writes `white.prn` using the printer settings in `base` (its white density and choke
+/// are replaced per square): a grid of squares, rows = white density (60/80/100 %, top to
 /// bottom), columns = white choke (0/0.1/0.2/0.4 mm, left to right). Dots above each
 /// square count the column (top row of dots) and the row (second row of dots).
-pub fn white_chart(out: &Path, width_mm: f64) -> Result<(u32, u32), EngineError> {
+pub fn white_chart(out: &Path, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     let need = WHITE_COL_X0_MM + 3.0 * WHITE_COL_PITCH_MM + CELL_W_MM + WHITE_COL_X0_MM;
     if width_mm < need {
         return Err(EngineError::BadSettings(format!("--width-mm must be at least {need}")));
     }
     ensure_parent(out)?;
     let dir = work_dir(out)?;
+    let result = white_chart_in(&dir, out, width_mm, base);
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn white_chart_in(dir: &Path, out: &Path, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     let mut readers = Vec::new();
     for (r, &density) in WHITE_DENSITIES.iter().enumerate() {
         for (c, &choke) in WHITE_CHOKES.iter().enumerate() {
@@ -98,7 +105,7 @@ pub fn white_chart(out: &Path, width_mm: f64) -> Result<(u32, u32), EngineError>
                 y_dpi: Y_DPI,
                 mirror: false,
                 white_enabled: true,
-                settings: EngineSettings { white_density_pct: density, white_choke_mm: choke, ..EngineSettings::default() },
+                settings: EngineSettings { white_density_pct: density, white_choke_mm: choke, ..base.clone() },
                 items: vec![ItemSpec {
                     path: png,
                     x_mm: 0.0,
@@ -116,6 +123,9 @@ pub fn white_chart(out: &Path, width_mm: f64) -> Result<(u32, u32), EngineError>
     }
     let row_line = |r: usize| (r as f64 * WHITE_ROW_PITCH_MM / 25.4 * Y_DPI as f64).round() as u32;
     let cell_lines = readers[0].header().lines;
+    if readers.iter().any(|r| r.header().lines != cell_lines) {
+        return Err(EngineError::Internal("the white chart squares came out different lengths".into()));
+    }
     let lines = row_line(2) + cell_lines;
     let header = PrnHeader::for_width(width_mm, X_DPI, Y_DPI, lines);
     let w = header.width_px as usize;
@@ -152,7 +162,6 @@ pub fn white_chart(out: &Path, width_mm: f64) -> Result<(u32, u32), EngineError>
         wr.finish()?;
         Ok(())
     })();
-    let _ = std::fs::remove_dir_all(&dir);
     match result {
         Ok(()) => io(std::fs::rename(&part, out))?,
         Err(e) => {
@@ -297,42 +306,44 @@ pub fn write_png_with_dpi(img: &RgbImage, path: &Path, px_per_m: u32) -> Result<
     io(f.write_all(&buf))
 }
 
-/// Writes `colour.prn` (rendered by the real pipeline, white layer off) and, when
-/// `png` is given, the same artwork as a PNG for printing through Maintop.
-pub fn colour_chart(out: &Path, png: Option<&Path>, width_mm: f64) -> Result<(u32, u32), EngineError> {
+/// Writes `colour.prn` (rendered by the real pipeline with `base`, white underbase on) and, when `png` is given, the same artwork as a PNG for printing
+/// through Maintop.
+pub fn colour_chart(out: &Path, png: Option<&Path>, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
     if width_mm < COLOUR_W_MM {
         return Err(EngineError::BadSettings(format!("--width-mm must be at least {COLOUR_W_MM}")));
     }
     ensure_parent(out)?;
-    let img = colour_chart_image();
     let dir = work_dir(out)?;
-    let tmp_png = dir.join("colour.png");
-    let result = (|| {
-        write_png_with_dpi(&img, &tmp_png, PX_PER_MM * 1000)?;
-        if let Some(p) = png {
-            ensure_parent(p)?;
-            io(std::fs::copy(&tmp_png, p))?;
-        }
-        let job = JobSpec {
-            width_mm,
-            x_dpi: X_DPI,
-            y_dpi: Y_DPI,
-            mirror: false,
-            white_enabled: false,
-            settings: EngineSettings::default(),
-            items: vec![ItemSpec {
-                path: tmp_png.clone(),
-                x_mm: (width_mm - COLOUR_W_MM) / 2.0,
-                y_mm: 0.0,
-                width_mm: COLOUR_W_MM,
-                height_mm: COLOUR_H_MM,
-                rotation_deg: 0.0,
-                white_enabled: false,
-            }],
-        };
-        let st = render_prn(&job, out, &mut |_| true)?;
-        Ok((st.lines, PrnHeader::for_width(width_mm, X_DPI, Y_DPI, 1).width_px))
-    })();
+    let result = colour_chart_in(&dir, out, png, width_mm, base);
     let _ = std::fs::remove_dir_all(&dir);
     result
+}
+
+fn colour_chart_in(dir: &Path, out: &Path, png: Option<&Path>, width_mm: f64, base: &EngineSettings) -> Result<(u32, u32), EngineError> {
+    let img = colour_chart_image();
+    let tmp_png = dir.join("colour.png");
+    write_png_with_dpi(&img, &tmp_png, PX_PER_MM * 1000)?;
+    if let Some(p) = png {
+        ensure_parent(p)?;
+        io(std::fs::copy(&tmp_png, p))?;
+    }
+    let job = JobSpec {
+        width_mm,
+        x_dpi: X_DPI,
+        y_dpi: Y_DPI,
+        mirror: false,
+        white_enabled: true,
+        settings: base.clone(),
+        items: vec![ItemSpec {
+            path: tmp_png.clone(),
+            x_mm: (width_mm - COLOUR_W_MM) / 2.0,
+            y_mm: 0.0,
+            width_mm: COLOUR_W_MM,
+            height_mm: COLOUR_H_MM,
+            rotation_deg: 0.0,
+            white_enabled: true,
+        }],
+    };
+    let st = render_prn(&job, out, &mut |_| true)?;
+    Ok((st.lines, PrnHeader::for_width(width_mm, X_DPI, Y_DPI, 1).width_px))
 }

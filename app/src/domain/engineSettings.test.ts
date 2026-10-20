@@ -4,18 +4,27 @@ import { DEFAULT_ENGINE_SETTINGS, curveFromThree, curveToThree, sanitizeEngineSe
 const d = DEFAULT_ENGINE_SETTINGS
 
 describe('sanitizeEngineSettings ranges', () => {
-  it('accepts the plan ranges and repairs values outside them', () => {
+  it('keeps values inside the plan ranges', () => {
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: 100 }).inkLimitPct).toBe(100)
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: 400 }).inkLimitPct).toBe(400)
-    expect(sanitizeEngineSettings({ ...d, inkLimitPct: 99 }).inkLimitPct).toBe(d.inkLimitPct)
-    expect(sanitizeEngineSettings({ ...d, inkLimitPct: 401 }).inkLimitPct).toBe(d.inkLimitPct)
-    expect(sanitizeEngineSettings({ ...d, whiteDensityPct: 100 }).whiteDensityPct).toBe(100)
     expect(sanitizeEngineSettings({ ...d, whiteDensityPct: 0 }).whiteDensityPct).toBe(0)
-    expect(sanitizeEngineSettings({ ...d, whiteDensityPct: 150 }).whiteDensityPct).toBe(d.whiteDensityPct)
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 2 }).whiteChokeMm).toBe(2)
-    expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 3 }).whiteChokeMm).toBe(d.whiteChokeMm)
     expect(sanitizeEngineSettings({ ...d, leadInMm: 1000 }).leadInMm).toBe(1000)
-    expect(sanitizeEngineSettings({ ...d, leadInMm: 1001 }).leadInMm).toBe(d.leadInMm)
+  })
+
+  it('clamps out-of-range saved values to the nearest bound', () => {
+    expect(sanitizeEngineSettings({ ...d, inkLimitPct: 50 }).inkLimitPct).toBe(100)
+    expect(sanitizeEngineSettings({ ...d, inkLimitPct: 900 }).inkLimitPct).toBe(400)
+    expect(sanitizeEngineSettings({ ...d, whiteDensityPct: 150 }).whiteDensityPct).toBe(100)
+    expect(sanitizeEngineSettings({ ...d, whiteDensityPct: -5 }).whiteDensityPct).toBe(0)
+    expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 3 }).whiteChokeMm).toBe(2)
+    expect(sanitizeEngineSettings({ ...d, leadInMm: 5000 }).leadInMm).toBe(1000)
+    expect(sanitizeEngineSettings({ ...d, leadInMm: -1 }).leadInMm).toBe(0)
+  })
+
+  it('falls back to the default for values that are not numbers', () => {
+    expect(sanitizeEngineSettings({ ...d, inkLimitPct: NaN }).inkLimitPct).toBe(d.inkLimitPct)
+    expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)
   })
 
   it('requires the channel order to be a permutation of K, C, M, Y, W, W', () => {

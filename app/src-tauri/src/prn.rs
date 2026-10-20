@@ -1,6 +1,6 @@
 //! `create_prn`: turns the app's sheet + printer profile into an engine job,
 //! renders it off the UI thread and reports progress / honours cancel.
-use dtf_engine::screen::Screening;
+use dtf_engine::profile::ProfileDto;
 use dtf_engine::{EngineError, EngineSettings, ItemSpec, JobSpec, render_prn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,62 +57,6 @@ struct SheetItemDto {
 struct AssetDto {
     /// The full cached original (never the preview).
     path: PathBuf,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct DotGainDto {
-    #[serde(default, rename = "K")]
-    k: Vec<(f32, f32)>,
-    #[serde(default, rename = "C")]
-    c: Vec<(f32, f32)>,
-    #[serde(default, rename = "M")]
-    m: Vec<(f32, f32)>,
-    #[serde(default, rename = "Y")]
-    y: Vec<(f32, f32)>,
-    #[serde(default, rename = "W")]
-    w: Vec<(f32, f32)>,
-}
-
-/// Engine fields are optional so profiles saved before they existed still work.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProfileDto {
-    x_dpi: u32,
-    y_dpi: u32,
-    channel_order: Option<[String; 6]>,
-    ink_limit_pct: Option<f32>,
-    white_density_pct: Option<f32>,
-    white_choke_mm: Option<f32>,
-    screening: Option<Screening>,
-    dot_gain: Option<DotGainDto>,
-    lead_in_mm: Option<f32>,
-    icc_profile_path: Option<String>,
-}
-
-impl ProfileDto {
-    fn engine_settings(self) -> EngineSettings {
-        let d = EngineSettings::default();
-        let g = self.dot_gain.unwrap_or_default();
-        let curves = [g.k, g.c, g.m, g.y, g.w];
-        EngineSettings {
-            channel_order: self.channel_order.unwrap_or(d.channel_order),
-            ink_limit_pct: self.ink_limit_pct.unwrap_or(d.ink_limit_pct),
-            white_density_pct: self.white_density_pct.unwrap_or(d.white_density_pct),
-            white_choke_mm: self.white_choke_mm.unwrap_or(d.white_choke_mm),
-            screening: self.screening.unwrap_or(d.screening),
-            curves: if curves.iter().all(|c| c.is_empty()) {
-                None
-            } else {
-                Some(curves)
-            },
-            lead_in_mm: self.lead_in_mm.unwrap_or(d.lead_in_mm),
-            icc_profile_path: self
-                .icc_profile_path
-                .filter(|p| !p.trim().is_empty())
-                .map(PathBuf::from),
-        }
-    }
 }
 
 /// Builds the engine job from the app's sheet and printer profile JSON.
@@ -245,6 +189,30 @@ pub async fn create_prn(
     result
 }
 
+/// Renders a calibration chart ("white" or "colour") with the printer profile's settings.
+pub fn chart_from_profile(kind: &str, profile_json: &str, out: &Path) -> Result<PrnStatsDto, String> {
+    let profile: ProfileDto = serde_json::from_str(profile_json).map_err(failed)?;
+    let settings = profile.engine_settings();
+    let started = std::time::Instant::now();
+    let width = 600.0;
+    let lines = match kind {
+        "white" => dtf_engine::charts::white_chart(out, width, &settings),
+        "colour" => dtf_engine::charts::colour_chart(out, None, width, &settings),
+        other => return Err(failed(format!("unknown chart '{other}'"))),
+    }
+    .map_err(error_text)?
+    .0;
+    let bytes = std::fs::metadata(out).map(|m| m.len()).unwrap_or(0);
+    Ok(PrnStatsDto { lines, bytes, millis: started.elapsed().as_millis() as u64 })
+}
+
+#[tauri::command]
+pub async fn create_chart_prn(kind: String, profile_json: String, out_path: String) -> Result<PrnStatsDto, String> {
+    tauri::async_runtime::spawn_blocking(move || chart_from_profile(&kind, &profile_json, Path::new(&out_path)))
+        .await
+        .unwrap_or_else(|e| Err(failed(e)))
+}
+
 #[tauri::command]
 pub fn cancel_prn(jobs: State<'_, Arc<PrnJobs>>, job_id: String) {
     jobs.cancel(&job_id);
@@ -288,8 +256,9 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dtf_engine::EngineError;
     use dtf_engine::screen::Screening;
+    use dtf_engine::EngineError;
+    use dtf_engine::profile::ProfileDto;
 
     const SHEET: &str = r#"{
       "id": "s1", "name": "Job", "profileId": "dtf-60",
@@ -461,5 +430,20 @@ mod tests {
         let e = run_job(&job, &out2, &flag, &mut |_| {}).unwrap_err();
         assert_eq!(e, CANCELLED);
         assert!(!out2.exists());
+    }
+
+    #[test]
+    fn chart_from_profile_uses_the_profile_and_rejects_unknown_kinds() {
+        let dir = std::env::temp_dir().join(format!("dtf-chart-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.prn"), dir.join("b.prn"));
+        let p = |ink: u32| format!(r#"{{"xDpi":720,"yDpi":1800,"inkLimitPct":{ink}}}"#);
+        let sa = chart_from_profile("white", &p(280), &a).unwrap();
+        let sb = chart_from_profile("white", &p(100), &b).unwrap();
+        assert_eq!(sa.lines, sb.lines);
+        assert_ne!(std::fs::read(&a).unwrap(), std::fs::read(&b).unwrap());
+        assert!(chart_from_profile("nope", &p(280), &a).unwrap_err().contains("unknown chart"));
+        assert!(chart_from_profile("white", "not json", &a).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -26,8 +26,9 @@ export const LIMITS = {
   leadInMm: [0, 1000],
 } as const
 
+/** Out-of-range numbers are clamped to the nearest bound; non-numbers get the fallback. */
 const inRange = (v: unknown, min: number, max: number, fallback: number) =>
-  typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback
+  typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
 
 const isUnit = (v: unknown) => typeof v === 'number' && v >= 0 && v <= 1
 

@@ -29,7 +29,7 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "usage:\n  prn-tool inspect <file>\n  prn-tool preview <file> <out.png> [--scale 0.1]\n  prn-tool chart channels <out.prn> [--width-mm 600]\n  prn-tool chart white <out.prn> [--width-mm 600]\n  prn-tool chart colour <out.prn> [--png chart.png] [--width-mm 600]";
+const USAGE: &str = "usage:\n  prn-tool inspect <file>\n  prn-tool preview <file> <out.png> [--scale 0.1]\n  prn-tool chart channels <out.prn> [--width-mm 600]\n  prn-tool chart white <out.prn> [--profile p.json] [--width-mm 600]\n  prn-tool chart colour <out.prn> [--png chart.png] [--profile p.json] [--width-mm 600]";
 
 type R<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -230,7 +230,8 @@ fn str_flag<'a>(args: &'a [String], name: &str) -> R<Option<&'a str>> {
 fn chart_white(args: &[String]) -> R<()> {
     let out = PathBuf::from(&args[0]);
     let width_mm = flag_value(args, "--width-mm")?.unwrap_or(600.0);
-    let (lines, w) = dtf_engine::charts::white_chart(&out, width_mm).map_err(|e| e.to_string())?;
+    let settings = profile_settings(args)?;
+    let (lines, w) = dtf_engine::charts::white_chart(&out, width_mm, &settings).map_err(|e| e.to_string())?;
     println!("wrote {} ({} lines x {} px)", out.display(), lines, w);
     println!("rows (top to bottom): white density 60, 80, 100 %; columns (left to right): choke 0, 0.1, 0.2, 0.4 mm");
     Ok(())
@@ -240,10 +241,23 @@ fn chart_colour(args: &[String]) -> R<()> {
     let out = PathBuf::from(&args[0]);
     let width_mm = flag_value(args, "--width-mm")?.unwrap_or(600.0);
     let png = str_flag(args, "--png")?.map(PathBuf::from);
-    let (lines, w) = dtf_engine::charts::colour_chart(&out, png.as_deref(), width_mm).map_err(|e| e.to_string())?;
+    let settings = profile_settings(args)?;
+    let (lines, w) = dtf_engine::charts::colour_chart(&out, png.as_deref(), width_mm, &settings).map_err(|e| e.to_string())?;
     println!("wrote {} ({} lines x {} px)", out.display(), lines, w);
     if let Some(p) = png {
         println!("wrote {} (280 x 200 mm at 508 dpi; print at 100 % size)", p.display());
     }
     Ok(())
+}
+
+/// Engine settings from `--profile <profile.json>` (the app's printer profile), else the defaults.
+fn profile_settings(args: &[String]) -> R<dtf_engine::EngineSettings> {
+    match str_flag(args, "--profile")? {
+        None => Ok(Default::default()),
+        Some(p) => {
+            let json = std::fs::read_to_string(p).map_err(|e| format!("cannot read {p}: {e}"))?;
+            let prof: dtf_engine::profile::ProfileDto = serde_json::from_str(&json).map_err(|e| format!("{p} is not a printer profile: {e}"))?;
+            Ok(prof.engine_settings())
+        }
+    }
 }

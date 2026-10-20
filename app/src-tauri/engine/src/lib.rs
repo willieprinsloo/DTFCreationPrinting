@@ -2,6 +2,7 @@ pub mod charts;
 pub mod colour;
 pub mod compose;
 pub mod prn;
+pub mod profile;
 pub mod screen;
 pub mod source;
 pub mod spec;

@@ -67,12 +67,12 @@ _Not yet printed._
 How much white ink to lay under the colour, and how far to pull it in from the edge of the design. Too little pull-in leaves a white halo around the colour. Too much leaves a thin colour edge with no white behind it.
 
 ### The file
-`white.prn` is a grid of 12 squares (600 mm wide, about 155 mm long). Each square is 40 mm, with a black outline around a blue fill, printed on white. Seen in the software preview:
+`white.prn` is a grid of 12 squares (600 mm wide, about 155 mm long). Each square is 40 mm, with a black outline around a dark blue fill, printed on white. Seen in the software preview:
 - **Rows, top to bottom:** white density 60 %, 80 %, 100 %.
 - **Columns, left to right:** white choke 0, 0.1, 0.2, 0.4 mm.
 - Small black dots above each square count the column (top row of dots: 1 to 4) and the row (second row of dots: 1 to 3), so you can still tell them apart on the film.
 
-Make it from the project folder:
+Make it with **Create white chart PRN** in Settings, Printer & ink (it uses the settings shown there, except the density and choke, which change per square), or from the project folder:
 
 ```
 cd app/src-tauri
@@ -102,25 +102,27 @@ _Not yet printed._
 ## Checkpoint 3: colour match against Maintop
 
 ### What this tests
-Whether our colours match what Maintop prints from the same artwork.
+Whether our colours match what Maintop prints from the same artwork, on both a white and a dark garment.
 
 ### The files
-- `colour.prn`: made by our software's engine, 280 x 200 mm, white layer off.
-- `colour.png`: the same chart as an ordinary image, made by the same command, to print through Maintop at 100 % size (280 mm wide).
-
-The chart has, from top to bottom: cyan, magenta, yellow and black ramps; red, green and blue ramps (each 0 to 100 % in 10 % steps, left to right); eight skin tones; black digits at 6, 8, 10 and 12 pt; and black lines 0.1 to 1 mm wide, horizontal then vertical.
+- **Our chart (PRN):** in the app, open Settings, Printer & ink, and press **Create colour chart PRN**. It is made with the settings shown on that page, with the white underbase as normal.
+- **Maintop's chart (PNG):** the same artwork as an ordinary image, 280 x 200 mm. From the project folder:
 
 ```
 cd app/src-tauri
 cargo run --release -p dtf-engine --bin prn-tool -- chart colour ../../docs/printing/out/colour.prn --png ../../docs/printing/out/colour.png --width-mm 600
 ```
 
+(The same command also makes a PRN like the app's. Add `--profile profile.json` to use a saved printer profile.)
+
+The chart has, from top to bottom: cyan, magenta, yellow and black ramps; red, green and blue ramps (each 0 to 100 % in 10 % steps, left to right); eight skin tones; black digits at 6, 8, 10 and 12 pt; and black lines 0.1 to 1 mm wide, horizontal then vertical.
+
 ### Steps
-1. Print `colour.prn` as it is.
-2. Open `colour.png` in Maintop, set it to 280 mm wide with its usual colour settings, and print it on the same film.
-3. Lay the two prints side by side in good light and compare: the ramps (do the 10 % steps stay apart at both ends?), the skin tones, the small text and the thinnest lines that still print.
-4. If ours is too dark or too heavy, lower the ink limit or raise the ink curves in Settings, Printer & ink. If the colours look different, load Maintop's ICC file there.
-5. Reprint `colour.prn` after each change until it matches or beats Maintop.
+1. Print our chart PRN from the app as it is.
+2. Open `colour.png` in Maintop, set it to 280 mm wide, leave Maintop's normal settings (white underbase as normal), and print it on the same film.
+3. Press both prints onto the same white garment, and again onto the same dark garment.
+4. Compare side by side in good light: the ramps (do the 10 % steps stay apart at both ends?), the skin tones, the small text, the thinnest line that still prints, and how solid the colours look on the dark garment.
+5. If ours is too dark or too heavy, lower the ink limit or raise the ink curves; if colours look different, load Maintop's ICC file; if colours look dull on the dark garment, raise the white density. Then press **Create colour chart PRN** again and reprint. Repeat until ours matches or beats Maintop.
 
 ### Results
 
@@ -128,9 +130,10 @@ cargo run --release -p dtf-engine --bin prn-tool -- chart colour ../../docs/prin
 |---|---|---|
 | Ramps: smallest step you can still see (C, M, Y, K) | | |
 | Skin tones look natural | | |
+| Dark garment: colours solid and bright | | |
 | Smallest readable text (pt) | | |
 | Thinnest line that prints (mm) | | |
-| Ink limit / curves / ICC settings used | | |
+| Ink limit / curves / ICC / white settings used | | |
 
 Results recorded here (to be filled in after the print):
 

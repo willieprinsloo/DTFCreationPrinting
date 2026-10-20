@@ -88,6 +88,88 @@ fn chart_content_is_trimmed_to_full_height() {
     assert!(s.contains("content lines: 0..=8503"), "{s}");
 }
 
+use std::hash::Hasher;
+use std::io::Read;
+use std::path::Path;
+
+/// Streaming hash of a (large) file.
+fn digest(p: &Path) -> u64 {
+    let mut f = std::io::BufReader::new(std::fs::File::open(p).unwrap());
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf).unwrap();
+        if n == 0 { break }
+        h.write(&buf[..n]);
+    }
+    h.finish()
+}
+
+fn chart_digest(kind: &str, profile: Option<&str>, extra: &[&str]) -> (u64, std::path::PathBuf, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join(format!("{kind}.prn"));
+    let mut c = tool();
+    c.args(["chart", kind]).arg(&out).args(["--width-mm", "600"]).args(extra);
+    if let Some(j) = profile {
+        let pf = dir.path().join("profile.json");
+        std::fs::write(&pf, j).unwrap();
+        c.arg("--profile").arg(&pf);
+    }
+    assert!(c.status().unwrap().success(), "{kind} {profile:?} {extra:?}");
+    (digest(&out), out, dir)
+}
+
+const PROFILE: &str = r#"{"xDpi":720,"yDpi":1800"#;
+
+#[test]
+fn colour_chart_follows_the_profile_settings() {
+    let (base, _, _d0) = chart_digest("colour", None, &[]);
+    let ink = format!(r#"{PROFILE},"inkLimitPct":150}}"#);
+    let (a, _, _d1) = chart_digest("colour", Some(&ink), &[]);
+    assert_ne!(base, a, "ink limit must change the chart");
+    let scr = format!(r#"{PROFILE},"screening":"errorDiffusion"}}"#);
+    let (b, _, _d2) = chart_digest("colour", Some(&scr), &[]);
+    assert_ne!(base, b, "screening must change the chart");
+    let curve = format!(r#"{PROFILE},"dotGain":{{"C":[[0.5,0.7]]}}}}"#);
+    let (c, _, _d3) = chart_digest("colour", Some(&curve), &[]);
+    assert_ne!(base, c, "curves must change the chart");
+    // the same profile twice gives the same chart
+    let (a2, _, _d4) = chart_digest("colour", Some(&ink), &[]);
+    assert_eq!(a, a2);
+}
+
+#[test]
+fn colour_chart_always_has_a_white_underbase() {
+    let (_, on, _d) = chart_digest("colour", None, &[]);
+    let mut r = PrnReader::open(&on).unwrap();
+    let n = r.header().lines;
+    assert!((0..n).step_by(50).any(|y| r.read_line(y).unwrap()[4].iter().any(|&v| v != 0)));
+}
+
+#[test]
+fn white_chart_follows_the_profile_settings() {
+    let (base, _, _d0) = chart_digest("white", None, &[]);
+    let ink = format!(r#"{PROFILE},"inkLimitPct":100}}"#);
+    let (a, _, _d1) = chart_digest("white", Some(&ink), &[]);
+    assert_ne!(base, a);
+}
+
+#[test]
+fn charts_reject_a_bad_profile_and_leave_no_work_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("c.prn");
+    let pf = dir.path().join("p.json");
+    std::fs::write(&pf, "not json").unwrap();
+    let st = tool().args(["chart", "white"]).arg(&out).arg("--profile").arg(&pf).status().unwrap();
+    assert!(!st.success());
+    let bad = dir.path().join("bad.json");
+    std::fs::write(&bad, format!(r#"{PROFILE},"channelOrder":["X","C","M","Y","W","W"]}}"#)).unwrap();
+    let st = tool().args(["chart", "colour"]).arg(&out).arg("--profile").arg(&bad).status().unwrap();
+    assert!(!st.success());
+    let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names.len(), 2, "no leftovers: {names:?}");
+}
+
 fn px_x(mm: f64) -> usize {
     (mm / 25.4 * 720.0).round() as usize
 }
