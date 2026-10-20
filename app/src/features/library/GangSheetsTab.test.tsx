@@ -6,6 +6,7 @@ vi.mock('../../platform/tauri', () => ({ cacheAsset: vi.fn(), importLocalFile: v
 import { GangSheetsTab } from './GangSheetsTab'
 import { fakeClient, withClient } from './testUtils'
 import { cacheAsset } from '../../platform/tauri'
+import { AuthRequiredError } from '../../api/dtfClient'
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE } from '../../state/settingsStore'
 
@@ -113,5 +114,41 @@ describe('GangSheetsTab', () => {
     render(<GangSheetsTab />, { wrapper: withClient(client) })
     await waitFor(() => expect(client.getOrderFiles).toHaveBeenCalledTimes(9))
     expect(peak).toBeLessThanOrEqual(4)
+  })
+
+  it('hands slots over without exceeding 4 in flight', async () => {
+    let active = 0
+    let peak = 0
+    const releases: Array<() => void> = []
+    const client = fakeClient({
+      listOrders: vi.fn(async () => ({ items: Array.from({ length: 8 }, (_, i) => card(`o${i}`, `#${i}`)), total: 8, page: 1, hasNext: false })),
+      getOrderFiles: vi.fn(async () => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise<void>((r) => releases.push(r))
+        active--
+        return []
+      }),
+    })
+    render(<GangSheetsTab />, { wrapper: withClient(client) })
+    await waitFor(() => expect(releases).toHaveLength(4))
+    for (let i = 0; i < 4; i++) {
+      releases[i]()
+      await waitFor(() => expect(releases.length).toBeGreaterThan(4 + i))
+    }
+    expect(peak).toBeLessThanOrEqual(4)
+  })
+
+  it('asks for login when file loading is unauthorised, card still renders', async () => {
+    const requireLogin = vi.fn()
+    const client = fakeClient({
+      listOrders: vi.fn(async () => ({ items: [card('o1', '#1')], total: 1, page: 1, hasNext: false })),
+      getOrderFiles: vi.fn(async () => {
+        throw new AuthRequiredError()
+      }),
+    })
+    render(<GangSheetsTab />, { wrapper: withClient(client, requireLogin) })
+    await waitFor(() => expect(requireLogin).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: /#1/ })).toBeInTheDocument()
   })
 })

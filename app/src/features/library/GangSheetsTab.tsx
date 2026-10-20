@@ -120,12 +120,13 @@ export function GangSheetsTab() {
   const withSlot = async <T,>(fn: () => Promise<T>): Promise<T> => {
     const s = slots.current
     if (s.active >= MAX_FILE_REQUESTS) await new Promise<void>((r) => s.waiting.push(r))
-    s.active++
+    else s.active++
     try {
       return await fn()
     } finally {
-      s.active--
-      s.waiting.shift()?.()
+      const next = s.waiting.shift()
+      if (next) next()
+      else s.active--
     }
   }
 
@@ -136,7 +137,9 @@ export function GangSheetsTab() {
         setFiles((cur) => ({ ...cur, [orderId]: list }))
         return list
       })
-      p.catch(() => fileReqs.current.delete(orderId))
+      p.catch(() => {
+        fileReqs.current.delete(orderId)
+      })
       fileReqs.current.set(orderId, p)
     }
     return p
@@ -150,14 +153,19 @@ export function GangSheetsTab() {
         (c) => {
           if (c.name) setCustomers((cur) => ({ ...cur, [customerId]: c.name }))
         },
-        () => {},
+        (e) => {
+          customerReqs.current.delete(customerId)
+          if (e instanceof AuthRequiredError) requireLogin()
+        },
       ),
     )
   }
 
   const onCardVisible = (o: OrderSummary) => {
     loadCustomer(o.customerId)
-    void loadFiles(o.id).catch(() => {})
+    loadFiles(o.id).catch((e) => {
+      if (e instanceof AuthRequiredError) requireLogin()
+    })
   }
 
   const expand = async (order: OrderSummary) => {
