@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../platform/tauri', () => ({ cacheAsset: vi.fn(), importLocalFile: vi.fn(), assetSrc: (p: string) => p }))
+import { cacheAsset } from '../../platform/tauri'
+import { AuthRequiredError } from '../../api/dtfClient'
 import { ProductsTab } from './ProductsTab'
 import { fakeClient, withClient } from './testUtils'
 
@@ -30,10 +32,40 @@ describe('ProductsTab', () => {
     await waitFor(() => expect(client.listProducts).toHaveBeenLastCalledWith(expect.objectContaining({ categoryId: '3' })))
   })
 
-  it('shows thumbnails from thumbnailUrl', async () => {
-    render(<ProductsTab />, { wrapper: withClient(fakeClient({ listProducts: list() })) })
+  it('shows the raw design (not the mockup) with a placeholder while it loads', async () => {
+    let resolve!: (v: { designUrl: string; sizes: string[] }) => void
+    const getProductPrintSource = vi.fn(() => new Promise<{ designUrl: string; sizes: string[] }>((r) => (resolve = r)))
+    render(<ProductsTab />, { wrapper: withClient(fakeClient({ listProducts: list(), getProductPrintSource })) })
     const btn = await screen.findByRole('button', { name: 'Tee' })
-    expect(btn.querySelector('img')).toHaveAttribute('src', 'https://x.test/uploads/t.png')
+    expect(btn.querySelector('img')).toBeNull()
+    expect(screen.getByTestId('thumb-placeholder')).toBeInTheDocument()
+    resolve({ designUrl: '/uploads/design.png', sizes: [] })
+    await waitFor(() => expect(btn.querySelector('img')).toHaveAttribute('src', 'https://x.test/uploads/design.png'))
+    expect(getProductPrintSource).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a "No design file" badge and refuses to add a product without a design', async () => {
+    const client = fakeClient({ listProducts: list(), getProductPrintSource: vi.fn(async () => ({ designUrl: null, sizes: ['M'] })) })
+    render(<ProductsTab />, { wrapper: withClient(client) })
+    const btn = await screen.findByRole('button', { name: 'Tee' })
+    expect(await within(btn).findByText('No design file')).toBeInTheDocument()
+    expect(btn.querySelector('img')).toBeNull()
+    await userEvent.click(btn)
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(await screen.findByText('No design file for Tee')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('asks for sign-in on auth errors and leaves the placeholder on other errors', async () => {
+    const requireLogin = vi.fn()
+    const getProductPrintSource = vi.fn(async (id: string) => {
+      throw id === 'p1' ? new AuthRequiredError() : new Error('boom')
+    })
+    const items = [tee, { ...tee, id: 'p2', name: 'Hoodie' }]
+    render(<ProductsTab />, { wrapper: withClient(fakeClient({ listProducts: list(items), getProductPrintSource }), requireLogin) })
+    await screen.findByRole('button', { name: 'Hoodie' })
+    await waitFor(() => expect(requireLogin).toHaveBeenCalledTimes(1))
+    expect(screen.getAllByTestId('thumb-placeholder')).toHaveLength(2)
   })
 
   it('products without a thumbnail get a placeholder instead of an empty img', async () => {
@@ -43,13 +75,16 @@ describe('ProductsTab', () => {
     expect(screen.getByTestId('thumb-placeholder')).toBeInTheDocument()
   })
 
-  it('opens the dialog on Add; a product without a design file cannot be added', async () => {
-    const client = fakeClient({ listProducts: list(), getProductPrintSource: vi.fn(async () => ({ designUrl: null, sizes: ['M'] })) })
+  it('opens the dialog on Add using the cached print source', async () => {
+    vi.mocked(cacheAsset).mockResolvedValue({ id: 'a', widthPx: 300, heightPx: 300 } as never)
+    const client = fakeClient({ listProducts: list(), getProductPrintSource: vi.fn(async () => ({ designUrl: '/uploads/d.png', sizes: ['M'] })) })
     render(<ProductsTab />, { wrapper: withClient(client) })
-    await userEvent.click(await screen.findByRole('button', { name: 'Tee' }))
+    const btn = await screen.findByRole('button', { name: 'Tee' })
+    await waitFor(() => expect(btn.querySelector('img')).not.toBeNull())
+    await userEvent.click(btn)
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
-    expect(await screen.findByText('No design file')).toBeInTheDocument()
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.querySelector('button[type=submit]')).toBeDisabled()
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Quantity M')).toBeInTheDocument()
+    expect(client.getProductPrintSource).toHaveBeenCalledTimes(1)
   })
 })

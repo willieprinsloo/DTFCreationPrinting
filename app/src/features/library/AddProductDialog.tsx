@@ -8,6 +8,7 @@ import { dpiStatus, effectiveDpi } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
+import { useProductSources } from './queries/useProductSources'
 
 const MAX_QUANTITY = 500
 const LABELS = { fine: 'Good', low: 'Low', bad: 'Too low' } as const
@@ -20,6 +21,7 @@ interface Props {
 
 export function AddProductDialog({ product, onClose }: Props) {
   const { client, requireLogin } = useDtfClient()
+  const sources = useProductSources()
   const thresholds = useSettings((s) => s.thresholds)
   const settings = useSheet((s) => s.sheet.settings)
   const [designUrl, setDesignUrl] = useState<string | null | undefined>(undefined)
@@ -70,8 +72,8 @@ export function AddProductDialog({ product, onClose }: Props) {
   useEffect(() => {
     let live = true
     setLoading(true)
-    client
-      .getProductPrintSource(product.id)
+    sources
+      .get(product.id)
       .then((src) => {
         if (!live) return
         setSizes(src.sizes)

@@ -264,4 +264,17 @@ describe('LibraryBrowser', () => {
     window.removeEventListener('keydown', onWindowKey)
     expect(onWindowKey).not.toHaveBeenCalled()
   })
+
+  it('loads each product\'s print source once across the drawer and the browser, showing the raw design', async () => {
+    const getProductPrintSource = vi.fn(async (id: string) => ({ designUrl: `/uploads/design-${id}.png`, sizes: [] }))
+    open(fakeClient({ listProducts: page([product('p1', 'Tee')]), getProductPrintSource }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Products' }))
+    const dlg = await popOut()
+    await showTab(dlg, 'Products')
+    const card = await within(dlg).findByRole('checkbox', { name: 'Tee' })
+    await waitFor(() => expect(card.querySelector('img')).toHaveAttribute('src', 'https://x.test/uploads/design-p1.png'))
+    const strip = (await screen.findAllByRole('button', { name: 'Tee' }))[0]
+    await waitFor(() => expect(strip.querySelector('img')).toHaveAttribute('src', 'https://x.test/uploads/design-p1.png'))
+    expect(getProductPrintSource).toHaveBeenCalledTimes(1)
+  })
 })

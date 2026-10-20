@@ -4,6 +4,7 @@ import type { ProductSummary } from '../../api/types'
 import { AddProductDialog } from './AddProductDialog'
 import { Thumb } from './Thumb'
 import { beginLibraryDrag } from './dragAdd'
+import { useProductSources } from './queries/useProductSources'
 import { useLookup } from './queries/useLookup'
 import { useProductsQuery } from './queries/useProductsQuery'
 import { useDebounced } from './useDebounced'
@@ -22,7 +23,9 @@ export function ProductsTab() {
   const query = useProductsQuery({ search: debounced, categoryId, limit: LIMIT })
   const [selected, setSelected] = useState<string[]>([])
   const [queue, setQueue] = useState<ProductSummary[]>([])
-  const latest = useLatest({ items: query.items, selected })
+  const sources = useProductSources()
+  const [notice, setNotice] = useState<string | null>(null)
+  const latest = useLatest({ items: query.items, selected, hasNoDesign: sources.hasNoDesign })
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
@@ -31,7 +34,10 @@ export function ProductsTab() {
 
   const toggle = (id: string) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
   const enqueue = (ids: string[]) => {
-    const picked = latest.current.items.filter((d) => ids.includes(d.id))
+    const all = latest.current.items.filter((d) => ids.includes(d.id))
+    const missing = all.filter((d) => latest.current.hasNoDesign(d.id))
+    setNotice(missing.length > 0 ? `No design file for ${missing.map((d) => d.name).join(', ')}` : null)
+    const picked = all.filter((d) => !missing.includes(d))
     if (picked.length > 0) setQueue(picked)
   }
   const closeDialog = () => {
@@ -39,7 +45,7 @@ export function ProductsTab() {
     setSelected((cur) => cur.filter((id) => id !== queue[0]?.id))
   }
 
-  const error = query.error ?? lookupError
+  const error = query.error ?? lookupError ?? notice
   return (
     <div className="library-tab">
       <div className="library-toolbar">
@@ -62,7 +68,9 @@ export function ProductsTab() {
         {query.items.map((d) => (
           <Thumb
             key={d.id}
-            src={d.thumbnailUrl ? client.absoluteUrl(d.thumbnailUrl) : ''}
+            src={sources.designSrc(d)}
+            badge={sources.hasNoDesign(d.id) ? 'No design file' : undefined}
+            onVisible={() => sources.prefetch(d.id)}
             label={d.name}
             selected={selected.includes(d.id)}
             onToggle={() => toggle(d.id)}

@@ -7,6 +7,8 @@ export interface ResultRow {
   key: string
   label: string
   thumb?: string
+  /** Small note over the thumbnail, e.g. "No design file". */
+  badge?: string
   /** List-view cells after the checkbox and thumbnail columns. */
   cells: ReactNode[]
   /** Grid-view caption under the thumbnail. */
@@ -45,7 +47,10 @@ export function ResultItem({ row, view, isSub, onToggle }: Props) {
       {row.expand.expanded ? '▾' : '▸'}
     </button>
   )
-  const thumb = <span className="lib-thumb">{row.thumb && <img src={row.thumb} alt="" loading="lazy" draggable={false} />}</span>
+  const thumb = <span className="lib-thumb">
+      {row.thumb && <img src={row.thumb} alt="" loading="lazy" draggable={false} />}
+      {row.badge && <span className="lib-thumb-badge">{row.badge}</span>}
+    </span>
   const common = {
     'data-nav': '',
     'data-key': row.key,

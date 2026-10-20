@@ -5,6 +5,7 @@ import { DEFAULT_PRODUCT_PREFS, type ProductPrefs, type ProductSort } from '../.
 import { AddProductDialog } from '../AddProductDialog'
 import { formatDate } from '../format'
 import { useLookup } from '../queries/useLookup'
+import { useProductSources } from '../queries/useProductSources'
 import { useProductsQuery } from '../queries/useProductsQuery'
 import { useDebounced } from '../useDebounced'
 import { useErrorHandler } from '../useErrorHandler'
@@ -37,13 +38,17 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
   const query = useProductsQuery({ search: debounced, categoryId: f.categoryId, status: f.status, limit: prefs.pageSize })
   const selection = useSelection<ProductSummary>()
   const dialogs = useDialogQueue<ProductSummary>(onAdded)
+  const sources = useProductSources()
+  const [notice, setNotice] = useState<string | null>(null)
 
   const typeName = (p: ProductSummary) => categories.find((c) => c.id === p.categoryId)?.name ?? ''
   const sorted = sortItems(query.items, f.sort === 'name' ? (p) => p.name : f.sort === 'type' ? typeName : f.sort, (p) => p.createdAt)
   const rows: ResultRow[] = sorted.map((p) => ({
     key: p.id,
     label: p.name,
-    thumb: p.thumbnailUrl ? client.absoluteUrl(p.thumbnailUrl) : undefined,
+    thumb: sources.designSrc(p) || undefined,
+    badge: sources.hasNoDesign(p.id) ? 'No design file' : undefined,
+    onVisible: () => sources.prefetch(p.id),
     checked: selection.has(p.id),
     cells: [p.name, typeName(p), p.sizes.join(', '), formatDate(p.createdAt)],
   }))
@@ -54,7 +59,12 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
     f.status && `Status: ${STATUS_LABELS[f.status]}`,
   ].filter((x): x is string => !!x)
 
-  const add = () => dialogs.start([...selection.map.values()])
+  const add = () => {
+    const all = [...selection.map.values()]
+    const missing = all.filter((p) => sources.hasNoDesign(p.id))
+    setNotice(missing.length > 0 ? `No design file for ${missing.map((p) => p.name).join(', ')}` : null)
+    dialogs.start(all.filter((p) => !missing.includes(p)))
+  }
   const closeDialog = () => {
     if (dialogs.current) selection.remove([dialogs.current.id])
     dialogs.next()
@@ -98,7 +108,7 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
           setSearch('')
           setF({ categoryId: DEFAULT_PRODUCT_PREFS.categoryId, status: DEFAULT_PRODUCT_PREFS.status })
         }}
-        error={query.error ?? lookupError}
+        error={query.error ?? lookupError ?? notice}
         results={
           <ResultsView
             rows={rows}
