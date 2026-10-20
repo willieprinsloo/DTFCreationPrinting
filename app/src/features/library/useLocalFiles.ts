@@ -12,11 +12,12 @@ export function useLocalFiles() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const addPaths = useCallback(async (paths: string[]) => {
+  /** Resolves to the number of files added. */
+  const addPaths = useCallback(async (paths: string[]): Promise<number> => {
     const wanted = paths.filter((p) => EXT.test(p))
     if (wanted.length === 0) {
       if (paths.length > 0) setError('Only PNG, JPEG and TIFF files can be added')
-      return
+      return 0
     }
     setBusy(true)
     setError(null)
@@ -39,18 +40,21 @@ export function useLocalFiles() {
     if (items.length > 0) getSheetStore().getState().addItems(items)
     if (failed.length > 0) setError(`Couldn't open ${failed.join(', ')}`)
     setBusy(false)
+    return items.length
   }, [])
 
-  const pick = useCallback(async () => {
+  /** Resolves to the number of files added (0 when cancelled or failed). */
+  const pick = useCallback(async (): Promise<number> => {
     try {
       const sel = await open({
         multiple: true,
         filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff'] }],
       })
-      if (!sel) return
-      await addPaths(Array.isArray(sel) ? sel : [sel])
+      if (!sel) return 0
+      return await addPaths(Array.isArray(sel) ? sel : [sel])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+      return 0
     }
   }, [addPaths])
 

@@ -1,19 +1,13 @@
-import { useRef, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronUp, Maximize2 } from 'lucide-react'
 import { useSettings, getSettingsStore, clampDrawerHeight } from '../../state/settingsStore'
 import { ProductsTab } from './ProductsTab'
 import { CatalogueTab } from './CatalogueTab'
 import { GangSheetsTab } from './GangSheetsTab'
 import { LocalTab } from './LocalTab'
 import { useLocalFiles } from './useLocalFiles'
-
-type Tab = 'products' | 'catalogue' | 'gang' | 'local'
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'products', label: 'Products' },
-  { id: 'catalogue', label: 'Designs' },
-  { id: 'gang', label: 'Gang sheets' },
-  { id: 'local', label: 'Local' },
-]
+import { LibraryBrowser } from './browser/LibraryBrowser'
+import { LIBRARY_TABS as TABS, type LibraryTab as Tab } from './tabs'
 
 interface Props {
   collapsed: boolean
@@ -22,9 +16,22 @@ interface Props {
 
 export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
   const [tab, setTab] = useState<Tab>('products')
+  const [browserOpen, setBrowserOpen] = useState(false)
   const height = useSettings((s) => s.drawerHeightPx)
   const local = useLocalFiles()
   const drag = useRef<{ y: number; h: number; live: number; shell: HTMLElement | null } | null>(null)
+
+  // ⌘/Ctrl+F pops the library out (also inside text fields: the app has no other find).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setBrowserOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const onPointerDown = (e: React.PointerEvent) => {
     drag.current = { y: e.clientY, h: height, live: height, shell: e.currentTarget.closest<HTMLElement>('.app-shell') }
@@ -77,6 +84,9 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
           </button>
         ))}
         <span className="spacer" />
+        <button type="button" className="pop-out-btn" title="Pop out library (⌘/Ctrl+F)" onClick={() => setBrowserOpen(true)}>
+          <Maximize2 size={14} /> Pop out
+        </button>
         <button
           type="button"
           className="icon-btn"
@@ -95,6 +105,7 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
           {tab === 'local' && <LocalTab busy={local.busy} error={local.error} onPick={() => void local.pick()} />}
         </div>
       )}
+      {browserOpen && <LibraryBrowser tab={tab} onTabChange={setTab} onClose={() => setBrowserOpen(false)} local={local} />}
     </div>
   )
 }
