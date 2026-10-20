@@ -14,7 +14,8 @@ pub fn white_from_alpha(alpha: &Plane, density_pct: f32, enabled: bool) -> Plane
 }
 
 /// Separable min-filter: each pixel becomes the minimum within `rx` columns
-/// and `ry` rows either side (edges clamp, so the border is not eroded).
+/// and `ry` rows either side. Out-of-bounds counts as 0, so a full-bleed
+/// opaque image is choked at its border too.
 pub fn erode(plane: &Plane, rx: u32, ry: u32) -> Plane {
     let (w, h) = (plane.w as usize, plane.h as usize);
     if w == 0 || h == 0 || (rx == 0 && ry == 0) {
@@ -25,14 +26,21 @@ pub fn erode(plane: &Plane, rx: u32, ry: u32) -> Plane {
     for y in 0..h {
         let row = &plane.data[y * w..(y + 1) * w];
         for x in 0..w {
-            let (a, b) = (x.saturating_sub(rx), (x + rx).min(w - 1));
-            tmp[y * w + x] = *row[a..=b].iter().min().unwrap();
+            tmp[y * w + x] = if x < rx || x + rx >= w {
+                0
+            } else {
+                *row[x - rx..=x + rx].iter().min().unwrap()
+            };
         }
     }
     let mut out = vec![0u16; w * h];
     for y in 0..h {
+        let oob = y < ry || y + ry >= h;
         let (a, b) = (y.saturating_sub(ry), (y + ry).min(h - 1));
         for x in 0..w {
+            if oob {
+                continue; // stays 0
+            }
             let mut m = u16::MAX;
             for yy in a..=b {
                 m = m.min(tmp[yy * w + x]);
@@ -71,10 +79,16 @@ mod tests {
     }
 
     #[test]
-    fn erode_zero_radius_is_identity_and_border_not_eroded() {
-        let p = plane(4, 4, |_, _| 65535);
+    fn erode_zero_radius_is_identity_and_full_bleed_border_is_choked() {
+        let p = plane(6, 6, |_, _| 65535);
         assert_eq!(erode(&p, 0, 0), p);
-        assert_eq!(erode(&p, 2, 2), p);
+        let e = erode(&p, 1, 1);
+        for y in 0..6u32 {
+            for x in 0..6u32 {
+                let inner = (1..5).contains(&x) && (1..5).contains(&y);
+                assert_eq!(e.data[(y * 6 + x) as usize] != 0, inner, "({x},{y})");
+            }
+        }
     }
 
     #[test]

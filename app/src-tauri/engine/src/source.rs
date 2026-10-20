@@ -41,7 +41,28 @@ pub fn decode(path: &Path) -> Result<image::DynamicImage, EngineError> {
         .map_err(|e| EngineError::Decode(e.to_string()))
 }
 
+/// Bytes per pixel held at once: RGBA16 copy (8) + 4 ink planes, white and alpha (12).
+const BYTES_PER_PX: u64 = 20;
+
+/// Decodes and prepares a source. Embedded source ICC profiles are ignored:
+/// the pixels are assumed to be sRGB.
 pub fn prepare(path: &Path, s: &ColourSettings, white_enabled: bool) -> Result<PreparedSource, EngineError> {
+    prepare_with_budget(path, s, white_enabled, MAX_ALLOC)
+}
+
+pub fn prepare_with_budget(
+    path: &Path,
+    s: &ColourSettings,
+    white_enabled: bool,
+    budget: u64,
+) -> Result<PreparedSource, EngineError> {
+    let (dw, dh) = ImageReader::open(path)?
+        .with_guessed_format()?
+        .into_dimensions()
+        .map_err(|e| EngineError::Decode(e.to_string()))?;
+    if dw as u64 * dh as u64 * BYTES_PER_PX > budget {
+        return Err(EngineError::Decode(format!("Design is too large to prepare ({dw}\u{d7}{dh} px)")));
+    }
     let conv = Converter::from_settings(s)?;
     let img = decode(path)?;
     let (w, h) = (img.width(), img.height());
@@ -170,6 +191,49 @@ mod tests {
         assert!(near(s.ink[0].data[0], 0.5) && s.ink[1].data[0] == 0);
         assert_eq!(s.alpha.data[0], 65535);
     }
+    #[test]
+    fn too_large_for_budget_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let p = rgba_png(d.path(), [0, 0, 0, 255]); // 2x2 = 80 bytes planned
+        let s = ColourSettings::default();
+        let e = prepare_with_budget(&p, &s, true, 79).unwrap_err();
+        assert!(e.to_string().contains("Design is too large to prepare (2\u{d7}2 px)"), "{e}");
+        assert!(prepare_with_budget(&p, &s, true, 80).is_ok());
+    }
+
+    #[test]
+    fn pixels_land_at_their_own_positions() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("w.png");
+        let px: [[u8; 4]; 6] = [
+            [255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255],
+            [0, 0, 0, 255], [255, 255, 255, 255], [10, 20, 30, 0],
+        ];
+        let mut img = ImageBuffer::new(3, 2);
+        for (i, v) in px.iter().enumerate() {
+            img.put_pixel((i % 3) as u32, (i / 3) as u32, Rgba(*v));
+        }
+        img.save(&p).unwrap();
+        let s = prepare(&p, &ColourSettings { white_density_pct: 50.0, icc_profile_path: None }, true).unwrap();
+        let (f, h) = (65535u16, 32768u16);
+        // [K, C, M, Y, W] per pixel in row-major order
+        let want: [[u16; 5]; 6] = [
+            [0, 0, f, f, h], // red
+            [0, f, 0, f, h], // green
+            [0, f, f, 0, h], // blue
+            [f, 0, 0, 0, h], // black
+            [0, 0, 0, 0, h], // white
+            [0, 0, 0, 0, 0], // transparent
+        ];
+        for (i, w) in want.iter().enumerate() {
+            let got = [
+                s.ink[0].data[i], s.ink[1].data[i], s.ink[2].data[i], s.ink[3].data[i], s.white.data[i],
+            ];
+            assert_eq!(&got, w, "pixel {i}");
+        }
+        assert_eq!(s.alpha.data[5], 0);
+    }
+
     #[test]
     fn bad_file_is_decode_error() {
         let d = tempfile::tempdir().unwrap();
