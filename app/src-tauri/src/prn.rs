@@ -38,7 +38,7 @@ struct SheetDto {
 struct SheetSettingsDto {
     width_mm: f64,
     mirror: bool,
-    white_enabled: bool,
+    // whiteEnabled in saved sheets is ignored: white is always printed.
 }
 
 #[derive(Deserialize)]
@@ -50,7 +50,6 @@ struct SheetItemDto {
     width_mm: f64,
     height_mm: f64,
     rotation_deg: f64,
-    white_enabled: bool,
 }
 
 #[derive(Deserialize)]
