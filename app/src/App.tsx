@@ -3,7 +3,9 @@ import "./styles/app.css";
 import { TopBar } from "./features/topbar/TopBar";
 import { PropertiesPanel } from "./features/properties/PropertiesPanel";
 import { StatusBar } from "./features/status/StatusBar";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
+import { DtfClientProvider } from "./api/DtfClientContext";
+import { SettingsDialog } from "./features/settings/SettingsDialog";
 
 // react-konva needs a real canvas; jsdom tests render the shell without it.
 const SheetCanvas =
@@ -12,10 +14,12 @@ const SheetCanvas =
     : lazy(() => import("./features/canvas/SheetCanvas").then((m) => ({ default: m.SheetCanvas })));
 
 export default function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
+    <DtfClientProvider>
     <div className="app-shell">
       <header className="region topbar" data-testid="topbar">
-        <TopBar />
+        <TopBar onOpenSettings={() => setSettingsOpen(true)} />
       </header>
       <main className="region canvas-area" data-testid="canvas-area">
         {SheetCanvas ? (
@@ -35,6 +39,8 @@ export default function App() {
       <footer className="region status-bar" data-testid="status-bar">
         <StatusBar />
       </footer>
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </div>
+    </DtfClientProvider>
   );
 }

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-http": "^2.8.3",
     "@tauri-apps/plugin-store": "^2.5.0",
     "konva": "^10.9.0",
     "lucide-react": "^1.60.0",

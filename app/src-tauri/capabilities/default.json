@@ -5,6 +5,13 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "store:default"
+    "store:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://dtfcreations.co.za/*" },
+        { "url": "http://localhost:8000/*" }
+      ]
+    }
   ]
 }

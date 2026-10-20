@@ -28,3 +28,18 @@ describe('platform/tauri', () => {
     expect(assetSrc('/p')).toBe('asset:///p')
   })
 })
+
+describe('platform/tauri credentials', () => {
+  beforeEach(() => vi.mocked(invoke).mockReset())
+  it('wraps the credential commands', async () => {
+    const { saveCredentials, loadCredentials, clearCredentials } = await import('./tauri')
+    vi.mocked(invoke).mockResolvedValue(undefined)
+    await saveCredentials('a@b.c', 'pw')
+    expect(invoke).toHaveBeenCalledWith('save_credentials', { email: 'a@b.c', password: 'pw' })
+    vi.mocked(invoke).mockResolvedValue({ email: 'a@b.c', password: 'pw' })
+    expect(await loadCredentials()).toEqual({ email: 'a@b.c', password: 'pw' })
+    expect(invoke).toHaveBeenCalledWith('load_credentials')
+    await clearCredentials()
+    expect(invoke).toHaveBeenCalledWith('clear_credentials')
+  })
+})
