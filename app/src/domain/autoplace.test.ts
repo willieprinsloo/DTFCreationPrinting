@@ -23,6 +23,15 @@ function mulberry32(seed: number): () => number {
 }
 
 describe('autoPlace', () => {
+  it('leaves items unplaced once the available film length runs out', () => {
+    // 600 wide, 250 long: two rows of six 100 mm squares fit, the 13th does not.
+    const items = Array.from({ length: 13 }, (_, i) => sq(`s${i}`));
+    const r = autoPlace(items, { ...base, printableLengthMm: 250 });
+    expect(r.placements).toHaveLength(12);
+    expect(r.unplaced).toEqual(['s12']);
+    expect(r.usedLengthMm).toBe(200);
+  });
+
   it('places four squares in one row with gap 0', () => {
     const r = autoPlace([sq('a'), sq('b'), sq('c'), sq('d')], base);
     expect(r.unplaced).toEqual([]);

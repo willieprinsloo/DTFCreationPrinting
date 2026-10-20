@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { InvalidSheetError, findProblems, itemBounds, printableArea, sheetLengthMm, displayLengthMm, heightForWidth, widthForHeight, sizeAfterTransform } from './geometry'
+import { InvalidSheetError, MAX_SHEET_LENGTH_MM, findProblems, itemBounds, printableArea, sheetLengthMm, displayLengthMm, heightForWidth, widthForHeight, sizeAfterTransform } from './geometry'
 import type { Sheet, SheetItem, SheetSettings } from './types'
 
 const m = (n: number) => ({ topMm: n, rightMm: n, bottomMm: n, leftMm: n })
@@ -16,8 +16,12 @@ const item = (id: string, over: Partial<SheetItem> = {}): SheetItem => ({
 const sheet = (items: SheetItem[], s = settings()): Sheet => ({ id: 's', name: 'S', profileId: 'p', settings: s, items })
 
 describe('printableArea', () => {
-  it('uses margins and infinite height for auto', () => {
-    expect(printableArea(settings())).toEqual({ xMm: 5, yMm: 5, widthMm: 590, heightMm: Infinity })
+  it('uses margins and up to 20 m of film for auto', () => {
+    expect(printableArea(settings())).toEqual({ xMm: 5, yMm: 5, widthMm: 590, heightMm: 20_000 - 10 })
+  })
+  it('rejects a fixed length over 20 m', () => {
+    expect(() => printableArea(settings({ lengthMode: 'fixed', fixedLengthMm: MAX_SHEET_LENGTH_MM }))).not.toThrow()
+    expect(() => printableArea(settings({ lengthMode: 'fixed', fixedLengthMm: MAX_SHEET_LENGTH_MM + 1 }))).toThrow(InvalidSheetError)
   })
   it('throws when width is not positive', () => {
     expect(() => printableArea(settings({ margins: { ...m(5), leftMm: 300, rightMm: 300 } }))).toThrow(InvalidSheetError)
@@ -65,6 +69,16 @@ describe('findProblems', () => {
   it('reports items left of the left margin or above the top margin', () => {
     expect(findProblems(sheet([item('a', { xMm: 2 })]))).toEqual([{ kind: 'outside', itemId: 'a' }])
     expect(findProblems(sheet([item('a', { yMm: 2 })]))).toEqual([{ kind: 'outside', itemId: 'a' }])
+  })
+})
+
+describe('auto length', () => {
+  it('only grows as far as the designs go', () => {
+    expect(sheetLengthMm(sheet([item('a', { yMm: 1000, heightMm: 500 })]))).toBe(1505)
+  })
+  it('flags a design running past 20 m', () => {
+    expect(findProblems(sheet([item('a', { yMm: 19_900, heightMm: 50 })]))).toEqual([])
+    expect(findProblems(sheet([item('a', { yMm: 19_960, heightMm: 50 })]))).toEqual([{ kind: 'outside', itemId: 'a' }])
   })
 })
 

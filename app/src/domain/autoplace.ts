@@ -16,6 +16,8 @@ export interface AutoPlaceOptions {
   printableWidthMm: number;
   gapMm: number;
   allowRotate: boolean;
+  /** Film available below the origin; items that don't fit are unplaced. Unlimited if omitted. */
+  printableLengthMm?: number;
 }
 export interface AutoPlaceResult {
   placements: Placement[];
@@ -40,7 +42,7 @@ function contains(a: Rect, b: Rect): boolean {
 
 /** MaxRects (bottom-left rule) strip packing; see Task 4 brief. */
 export function autoPlace(items: PlaceInput[], opts: AutoPlaceOptions): AutoPlaceResult {
-  const { originXMm, originYMm, printableWidthMm, gapMm, allowRotate } = opts;
+  const { originXMm, originYMm, printableWidthMm, gapMm, allowRotate, printableLengthMm = Infinity } = opts;
   // Items are inflated by the gap on right/bottom, so the strip is one gap wider.
   const stripW = printableWidthMm + gapMm;
 
@@ -56,7 +58,7 @@ export function autoPlace(items: PlaceInput[], opts: AutoPlaceOptions): AutoPlac
       return a.index - b.index;
     });
 
-  let free: Rect[] = [{ x: 0, y: 0, w: stripW, h: Infinity }];
+  let free: Rect[] = [{ x: 0, y: 0, w: stripW, h: printableLengthMm + gapMm }];
   const placements: Placement[] = [];
   const unplaced: string[] = [];
   let usedLength = 0;

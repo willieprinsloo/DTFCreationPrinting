@@ -93,6 +93,7 @@ function applyPlacement(item: SheetItem, p: Placement): SheetItem {
 }
 
 function pack(items: SheetItem[], settings: SheetSettings, originYMm: number) {
+  const area = printableArea(settings)
   return autoPlace(
     items.map((it) => ({
       id: it.id,
@@ -103,7 +104,8 @@ function pack(items: SheetItem[], settings: SheetSettings, originYMm: number) {
     {
       originXMm: settings.margins.leftMm,
       originYMm,
-      printableWidthMm: printableArea(settings).widthMm,
+      printableWidthMm: area.widthMm,
+      printableLengthMm: Math.max(0, area.yMm + area.heightMm - originYMm),
       gapMm: settings.gapMm,
       allowRotate: settings.allowRotate,
     },

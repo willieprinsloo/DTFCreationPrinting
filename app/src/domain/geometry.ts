@@ -2,6 +2,8 @@ import { assetAspect } from './dpi'
 import type { Problem, Rect, Sheet, SheetItem, SheetSettings } from './types'
 
 const OVERLAP_EPSILON_MM = 0.01
+/** Longest film a sheet may use (20 m). Auto length still only grows as far as the designs go. */
+export const MAX_SHEET_LENGTH_MM = 20_000
 
 export class InvalidSheetError extends Error {
   constructor(message: string) {
@@ -14,8 +16,9 @@ export function printableArea(s: SheetSettings): Rect {
   const { leftMm, rightMm, topMm } = s.margins
   const widthMm = s.widthMm - leftMm - rightMm
   if (widthMm <= 0) throw new InvalidSheetError('Margins leave no printable width on this sheet')
-  let heightMm = Infinity
+  let heightMm = MAX_SHEET_LENGTH_MM - topMm - s.margins.bottomMm
   if (s.lengthMode === 'fixed') {
+    if (s.fixedLengthMm > MAX_SHEET_LENGTH_MM) throw new InvalidSheetError('Film length can be at most 20 m')
     heightMm = s.fixedLengthMm - topMm - s.margins.bottomMm
     if (heightMm <= 0) throw new InvalidSheetError('Margins leave no printable length on this sheet')
   }
