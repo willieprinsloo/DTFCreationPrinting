@@ -152,6 +152,27 @@ describe('dtfClient', () => {
     expect(await client.getCustomer('c1')).toEqual({ id: 'c1', name: 'Ann Lee', email: 'a@l.c' })
     expect(new URL(fetchMock.mock.calls[2][0] as string).pathname).toBe('/api/v1/customers/c1')
   })
+  it('listGalleryDesigns sends sort/order and maps createdAt', async () => {
+    const { client, fetchMock } = setup([
+      loginOk(),
+      json(200, { success: true, data: [{ id: 'd1', name: 'S', image_url: '/s.png', design_type: 't', gallery_category_id: 'g', created_at: '2026-10-02T00:00:00' }], meta: { total: 1, page: 1, has_next_page: false } }),
+    ])
+    await client.login({ email: 'a@b.c', password: 'pw' })
+    const page = await client.listGalleryDesigns({ sort: 'created_at', order: 'desc' })
+    const url = new URL(fetchMock.mock.calls[1][0] as string)
+    expect(url.searchParams.get('sort')).toBe('created_at')
+    expect(url.searchParams.get('order')).toBe('desc')
+    expect(page.items[0].createdAt).toBe('2026-10-02T00:00:00')
+  })
+
+  it('listOrders sends limit, sort, order and date_from', async () => {
+    const { client, fetchMock } = setup([loginOk(), json(200, { success: true, data: [], meta: { total: 0, page: 1, has_next_page: false } })])
+    await client.login({ email: 'a@b.c', password: 'pw' })
+    await client.listOrders({ status: 'confirmed', page: 2, limit: 50, sort: 'created_at', order: 'desc', dateFrom: '2026-10-13' })
+    const sp = new URL(fetchMock.mock.calls[1][0] as string).searchParams
+    expect(Object.fromEntries(sp)).toEqual({ status: 'confirmed', page: '2', limit: '50', sort: 'created_at', order: 'desc', date_from: '2026-10-13' })
+  })
+
   describe('products', () => {
     it('listProductCategories maps id and name', async () => {
       const { client, fetchMock } = setup([loginOk(), json(200, { success: true, data: [{ id: 3, name: 'T-Shirts', slug: 't' }] })])
@@ -186,6 +207,17 @@ describe('dtfClient', () => {
         { id: '10', name: 'Mug', categoryId: '4', sizes: [], thumbnailUrl: undefined },
       ])
       expect(page).toMatchObject({ total: 120, page: 2, hasNext: true })
+    })
+
+    it('listProducts sends status_filter and maps status + createdAt', async () => {
+      const { client, fetchMock } = setup([
+        loginOk(),
+        json(200, { success: true, data: [{ id: 1, name: 'Cap', category_id: 2, axes: [], status: 'active', created_at: '2026-10-01T10:00:00' }], meta: { total: 1 } }),
+      ])
+      await client.login({ email: 'a@b.c', password: 'pw' })
+      const page = await client.listProducts({ status: 'active' })
+      expect(new URL(fetchMock.mock.calls[1][0] as string).searchParams.get('status_filter')).toBe('active')
+      expect(page.items[0]).toMatchObject({ status: 'active', createdAt: '2026-10-01T10:00:00' })
     })
 
     const detail = (images: unknown[], variants: unknown[] = [], axes: unknown[] = []) =>

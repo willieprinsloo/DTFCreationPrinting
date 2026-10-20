@@ -7,11 +7,21 @@ export interface GalleryDesign {
   designType: string
   galleryCategoryId: string
   tags: string[]
+  createdAt?: string
 }
 export interface GalleryCategory { id: string; name: string; customerId?: string }
 export interface Customer { id: string; name: string; email: string }
 export interface OrderSummary { id: string; orderNumber: string; status: string; customerId?: string; customerName: string; createdAt: string }
 export interface OrderFile { itemId: string; printFileUrl: string; productType: string; sizeLabel: string }
 export interface ProductCategory { id: string; name: string }
-export interface ProductSummary { id: string; name: string; categoryId: string; sizes: string[]; thumbnailUrl?: string }
+export interface ProductSummary {
+  id: string
+  name: string
+  categoryId: string
+  sizes: string[]
+  thumbnailUrl?: string
+  /** 'draft' | 'active' | 'archived' */
+  status?: string
+  createdAt?: string
+}
 export interface ProductPrintSource { designUrl: string | null; sizes: string[] }

@@ -22,6 +22,12 @@ describe('CatalogueTab', () => {
     expect(withSearch).toHaveLength(1)
   })
 
+  it('asks for newest designs first', async () => {
+    const client = fakeClient()
+    render(<CatalogueTab />, { wrapper: withClient(client) })
+    await waitFor(() => expect(client.listGalleryDesigns).toHaveBeenCalledWith(expect.objectContaining({ sort: 'created_at', order: 'desc' })))
+  })
+
   it('maps the Customer chip to owner', async () => {
     const client = fakeClient({ listCustomers: vi.fn(async () => [{ id: 'acme-id', name: 'Acme', email: 'a@acme.test' }]) })
     render(<CatalogueTab />, { wrapper: withClient(client) })

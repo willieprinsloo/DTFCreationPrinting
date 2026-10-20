@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createMemoryStore } from './persist'
-import { createSettingsStore, DEFAULT_PROFILE } from './settingsStore'
+import { createSettingsStore, DEFAULT_LIBRARY_PREFS, DEFAULT_PROFILE } from './settingsStore'
 
 describe('settingsStore', () => {
   it('loads defaults on a fresh store', async () => {
@@ -120,5 +120,30 @@ describe('settingsStore minPreviewLengthMm', () => {
     const b = createSettingsStore(kv)
     await b.getState().load()
     expect(b.getState().minPreviewLengthMm).toBe(1500)
+  })
+})
+
+describe('settingsStore libraryPrefs', () => {
+  it('defaults, merges patches per tab, and round-trips through persistence', async () => {
+    const kv = createMemoryStore()
+    const a = createSettingsStore(kv)
+    await a.getState().load()
+    expect(a.getState().libraryPrefs).toEqual(DEFAULT_LIBRARY_PREFS)
+    expect(DEFAULT_LIBRARY_PREFS.pageSize).toBe(50)
+    await a.getState().setLibraryPrefs({ view: 'list', pageSize: 100, orders: { date: '7d' } })
+    expect(a.getState().libraryPrefs.orders).toEqual({ ...DEFAULT_LIBRARY_PREFS.orders, date: '7d' })
+    const b = createSettingsStore(kv)
+    await b.getState().load()
+    expect(b.getState().libraryPrefs).toMatchObject({ view: 'list', pageSize: 100, orders: { date: '7d', status: 'confirmed' } })
+  })
+
+  it('fills fields missing from older saved prefs with defaults', async () => {
+    const kv = createMemoryStore()
+    await kv.set('settings', { libraryPrefs: { view: 'list', products: { status: 'draft' } } })
+    const s = createSettingsStore(kv)
+    await s.getState().load()
+    expect(s.getState().libraryPrefs.view).toBe('list')
+    expect(s.getState().libraryPrefs.products).toEqual({ ...DEFAULT_LIBRARY_PREFS.products, status: 'draft' })
+    expect(s.getState().libraryPrefs.designs).toEqual(DEFAULT_LIBRARY_PREFS.designs)
   })
 })

@@ -18,14 +18,26 @@ export interface DtfClient {
     categoryId?: string
     designType?: string
     owner?: 'public' | string
+    sort?: string
+    order?: 'asc' | 'desc'
   }): Promise<Page<GalleryDesign>>
   listGalleryCategories(): Promise<GalleryCategory[]>
   listProductCategories(): Promise<ProductCategory[]>
-  listProducts(q: { search?: string; categoryId?: string; page?: number; limit?: number }): Promise<Page<ProductSummary>>
+  /** `status` maps to status_filter: 'draft' | 'active' | 'archived'. */
+  listProducts(q: { search?: string; categoryId?: string; status?: string; page?: number; limit?: number }): Promise<Page<ProductSummary>>
   getProductPrintSource(id: string): Promise<ProductPrintSource>
   listCustomers(search?: string): Promise<Customer[]>
   getCustomer(id: string): Promise<Customer>
-  listOrders(q: { status?: string; search?: string; page?: number }): Promise<Page<OrderSummary>>
+  /** `limit` is capped at 100 by the API; `dateFrom` is an ISO date (created_at >= it). */
+  listOrders(q: {
+    status?: string
+    search?: string
+    page?: number
+    limit?: number
+    sort?: string
+    order?: 'asc' | 'desc'
+    dateFrom?: string
+  }): Promise<Page<OrderSummary>>
   getOrderFiles(orderId: string): Promise<OrderFile[]>
   setOrderStatus(orderId: string, status: string): Promise<void>
   /** Resolves '/uploads/...' against the site origin. */
@@ -143,6 +155,8 @@ export function createDtfClient(o: {
           gallery_category_id: q.categoryId,
           design_type: q.designType,
           category_owner: q.owner,
+          sort: q.sort,
+          order: q.order,
         })}`,
       )
       return toPage(body, (r): GalleryDesign => ({
@@ -153,6 +167,7 @@ export function createDtfClient(o: {
         designType: str(r.design_type),
         galleryCategoryId: str(r.gallery_category_id),
         tags: Array.isArray(r.tags) ? r.tags.map(str) : [],
+        createdAt: r.created_at ? str(r.created_at) : undefined,
       }))
     },
     async listGalleryCategories() {
@@ -174,7 +189,7 @@ export function createDtfClient(o: {
       const limit = q.limit ?? 50
       const offset = (page - 1) * limit
       const body = await request(
-        `/admin/catalog/products${query({ search: q.search, category_id: q.categoryId, limit, offset })}`,
+        `/admin/catalog/products${query({ search: q.search, category_id: q.categoryId, status_filter: q.status, limit, offset })}`,
       )
       const data: Json[] = Array.isArray(body?.data) ? body.data : []
       const total = typeof body?.meta?.total === 'number' ? body.meta.total : data.length
@@ -185,6 +200,8 @@ export function createDtfClient(o: {
           categoryId: str(r.category_id),
           sizes: axisSizes(r.axes),
           thumbnailUrl: r.primary_image ? str(r.primary_image) : undefined,
+          status: r.status ? str(r.status) : undefined,
+          createdAt: r.created_at ? str(r.created_at) : undefined,
         })),
         total,
         page,
@@ -220,7 +237,15 @@ export function createDtfClient(o: {
       return { id: str(r.id) || id, name: fullName(r), email: str(r.email) }
     },
     async listOrders(q) {
-      const body = await request(`/orders${query({ status: q.status, search: q.search, page: q.page })}`)
+      const body = await request(`/orders${query({
+          status: q.status,
+          search: q.search,
+          page: q.page,
+          limit: q.limit,
+          sort: q.sort,
+          order: q.order,
+          date_from: q.dateFrom,
+        })}`)
       return toPage(body, (r): OrderSummary => ({
         id: str(r.id),
         orderNumber: str(r.order_number),

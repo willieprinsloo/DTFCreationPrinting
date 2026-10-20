@@ -1,77 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useDtfClient } from '../../api/DtfClientContext'
-import { AuthRequiredError } from '../../api/dtfClient'
-import type { ProductCategory, ProductSummary } from '../../api/types'
+import type { ProductSummary } from '../../api/types'
 import { AddProductDialog } from './AddProductDialog'
 import { Thumb } from './Thumb'
 import { beginLibraryDrag } from './dragAdd'
+import { useLookup } from './queries/useLookup'
+import { useProductsQuery } from './queries/useProductsQuery'
 import { useDebounced } from './useDebounced'
+import { useErrorHandler } from './useErrorHandler'
+import { useLatest } from './useLatest'
 
 const LIMIT = 50
 
 export function ProductsTab() {
-  const { client, requireLogin } = useDtfClient()
+  const { client } = useDtfClient()
   const [search, setSearch] = useState('')
   const debounced = useDebounced(search.trim(), 300)
   const [categoryId, setCategoryId] = useState('')
-  const [categories, setCategories] = useState<ProductCategory[]>([])
-  const [items, setItems] = useState<ProductSummary[]>([])
-  const [page, setPage] = useState(0)
-  const [hasNext, setHasNext] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [lookupError, onLookupError] = useErrorHandler()
+  const categories = useLookup(client.listProductCategories, onLookupError)
+  const query = useProductsQuery({ search: debounced, categoryId, limit: LIMIT })
   const [selected, setSelected] = useState<string[]>([])
   const [queue, setQueue] = useState<ProductSummary[]>([])
-  const generation = useRef(0)
-  const itemsRef = useRef(items)
-  itemsRef.current = items
-  const selectedRef = useRef(selected)
-  selectedRef.current = selected
-
-  const fail = useCallback(
-    (e: unknown) => {
-      if (e instanceof AuthRequiredError) requireLogin()
-      setError(e instanceof Error ? e.message : String(e))
-    },
-    [requireLogin],
-  )
-
-  useEffect(() => {
-    client.listProductCategories().then(setCategories).catch(fail)
-  }, [client, fail])
-
-  const loadPage = useCallback(
-    async (p: number, reset: boolean) => {
-      const gen = ++generation.current
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await client.listProducts({ page: p, limit: LIMIT, search: debounced || undefined, categoryId: categoryId || undefined })
-        if (gen !== generation.current) return
-        setItems((cur) => (reset ? res.items : [...cur, ...res.items.filter((r) => !cur.some((c) => c.id === r.id))]))
-        setPage(p)
-        setHasNext(res.hasNext)
-      } catch (e) {
-        if (gen === generation.current) fail(e)
-      } finally {
-        if (gen === generation.current) setLoading(false)
-      }
-    },
-    [client, debounced, categoryId, fail],
-  )
-
-  useEffect(() => {
-    void loadPage(1, true)
-  }, [loadPage])
+  const latest = useLatest({ items: query.items, selected })
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
-    if (hasNext && !loading && el.scrollLeft + el.clientWidth >= el.scrollWidth - 200) void loadPage(page + 1, false)
+    if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 200) query.loadMore()
   }
 
   const toggle = (id: string) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
   const enqueue = (ids: string[]) => {
-    const picked = itemsRef.current.filter((d) => ids.includes(d.id))
+    const picked = latest.current.items.filter((d) => ids.includes(d.id))
     if (picked.length > 0) setQueue(picked)
   }
   const closeDialog = () => {
@@ -79,6 +39,7 @@ export function ProductsTab() {
     setSelected((cur) => cur.filter((id) => id !== queue[0]?.id))
   }
 
+  const error = query.error ?? lookupError
   return (
     <div className="library-tab">
       <div className="library-toolbar">
@@ -98,7 +59,7 @@ export function ProductsTab() {
       </div>
       {error && <p className="inline-error">{error}</p>}
       <div className="thumb-strip" onScroll={onScroll}>
-        {items.map((d) => (
+        {query.items.map((d) => (
           <Thumb
             key={d.id}
             src={d.thumbnailUrl ? client.absoluteUrl(d.thumbnailUrl) : ''}
@@ -106,13 +67,13 @@ export function ProductsTab() {
             selected={selected.includes(d.id)}
             onToggle={() => toggle(d.id)}
             onPointerDown={(e) => {
-              const ids = selectedRef.current.includes(d.id) ? selectedRef.current : [d.id]
+              const ids = latest.current.selected.includes(d.id) ? latest.current.selected : [d.id]
               beginLibraryDrag(e, d.name, () => enqueue(ids))
             }}
           />
         ))}
-        {!loading && !error && items.length === 0 && <p className="muted">No products found</p>}
-        {loading && <p className="muted">Loading…</p>}
+        {!query.loading && !error && query.items.length === 0 && <p className="muted">No products found</p>}
+        {query.loading && <p className="muted">Loading…</p>}
       </div>
       {queue[0] && <AddProductDialog key={queue[0].id} product={queue[0]} onClose={closeDialog} />}
     </div>

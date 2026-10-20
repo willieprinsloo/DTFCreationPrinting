@@ -1,0 +1,8 @@
+/** "20 Oct 2026", or '' for a missing/invalid date. */
+export const formatDate = (iso: string | undefined) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+export const fileCount = (n: number) => (n === 1 ? '1 file' : `${n} files`)

@@ -1,0 +1,17 @@
+import { useCallback, useState } from 'react'
+import { useDtfClient } from '../../api/DtfClientContext'
+import { AuthRequiredError } from '../../api/dtfClient'
+
+/** An error message plus a stable handler that records it (and asks for sign-in on auth errors). */
+export function useErrorHandler(): [string | null, (e: unknown) => void, (msg: string | null) => void] {
+  const { requireLogin } = useDtfClient()
+  const [error, setError] = useState<string | null>(null)
+  const fail = useCallback(
+    (e: unknown) => {
+      if (e instanceof AuthRequiredError) requireLogin()
+      setError(e instanceof Error ? e.message : String(e))
+    },
+    [requireLogin],
+  )
+  return [error, fail, setError]
+}

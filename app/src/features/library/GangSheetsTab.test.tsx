@@ -37,6 +37,12 @@ describe('GangSheetsTab', () => {
     expect(it.source).toMatchObject({ kind: 'order-file', id: 'i1', orderId: 'o1', orderNumber: '#1042', customerName: 'Acme' })
   })
 
+  it('asks for newest orders first', async () => {
+    const client = fakeClient()
+    render(<GangSheetsTab />, { wrapper: withClient(client) })
+    await waitFor(() => expect(client.listOrders).toHaveBeenCalledWith(expect.objectContaining({ sort: 'created_at', order: 'desc' })))
+  })
+
   it('on partial failure keeps only the failed file selected', async () => {
     vi.mocked(cacheAsset).mockImplementation(async (url) => {
       if (url.endsWith('bad.png')) throw new Error('nope')
