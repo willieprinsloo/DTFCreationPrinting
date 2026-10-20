@@ -44,3 +44,23 @@ describe('TopBar profile select', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('disk full'))
   })
 })
+
+describe('TopBar File menu', () => {
+  beforeEach(() => setup())
+
+  it('lists the file actions and recent sheets', async () => {
+    getSettingsStore().setState({ recentSheets: ['/x/Job one.dtfsheet'] })
+    render(<TopBar />)
+    await userEvent.click(screen.getByRole('button', { name: 'File' }))
+    for (const n of ['New', 'Open…', 'Save', 'Save as…']) expect(screen.getByRole('menuitem', { name: n })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Job one.dtfsheet' })).toBeInTheDocument()
+  })
+
+  it('New resets the sheet', async () => {
+    getSheetStore().setState({ sheet: { ...getSheetStore().getState().sheet, name: 'Old' } })
+    render(<TopBar />)
+    await userEvent.click(screen.getByRole('button', { name: 'File' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'New' }))
+    expect(getSheetStore().getState().sheet.name).toBe('Untitled sheet')
+  })
+})

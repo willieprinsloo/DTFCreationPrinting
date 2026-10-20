@@ -1,5 +1,7 @@
 mod assets;
 mod credentials;
+mod prn;
+mod sheet_files;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,7 +12,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![assets::cache_asset, assets::import_local_file,
             credentials::save_credentials,
             credentials::load_credentials,
-            credentials::clear_credentials
+            credentials::clear_credentials,
+            prn::create_prn,
+            sheet_files::write_text_file,
+            sheet_files::read_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

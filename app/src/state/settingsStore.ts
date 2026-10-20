@@ -23,6 +23,9 @@ export interface SettingsData {
   apiBaseUrl: string
   screenPxPerMm: number
   drawerHeightPx: number
+  /** Most recent first, de-duplicated, max 20. */
+  recentSheets: string[]
+  lastPrnFolder?: string
   loaded: boolean
 }
 
@@ -37,10 +40,13 @@ export interface SettingsActions {
   setScreenPxPerMm(v: number): Promise<void>
   /** Clamped to 120-480 px. */
   setDrawerHeight(px: number): Promise<void>
+  addRecentSheet(path: string): Promise<void>
+  setLastPrnFolder(folder: string): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
 
+const MAX_RECENT_SHEETS = 20
 const SETTINGS_KEY = 'settings'
 
 function defaults(): SettingsData {
@@ -51,6 +57,7 @@ function defaults(): SettingsData {
     apiBaseUrl: 'https://dtfcreations.co.za/api/v1',
     screenPxPerMm: 96 / 25.4,
     drawerHeightPx: 200,
+    recentSheets: [],
     loaded: false,
   }
 }
@@ -96,6 +103,9 @@ export function createSettingsStore(kv: KeyValueStore) {
       setApiBaseUrl: (url) => commit({ apiBaseUrl: url }),
       setScreenPxPerMm: (v) => commit({ screenPxPerMm: v }),
       setDrawerHeight: (px) => commit({ drawerHeightPx: clampDrawerHeight(px) }),
+      addRecentSheet: (path) =>
+        commit({ recentSheets: [path, ...get().recentSheets.filter((p) => p !== path)].slice(0, MAX_RECENT_SHEETS) }),
+      setLastPrnFolder: (folder) => commit({ lastPrnFolder: folder }),
     }
   })
 }
@@ -108,6 +118,8 @@ function pickData(s: SettingsState): SettingsData {
     apiBaseUrl: s.apiBaseUrl,
     screenPxPerMm: s.screenPxPerMm,
     drawerHeightPx: s.drawerHeightPx,
+    recentSheets: s.recentSheets,
+    lastPrnFolder: s.lastPrnFolder,
     loaded: s.loaded,
   }
 }

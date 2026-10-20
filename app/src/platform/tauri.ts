@@ -1,5 +1,5 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import type { Asset } from '../domain/types'
+import type { Asset, Sheet } from '../domain/types'
 
 export function cacheAsset(url: string, bearer?: string): Promise<Asset> {
   return invoke<Asset>('cache_asset', { url, bearer: bearer ?? null })
@@ -25,4 +25,16 @@ export function loadCredentials(): Promise<StoredCredentials | null> {
 
 export function clearCredentials(): Promise<void> {
   return invoke<void>('clear_credentials')
+}
+
+export function createPrn(sheet: Sheet, outPath: string): Promise<void> {
+  return invoke<void>('create_prn', { sheetJson: JSON.stringify(sheet), outPath })
+}
+
+export function writeTextFile(path: string, contents: string): Promise<void> {
+  return invoke<void>('write_text_file', { path, contents })
+}
+
+export function readTextFile(path: string): Promise<string> {
+  return invoke<string>('read_text_file', { path })
 }

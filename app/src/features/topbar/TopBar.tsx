@@ -4,6 +4,7 @@ import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import { InvalidSheetError } from '../../domain/geometry'
 import { ZoomControl } from './ZoomControl'
+import { newSheetFile, openSheet, openSheetAt, saveSheet, saveSheetAs } from '../sheets/sheetFiles'
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -16,7 +17,19 @@ export function TopBar({ onCreatePrn = () => {}, onOpenSettings = () => {} }: Pr
   const name = useSheet((s) => s.sheet.name)
   const profiles = useSettings((s) => s.profiles)
   const profileId = useSheet((s) => s.sheet.profileId)
+  const recent = useSettings((s) => s.recentSheets)
   const [error, setError] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const fileAction = (fn: () => Promise<void> | void) => async () => {
+    setMenuOpen(false)
+    try {
+      await fn()
+      setError(null)
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
 
   const rename = (value: string) => {
     const trimmed = value.trim()
@@ -43,6 +56,26 @@ export function TopBar({ onCreatePrn = () => {}, onOpenSettings = () => {} }: Pr
 
   return (
     <div className="topbar-inner">
+      <div className="file-menu">
+        <button type="button" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
+          File
+        </button>
+        {menuOpen && (
+          <div className="menu" role="menu">
+            <button type="button" role="menuitem" onClick={fileAction(newSheetFile)}>New</button>
+            <button type="button" role="menuitem" onClick={fileAction(openSheet)}>Open…</button>
+            <button type="button" role="menuitem" onClick={fileAction(saveSheet)}>Save</button>
+            <button type="button" role="menuitem" onClick={fileAction(saveSheetAs)}>Save as…</button>
+            <div className="menu-label">Recent</div>
+            {recent.length === 0 && <div className="menu-label muted">No recent sheets</div>}
+            {recent.map((path) => (
+              <button key={path} type="button" role="menuitem" title={path} onClick={fileAction(() => openSheetAt(path))}>
+                {path.split(/[\\/]/).pop()}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <input
         key={name}
         className="sheet-name"

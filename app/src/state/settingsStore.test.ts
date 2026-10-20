@@ -87,3 +87,23 @@ describe('settingsStore', () => {
     expect(b.getState().drawerHeightPx).toBe(300)
   })
 })
+
+describe('settingsStore recent sheets and PRN folder', () => {
+  it('keeps recent sheets most-recent-first, de-duplicated, max 20, persisted', async () => {
+    const kv = createMemoryStore()
+    const a = createSettingsStore(kv)
+    await a.getState().load()
+    for (let i = 0; i < 25; i++) await a.getState().addRecentSheet(`/s/${i}.dtfsheet`)
+    await a.getState().addRecentSheet('/s/10.dtfsheet')
+    const list = a.getState().recentSheets
+    expect(list).toHaveLength(20)
+    expect(list[0]).toBe('/s/10.dtfsheet')
+    expect(list.filter((p) => p === '/s/10.dtfsheet')).toHaveLength(1)
+    expect(list[1]).toBe('/s/24.dtfsheet')
+    await a.getState().setLastPrnFolder('/out')
+    const b = createSettingsStore(kv)
+    await b.getState().load()
+    expect(b.getState().recentSheets).toEqual(list)
+    expect(b.getState().lastPrnFolder).toBe('/out')
+  })
+})
