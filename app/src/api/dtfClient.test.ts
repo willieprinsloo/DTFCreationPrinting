@@ -140,4 +140,79 @@ describe('dtfClient', () => {
     expect(init?.method).toBe('PATCH')
     expect(JSON.parse(init?.body as string)).toEqual({ status: 'printed' })
   })
+  describe('products', () => {
+    it('listProductCategories maps id and name', async () => {
+      const { client, fetchMock } = setup([loginOk(), json(200, { success: true, data: [{ id: 3, name: 'T-Shirts', slug: 't' }] })])
+      await client.login({ email: 'a@b.c', password: 'pw' })
+      expect(await client.listProductCategories()).toEqual([{ id: '3', name: 'T-Shirts' }])
+      expect(new URL(fetchMock.mock.calls[1][0] as string).pathname).toBe('/api/v1/admin/catalog/categories')
+    })
+
+    it('listProducts builds offset query and extracts Size values', async () => {
+      const { client, fetchMock } = setup([
+        loginOk(),
+        json(200, {
+          success: true,
+          data: [
+            { id: 9, name: 'Tee', category_id: 3, axes: [{ name: 'Colour', values: ['Red'] }, { name: 'size', values: ['S', 'M'] }], primary_image: '/uploads/t.png' },
+            { id: 10, name: 'Mug', category_id: 4, axes: [], primary_image: null },
+          ],
+          meta: { total: 120, limit: 50, offset: 50 },
+        }),
+      ])
+      await client.login({ email: 'a@b.c', password: 'pw' })
+      const page = await client.listProducts({ search: 'te', categoryId: '3', page: 2, limit: 50 })
+      const url = new URL(fetchMock.mock.calls[1][0] as string)
+      expect(url.pathname).toBe('/api/v1/admin/catalog/products')
+      expect(url.searchParams.get('offset')).toBe('50')
+      expect(url.searchParams.get('limit')).toBe('50')
+      expect(url.searchParams.get('search')).toBe('te')
+      expect(url.searchParams.get('category_id')).toBe('3')
+      expect(url.searchParams.has('status_filter')).toBe(false)
+      expect(page.items).toEqual([
+        { id: '9', name: 'Tee', categoryId: '3', sizes: ['S', 'M'], thumbnailUrl: '/uploads/t.png' },
+        { id: '10', name: 'Mug', categoryId: '4', sizes: [], thumbnailUrl: undefined },
+      ])
+      expect(page).toMatchObject({ total: 120, page: 2, hasNext: true })
+    })
+
+    const detail = (images: unknown[], variants: unknown[] = [], axes: unknown[] = []) =>
+      json(200, { success: true, data: { id: 9, axes, variants, images } })
+
+    it('getProductPrintSource picks the design-source detail image and active sizes in axes order', async () => {
+      const { client } = setup([
+        loginOk(),
+        detail(
+          [
+            { image_url: '/uploads/main.png', view: 'front', sort_order: 0 },
+            { image_url: '/uploads/d2.png', view: 'detail', sort_order: 5, alt_text: 'other' },
+            { image_url: '/uploads/d1.png', view: 'detail', sort_order: 99, alt_text: 'Tee — design source' },
+          ],
+          [
+            { axis_values: { Size: 'L' }, is_active: true },
+            { axis_values: { Size: 'M' }, is_active: true },
+            { axis_values: { Size: 'M', Colour: 'Red' }, is_active: true },
+            { axis_values: { Size: 'XL' }, is_active: false },
+          ],
+          [{ name: 'Size', values: ['S', 'M', 'L', 'XL'] }],
+        ),
+      ])
+      await client.login({ email: 'a@b.c', password: 'pw' })
+      expect(await client.getProductPrintSource('9')).toEqual({ designUrl: '/uploads/d1.png', sizes: ['M', 'L'] })
+    })
+
+    it('falls back to the lowest sort_order detail image, and null when there is none', async () => {
+      const { client } = setup([
+        loginOk(),
+        detail([
+          { image_url: '/uploads/b.png', view: 'detail', sort_order: 7 },
+          { image_url: '/uploads/a.png', view: 'detail', sort_order: 2 },
+        ]),
+        detail([{ image_url: '/uploads/main.png', view: 'front', sort_order: 0 }]),
+      ])
+      await client.login({ email: 'a@b.c', password: 'pw' })
+      expect((await client.getProductPrintSource('9')).designUrl).toBe('/uploads/a.png')
+      expect(await client.getProductPrintSource('9')).toEqual({ designUrl: null, sizes: [] })
+    })
+  })
 })

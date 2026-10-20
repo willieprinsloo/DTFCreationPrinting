@@ -1,4 +1,4 @@
-import type { Customer, GalleryCategory, GalleryDesign, OrderFile, OrderSummary, Page } from './types'
+import type { Customer, GalleryCategory, GalleryDesign, OrderFile, OrderSummary, Page, ProductCategory, ProductPrintSource, ProductSummary } from './types'
 
 export class AuthRequiredError extends Error {
   constructor(message = 'Sign in to DTF Creations to continue') {
@@ -20,6 +20,9 @@ export interface DtfClient {
     owner?: 'public' | string
   }): Promise<Page<GalleryDesign>>
   listGalleryCategories(): Promise<GalleryCategory[]>
+  listProductCategories(): Promise<ProductCategory[]>
+  listProducts(q: { search?: string; categoryId?: string; page?: number; limit?: number }): Promise<Page<ProductSummary>>
+  getProductPrintSource(id: string): Promise<ProductPrintSource>
   listCustomers(search?: string): Promise<Customer[]>
   listOrders(q: { status?: string; search?: string; page?: number }): Promise<Page<OrderSummary>>
   getOrderFiles(orderId: string): Promise<OrderFile[]>
@@ -55,6 +58,23 @@ function toPage<T>(body: Json, map: (r: Json) => T): Page<T> {
     page: typeof meta.page === 'number' ? meta.page : 1,
     hasNext: Boolean(meta.has_next_page),
   }
+}
+
+const isSizeName = (n: unknown) => str(n).trim().toLowerCase() === 'size'
+
+function axisSizes(axes: Json): string[] {
+  const list: Json[] = Array.isArray(axes) ? axes : []
+  const axis = list.find((a) => isSizeName(a?.name))
+  return Array.isArray(axis?.values) ? axis.values.map(str) : []
+}
+
+function pickDesignImage(images: Json): string | null {
+  const details: Json[] = (Array.isArray(images) ? images : []).filter((i) => i && i.view === 'detail' && i.image_url)
+  if (details.length === 0) return null
+  const bySource = details.find((i) => /design source$/i.test(str(i.alt_text).trim()))
+  const order = (i: Json) => (typeof i.sort_order === 'number' ? i.sort_order : Number.MAX_SAFE_INTEGER)
+  const pick = bySource ?? [...details].sort((a, b) => order(a) - order(b))[0]
+  return str(pick.image_url)
 }
 
 export function createDtfClient(o: {
@@ -142,6 +162,47 @@ export function createDtfClient(o: {
         name: str(r.name),
         customerId: r.customer_id ? str(r.customer_id) : undefined,
       }))
+    },
+    async listProductCategories() {
+      const body = await request('/admin/catalog/categories')
+      const data: Json[] = Array.isArray(body?.data) ? body.data : []
+      return data.map((r): ProductCategory => ({ id: str(r.id), name: str(r.name) }))
+    },
+    async listProducts(q) {
+      const page = q.page ?? 1
+      const limit = q.limit ?? 50
+      const offset = (page - 1) * limit
+      const body = await request(
+        `/admin/catalog/products${query({ search: q.search, category_id: q.categoryId, limit, offset })}`,
+      )
+      const data: Json[] = Array.isArray(body?.data) ? body.data : []
+      const total = typeof body?.meta?.total === 'number' ? body.meta.total : data.length
+      return {
+        items: data.map((r): ProductSummary => ({
+          id: str(r.id),
+          name: str(r.name),
+          categoryId: str(r.category_id),
+          sizes: axisSizes(r.axes),
+          thumbnailUrl: r.primary_image ? str(r.primary_image) : undefined,
+        })),
+        total,
+        page,
+        hasNext: offset + data.length < total,
+      }
+    },
+    async getProductPrintSource(id) {
+      const body = await request(`/admin/catalog/products/${encodeURIComponent(id)}`)
+      const d = body?.data ?? {}
+      const variants: Json[] = Array.isArray(d.variants) ? d.variants : []
+      const present: string[] = []
+      for (const v of variants) {
+        if (v?.is_active === false) continue
+        const entry = Object.entries(v?.axis_values ?? {}).find(([k]) => isSizeName(k))
+        const size = entry ? str(entry[1]).trim() : ''
+        if (size && !present.includes(size)) present.push(size)
+      }
+      const ordered = axisSizes(d.axes).filter((s) => present.includes(s))
+      return { designUrl: pickDesignImage(d.images), sizes: [...new Set([...ordered, ...present])] }
     },
     async listCustomers(search) {
       const body = await request(`/customers${query({ search, limit: 50 })}`)

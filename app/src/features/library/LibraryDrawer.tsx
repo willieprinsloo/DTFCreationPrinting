@@ -1,14 +1,16 @@
 import { useRef, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useSettings, getSettingsStore, clampDrawerHeight } from '../../state/settingsStore'
+import { ProductsTab } from './ProductsTab'
 import { CatalogueTab } from './CatalogueTab'
 import { GangSheetsTab } from './GangSheetsTab'
 import { LocalTab } from './LocalTab'
 import { useLocalFiles } from './useLocalFiles'
 
-type Tab = 'catalogue' | 'gang' | 'local'
+type Tab = 'products' | 'catalogue' | 'gang' | 'local'
 const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'catalogue', label: 'Catalogue' },
+  { id: 'products', label: 'Products' },
+  { id: 'catalogue', label: 'Designs' },
   { id: 'gang', label: 'Gang sheets' },
   { id: 'local', label: 'Local' },
 ]
@@ -19,7 +21,7 @@ interface Props {
 }
 
 export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
-  const [tab, setTab] = useState<Tab>('catalogue')
+  const [tab, setTab] = useState<Tab>('products')
   const height = useSettings((s) => s.drawerHeightPx)
   const local = useLocalFiles()
   const drag = useRef<{ y: number; h: number; live: number; shell: HTMLElement | null } | null>(null)
@@ -87,6 +89,7 @@ export function LibraryDrawer({ collapsed, onToggleCollapsed }: Props) {
       </div>
       {!collapsed && (
         <div className="library-body" role="tabpanel">
+          {tab === 'products' && <ProductsTab />}
           {tab === 'catalogue' && <CatalogueTab />}
           {tab === 'gang' && <GangSheetsTab />}
           {tab === 'local' && <LocalTab busy={local.busy} error={local.error} onPick={() => void local.pick()} />}

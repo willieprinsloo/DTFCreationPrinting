@@ -29,6 +29,10 @@ beforeEach(async () => {
 describe('LibraryDrawer', () => {
   it('switches between tabs', async () => {
     render(<Harness />, { wrapper: withClient(fakeClient()) })
+    expect(screen.getByRole('tab', { name: 'Products' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('tab').map((t) => t.textContent).slice(0, 4)).toEqual(['Products', 'Designs', 'Gang sheets', 'Local'])
+    expect(screen.getByLabelText('Search products')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Designs' }))
     expect(screen.getByLabelText('Search designs')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: 'Gang sheets' }))
     expect(screen.getByLabelText('Search orders')).toBeInTheDocument()
@@ -39,7 +43,7 @@ describe('LibraryDrawer', () => {
   it('collapse hides the content but keeps the tab bar; a tab click expands again', async () => {
     render(<Harness />, { wrapper: withClient(fakeClient()) })
     await userEvent.click(screen.getByRole('button', { name: 'Collapse library' }))
-    expect(screen.queryByLabelText('Search designs')).toBeNull()
+    expect(screen.queryByLabelText('Search products')).toBeNull()
     expect(screen.getByRole('tab', { name: 'Local' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: 'Local' }))
     expect(screen.getByRole('button', { name: 'Add files…' })).toBeInTheDocument()
