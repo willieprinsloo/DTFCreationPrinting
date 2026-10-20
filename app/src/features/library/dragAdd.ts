@@ -15,11 +15,29 @@ export function movedPastThreshold(from: Point, to: Point): boolean {
   return Math.hypot(to.x - from.x, to.y - from.y) >= THRESHOLD_PX
 }
 
-/** Starts tracking a drag. `action` runs only if the pointer is released over the canvas area. */
+/** Spinner at the drop point while a slow add (downloading the design) runs. */
+function showDropBusy(p: Point, label: string, done: Promise<unknown>): void {
+  const el = document.createElement('div')
+  el.className = 'drop-busy'
+  el.setAttribute('role', 'status')
+  const spinner = document.createElement('span')
+  spinner.className = 'spinner'
+  el.append(spinner, `Adding ${label}…`)
+  el.style.left = `${p.x + 12}px`
+  el.style.top = `${p.y + 12}px`
+  document.body.appendChild(el)
+  const remove = () => el.remove()
+  done.then(remove, remove)
+}
+
+/**
+ * Starts tracking a drag. `action` runs only if the pointer is released over the canvas area;
+ * if it returns a promise, a spinner shows at the drop point until it settles.
+ */
 export function beginLibraryDrag(
   e: { clientX: number; clientY: number; button: number },
   label: string,
-  action: () => void,
+  action: () => void | Promise<unknown>,
   /** Called on release with whether the press turned into a drag (so callers can swallow the click that follows). */
   onEnd?: (dragged: boolean) => void,
 ): void {
@@ -52,7 +70,10 @@ export function beginLibraryDrag(
     onEnd?.(dragged)
     if (!dragged) return
     const canvas = document.querySelector('[data-testid="canvas-area"]')
-    if (canvas && pointInRect({ x: ev.clientX, y: ev.clientY }, canvas.getBoundingClientRect())) action()
+    const p = { x: ev.clientX, y: ev.clientY }
+    if (!canvas || !pointInRect(p, canvas.getBoundingClientRect())) return
+    const result = action()
+    if (result instanceof Promise) showDropBusy(p, label, result)
   }
   const key = (ev: KeyboardEvent) => {
     if (ev.key === 'Escape') cleanup()

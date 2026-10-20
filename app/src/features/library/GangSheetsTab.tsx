@@ -130,7 +130,7 @@ export function GangSheetsTab() {
                   beginLibraryDrag(
                     e,
                     `${o.orderNumber} · ${files ? fileCount(files.length) : 'files'}`,
-                    () => void addOrder(o),
+                    () => addOrder(o),
                     (dragged) => {
                       if (!dragged) return
                       justDragged.current = true
@@ -152,7 +152,7 @@ export function GangSheetsTab() {
                       onToggle={() => toggle(k)}
                       onPointerDown={(e) => {
                         const keys = latest.current.selected.includes(k) ? latest.current.selected : [k]
-                        beginLibraryDrag(e, `${o.orderNumber} ${f.sizeLabel}`, () => void addSelected(keys))
+                        beginLibraryDrag(e, `${o.orderNumber} ${f.sizeLabel}`, () => addSelected(keys))
                       }}
                     />
                   )

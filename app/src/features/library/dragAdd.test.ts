@@ -38,6 +38,21 @@ describe('beginLibraryDrag', () => {
     canvas.remove()
   })
 
+  it('shows a spinner at the drop point until a slow add finishes', async () => {
+    const canvas = setup()
+    let finish!: () => void
+    const pending = new Promise<void>((r) => (finish = r))
+    beginLibraryDrag({ clientX: 200, clientY: 200, button: 0 }, 'Lion', () => pending)
+    ptr('pointermove', 50, 20)
+    ptr('pointerup', 50, 20)
+    expect(document.querySelector('.drop-busy')?.textContent).toBe('Adding Lion…')
+    finish()
+    await pending
+    await Promise.resolve()
+    expect(document.querySelector('.drop-busy')).toBeNull()
+    canvas.remove()
+  })
+
   it('cancels on release elsewhere, on Escape, and on a plain click', () => {
     const canvas = setup()
     const action = vi.fn()

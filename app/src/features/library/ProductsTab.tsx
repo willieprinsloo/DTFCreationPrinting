@@ -100,7 +100,7 @@ export function ProductsTab() {
             onPointerDown={(e) => {
               const ids = latest.current.selected.includes(d.id) ? latest.current.selected : [d.id]
               const options = e.shiftKey
-              beginLibraryDrag(e, d.name, () => void add(ids, options))
+              beginLibraryDrag(e, d.name, () => add(ids, options))
             }}
           />
         ))}
