@@ -4,6 +4,7 @@ import { temporal } from 'zundo'
 import type { Asset, PrinterProfile, Sheet, SheetItem, SheetSettings, SourceRef } from '../domain/types'
 import { heightForWidth, itemBounds, normaliseSheetAspect, printableArea, widthForHeight } from '../domain/geometry'
 import { autoPlace, type Placement } from '../domain/autoplace'
+import { DEFAULT_ENGINE_SETTINGS } from '../domain/engineSettings'
 
 export interface NewItem {
   asset: Asset
@@ -119,7 +120,7 @@ export function createSheetStore() {
           setSheet({ ...sheet, items: sheet.items.map(fn) })
         }
         return {
-          sheet: makeSheet({ id: 'default', name: 'Default', widthMm: 600, xDpi: 720, yDpi: 1800, defaultMargins: { topMm: 5, rightMm: 5, bottomMm: 5, leftMm: 5 }, defaultGapMm: 3 }),
+          sheet: makeSheet({ id: 'default', name: 'Default', widthMm: 600, xDpi: 720, yDpi: 1800, defaultMargins: { topMm: 5, rightMm: 5, bottomMm: 5, leftMm: 5 }, defaultGapMm: 3, ...DEFAULT_ENGINE_SETTINGS }),
           selectedIds: [],
           newSheet(profile, name) {
             set({ sheet: makeSheet(profile, name), selectedIds: [] })

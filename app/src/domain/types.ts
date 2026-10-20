@@ -1,5 +1,20 @@
 export interface Margins { topMm: number; rightMm: number; bottomMm: number; leftMm: number }
-export interface PrinterProfile { id: string; name: string; widthMm: number; xDpi: number; yDpi: number; defaultMargins: Margins; defaultGapMm: number }
+export type InkChannel = 'K' | 'C' | 'M' | 'Y' | 'W'
+/** Dot-gain curve points (input, output) in 0..1 per ink; an empty list = linear. */
+export type DotGain = Record<InkChannel, [number, number][]>
+/** How the PRN engine prints with this printer. */
+export interface EngineSettings {
+  /** The ink written to each of the PRN's 6 channels, in order. */
+  channelOrder: InkChannel[]
+  inkLimitPct: number
+  whiteDensityPct: number
+  whiteChokeMm: number
+  screening: 'blueNoise' | 'errorDiffusion'
+  dotGain: DotGain
+  leadInMm: number
+  iccProfilePath?: string
+}
+export interface PrinterProfile extends EngineSettings { id: string; name: string; widthMm: number; xDpi: number; yDpi: number; defaultMargins: Margins; defaultGapMm: number }
 export interface SheetSettings { widthMm: number; margins: Margins; gapMm: number; lengthMode: 'auto' | 'fixed'; fixedLengthMm: number; mirror: boolean; whiteEnabled: boolean; allowRotate: boolean }
 export interface Asset { assetId: string; path: string; previewPath: string; widthPx: number; heightPx: number }
 export interface SourceRef {

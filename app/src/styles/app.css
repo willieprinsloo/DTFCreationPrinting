@@ -305,6 +305,16 @@ button.danger {
   gap: var(--space-2);
 }
 
+.prn-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.prn-progress progress {
+  flex: 1;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

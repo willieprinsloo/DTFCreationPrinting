@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { PrinterProfile } from '../../domain/types'
+import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import type { SettingsTab } from '../../state/uiStore'
 import { PrintSizesPanel } from './PrintSizesPanel'
@@ -155,6 +156,7 @@ export function SettingsDialog({ initialTab = 'general', onClose }: Props) {
     yDpi: 1800,
     defaultMargins: { topMm: 5, rightMm: 5, bottomMm: 5, leftMm: 5 },
     defaultGapMm: 3,
+    ...DEFAULT_ENGINE_SETTINGS,
   })
 
   return (

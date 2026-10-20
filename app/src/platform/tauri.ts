@@ -1,5 +1,6 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import type { Asset, Sheet } from '../domain/types'
+import { listen } from '@tauri-apps/api/event'
+import type { Asset, PrinterProfile, Sheet } from '../domain/types'
 
 export function cacheAsset(url: string, bearer?: string): Promise<Asset> {
   return invoke<Asset>('cache_asset', { url, bearer: bearer ?? null })
@@ -27,8 +28,49 @@ export function clearCredentials(): Promise<void> {
   return invoke<void>('clear_credentials')
 }
 
-export function createPrn(sheet: Sheet, outPath: string): Promise<void> {
-  return invoke<void>('create_prn', { sheetJson: JSON.stringify(sheet), outPath })
+export interface PrnStats { lines: number; bytes: number; millis: number }
+export interface PrnJob { promise: Promise<PrnStats>; cancel(): void }
+
+/** The PRN run was cancelled by the user (not a failure). */
+export class PrnCancelledError extends Error {}
+
+/** Must match `prn::CANCELLED` in Rust. */
+const CANCELLED = 'Cancelled'
+
+/** Renders the sheet to a PRN at `outPath`; `onProgress` gets the fraction done (0..1). */
+export function createPrn(sheet: Sheet, profile: PrinterProfile, outPath: string, onProgress: (fraction: number) => void): PrnJob {
+  const jobId = crypto.randomUUID()
+  let settled = false
+  const promise = (async () => {
+    const unlisten = await listen<{ jobId: string; fraction: number }>('prn-progress', (e) => {
+      if (e.payload.jobId === jobId) onProgress(e.payload.fraction)
+    })
+    try {
+      return await invoke<PrnStats>('create_prn', {
+        sheetJson: JSON.stringify(sheet),
+        profileJson: JSON.stringify(profile),
+        outPath,
+        jobId,
+      })
+    } catch (e) {
+      if (e === CANCELLED) throw new PrnCancelledError(CANCELLED)
+      throw e instanceof Error ? e : new Error(String(e))
+    } finally {
+      settled = true
+      unlisten()
+    }
+  })()
+  return {
+    promise,
+    cancel() {
+      if (!settled) void invoke('cancel_prn', { jobId }).catch(() => {})
+    },
+  }
+}
+
+/** Opens Finder / Explorer with the file selected. */
+export function revealInFolder(path: string): Promise<void> {
+  return invoke<void>('reveal_in_folder', { path })
 }
 
 export function writeSheetFile(path: string, contents: string): Promise<void> {

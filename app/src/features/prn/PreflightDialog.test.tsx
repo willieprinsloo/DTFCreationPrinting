@@ -1,51 +1,193 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PreflightDialog } from './PreflightDialog'
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
+import { fakeClient, withClient } from '../library/testUtils'
+import { AuthRequiredError, type DtfClient } from '../../api/dtfClient'
+import type { SourceRef } from '../../domain/types'
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: vi.fn().mockResolvedValue('/out/x.prn'), open: vi.fn() }))
-vi.mock('../../platform/tauri', () => ({
-  createPrn: vi.fn().mockRejectedValue('The PRN engine is not installed yet (coming in the next release)'),
-  writeSheetFile: vi.fn(), readSheetFile: vi.fn(),
-}))
-import { createPrn } from '../../platform/tauri'
+vi.mock('../../platform/tauri', () => {
+  class PrnCancelledError extends Error {}
+  return { createPrn: vi.fn(), revealInFolder: vi.fn().mockResolvedValue(undefined), PrnCancelledError, writeSheetFile: vi.fn(), readSheetFile: vi.fn() }
+})
+import { createPrn, revealInFolder, PrnCancelledError } from '../../platform/tauri'
 
-function addItem(px: number) {
+const STATS = { lines: 100, bytes: 1.2e9, millis: 9000 }
+
+/** Makes createPrn hand back a job the test settles by hand. */
+function controlledJob() {
+  const ctl = {} as { progress(f: number): void; resolve(v: typeof STATS): void; reject(e: unknown): void; cancel: ReturnType<typeof vi.fn<() => void>> }
+  ctl.cancel = vi.fn<() => void>()
+  vi.mocked(createPrn).mockImplementation((_sheet, _profile, _path, onProgress) => {
+    ctl.progress = onProgress
+    const promise = new Promise<typeof STATS>((res, rej) => {
+      ctl.resolve = res
+      ctl.reject = rej
+    })
+    return { promise, cancel: ctl.cancel }
+  })
+  return ctl
+}
+
+function addItem(px: number, source: SourceRef = { kind: 'local', id: 'a', label: 'a' }) {
   getSheetStore().getState().addItems([{
-    asset: { assetId: 'a', path: '/a.png', previewPath: '/a.jpg', widthPx: px, heightPx: px },
-    source: { kind: 'local', id: 'a', label: 'a' }, widthMm: 100, heightMm: 100, quantity: 1,
+    asset: { assetId: source.id, path: `/cache/${source.id}.png`, previewPath: `/cache/${source.id}.jpg`, widthPx: px, heightPx: px },
+    source, widthMm: 100, heightMm: 100, quantity: 1,
   }])
+}
+
+const order = (id: string, orderId: string, orderNumber: string): SourceRef => ({ kind: 'order-file', id, label: id, orderId, orderNumber })
+
+function renderDialog(client: DtfClient = fakeClient(), requireLogin = vi.fn()) {
+  return render(<PreflightDialog onClose={() => {}} />, { wrapper: withClient(client, requireLogin) })
 }
 
 describe('PreflightDialog', () => {
   beforeEach(() => {
+    vi.mocked(createPrn).mockReset()
+    vi.mocked(revealInFolder).mockClear()
     getSheetStore().getState().newSheet(DEFAULT_PROFILE, 'Job')
     getSettingsStore().setState({ profiles: [DEFAULT_PROFILE], activeProfileId: DEFAULT_PROFILE.id, setLastPrnFolder: vi.fn().mockResolvedValue(undefined) })
   })
 
   it('disables Create for an empty sheet', () => {
-    render(<PreflightDialog onClose={() => {}} />)
+    renderDialog()
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
   })
 
   it('requires the tick for too-low designs, then shows the engine message', async () => {
+    const job = controlledJob()
     addItem(300)
-    render(<PreflightDialog onClose={() => {}} />)
+    renderDialog()
     const create = screen.getByRole('button', { name: 'Create' })
     expect(create).toBeDisabled()
     await userEvent.click(screen.getByLabelText("Print anyway — I've checked the low-quality designs"))
     expect(create).toBeEnabled()
     await userEvent.click(create)
     await waitFor(() => expect(createPrn).toHaveBeenCalled())
-    expect(await screen.findByRole('alert')).toHaveTextContent('The PRN engine is not installed yet (coming in the next release)')
+    act(() => job.reject(new Error('There is nothing to print on this sheet')))
+    expect(await screen.findByRole('alert')).toHaveTextContent('There is nothing to print on this sheet')
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
   it('enables Create straight away for fine designs and shows size', () => {
     addItem(3000)
-    render(<PreflightDialog onClose={() => {}} />)
+    renderDialog()
     expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
     expect(screen.getByText(/181 MB/)).toBeInTheDocument()
+  })
+
+  it('sends the sheet and its profile to the engine and shows progress', async () => {
+    const job = controlledJob()
+    addItem(3000)
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await waitFor(() => expect(createPrn).toHaveBeenCalled())
+    const [sheetArg, profileArg, pathArg] = vi.mocked(createPrn).mock.calls[0]
+    expect(sheetArg).toBe(getSheetStore().getState().sheet)
+    expect(profileArg).toEqual(DEFAULT_PROFILE)
+    expect(pathArg).toBe('/out/x.prn')
+    const bar = await screen.findByRole('progressbar')
+    expect(bar).toHaveAttribute('value', '0')
+    act(() => job.progress(0.42))
+    expect(bar).toHaveAttribute('value', '0.42')
+    expect(screen.getByText('42%')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+  })
+
+  it('Cancel stops the job and just closes the progress, with no error', async () => {
+    const job = controlledJob()
+    addItem(3000)
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(job.cancel).toHaveBeenCalledTimes(1)
+    act(() => job.reject(new PrnCancelledError('Cancelled')))
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Saved/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
+  })
+
+  it('on success shows the file, size and time, and Show in folder reveals it', async () => {
+    const job = controlledJob()
+    addItem(3000)
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    expect(await screen.findByText('Saved x.prn (1.2 GB, 9 s)')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show in folder' }))
+    expect(revealInFolder).toHaveBeenCalledWith('/out/x.prn')
+  })
+
+  it('marks each distinct order In production after success when the box is ticked (default)', async () => {
+    const job = controlledJob()
+    addItem(3000, order('f1', 'o1', '1001'))
+    addItem(3000, order('f2', 'o1', '1001'))
+    addItem(3000, order('f3', 'o2', '1002'))
+    const client = fakeClient()
+    renderDialog(client)
+    const box = screen.getByLabelText('Mark 2 orders as In production in DTF Creations')
+    expect(box).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    expect(client.setOrderStatus).not.toHaveBeenCalled()
+    act(() => job.resolve(STATS))
+    await screen.findByText(/Saved x\.prn/)
+    await waitFor(() => expect(client.setOrderStatus).toHaveBeenCalledTimes(2))
+    expect(client.setOrderStatus).toHaveBeenCalledWith('o1', 'in_production')
+    expect(client.setOrderStatus).toHaveBeenCalledWith('o2', 'in_production')
+  })
+
+  it('does not touch orders when the box is unticked', async () => {
+    const job = controlledJob()
+    addItem(3000, order('f1', 'o1', '1001'))
+    const client = fakeClient()
+    renderDialog(client)
+    await userEvent.click(screen.getByLabelText('Mark 1 order as In production in DTF Creations'))
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    await screen.findByText(/Saved x\.prn/)
+    expect(client.setOrderStatus).not.toHaveBeenCalled()
+  })
+
+  it('does not mark orders when the PRN fails or is cancelled', async () => {
+    const job = controlledJob()
+    addItem(3000, order('f1', 'o1', '1001'))
+    const client = fakeClient()
+    renderDialog(client)
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.reject(new Error('Creating the PRN failed: disk full')))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Creating the PRN failed: disk full')
+    expect(client.setOrderStatus).not.toHaveBeenCalled()
+  })
+
+  it('lists orders that could not be marked without hiding the success, and asks to sign in on auth errors', async () => {
+    const job = controlledJob()
+    addItem(3000, order('f1', 'o1', '1001'))
+    addItem(3000, order('f2', 'o2', '1002'))
+    addItem(3000, order('f3', 'o3', '1003'))
+    const setOrderStatus = vi.fn(async (id: string) => {
+      if (id === 'o2') throw new Error('Order is already shipped')
+      if (id === 'o3') throw new AuthRequiredError()
+    })
+    const requireLogin = vi.fn()
+    renderDialog(fakeClient({ setOrderStatus }), requireLogin)
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    const failures = await screen.findByRole('list', { name: 'Orders not updated' })
+    expect(failures).toHaveTextContent('Order 1002: Order is already shipped')
+    expect(failures).toHaveTextContent('Order 1003')
+    expect(failures).not.toHaveTextContent('1001')
+    expect(screen.getByText('Saved x.prn (1.2 GB, 9 s)')).toBeInTheDocument()
+    expect(requireLogin).toHaveBeenCalledTimes(1)
   })
 })

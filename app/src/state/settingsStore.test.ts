@@ -177,4 +177,67 @@ describe('settingsStore printSizes', () => {
     await s.getState().setPrintWidth('3', 'XL', Number.NaN)
     expect(s.getState().printSizes.byType['3']).toEqual({ L: 300 })
   })
+
+  describe('printer engine settings', () => {
+    const LINEAR = { K: [], C: [], M: [], Y: [], W: [] }
+
+    it('the default profile carries the engine defaults', () => {
+      expect(DEFAULT_PROFILE).toMatchObject({
+        channelOrder: ['K', 'C', 'M', 'Y', 'W', 'W'],
+        inkLimitPct: 280,
+        whiteDensityPct: 100,
+        whiteChokeMm: 0.2,
+        screening: 'blueNoise',
+        dotGain: LINEAR,
+        leadInMm: 0,
+      })
+      expect(DEFAULT_PROFILE.iccProfilePath).toBeUndefined()
+    })
+
+    it('gives profiles saved before engine settings existed the defaults', async () => {
+      const kv = createMemoryStore()
+      const old = { id: 'old', name: 'Old', widthMm: 600, xDpi: 720, yDpi: 1800, defaultMargins: { topMm: 5, rightMm: 5, bottomMm: 5, leftMm: 5 }, defaultGapMm: 3 }
+      await kv.set('settings', { profiles: [old], activeProfileId: 'old' })
+      const s = createSettingsStore(kv)
+      await s.getState().load()
+      expect(s.getState().profiles[0]).toEqual({ ...DEFAULT_PROFILE, ...old })
+    })
+
+    it('repairs bad saved engine values and keeps good ones', async () => {
+      const kv = createMemoryStore()
+      await kv.set('settings', {
+        profiles: [{
+          ...DEFAULT_PROFILE,
+          channelOrder: ['K', 'C', 'M'],
+          inkLimitPct: -1,
+          whiteDensityPct: 80,
+          whiteChokeMm: 'x',
+          screening: 'dither',
+          dotGain: { K: [[0.5, 0.45]], C: 'bad', M: [[2, 0]] },
+          leadInMm: 3,
+          iccProfilePath: '  ',
+        }],
+      })
+      const s = createSettingsStore(kv)
+      await s.getState().load()
+      const p = s.getState().profiles[0]
+      expect(p.channelOrder).toEqual(['K', 'C', 'M', 'Y', 'W', 'W'])
+      expect(p.inkLimitPct).toBe(280)
+      expect(p.whiteDensityPct).toBe(80)
+      expect(p.whiteChokeMm).toBe(0.2)
+      expect(p.screening).toBe('blueNoise')
+      expect(p.dotGain).toEqual({ ...LINEAR, K: [[0.5, 0.45]] })
+      expect(p.leadInMm).toBe(3)
+      expect(p.iccProfilePath).toBeUndefined()
+    })
+
+    it('sanitises upserted profiles too', async () => {
+      const s = createSettingsStore(createMemoryStore())
+      await s.getState().load()
+      await s.getState().upsertProfile({ ...DEFAULT_PROFILE, id: 'x', screening: 'errorDiffusion', inkLimitPct: Number.NaN })
+      const p = s.getState().profiles.find((q) => q.id === 'x')!
+      expect(p.screening).toBe('errorDiffusion')
+      expect(p.inkLimitPct).toBe(280)
+    })
+  })
 })

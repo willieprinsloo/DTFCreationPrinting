@@ -4,6 +4,7 @@ import type { DpiThresholds, PrinterProfile } from '../domain/types'
 import { DEFAULT_THRESHOLDS } from '../domain/dpi'
 import { createTauriStore, type KeyValueStore } from './persist'
 import { DEFAULT_LIBRARY_PREFS, mergeLibraryPrefs, type LibraryPrefs, type LibraryPrefsPatch } from './libraryPrefs'
+import { DEFAULT_ENGINE_SETTINGS, sanitizeEngineSettings } from '../domain/engineSettings'
 import { DEFAULT_PRINT_SIZES, ONE_SIZE, isValidWidth, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
 
 export { DEFAULT_LIBRARY_PREFS }
@@ -17,6 +18,13 @@ export const DEFAULT_PROFILE: PrinterProfile = {
   yDpi: 1800,
   defaultMargins: { topMm: 5, rightMm: 5, bottomMm: 5, leftMm: 5 },
   defaultGapMm: 3,
+  ...DEFAULT_ENGINE_SETTINGS,
+}
+
+/** Fills engine settings missing from older saved profiles and repairs bad ones. */
+export function sanitizeProfile(p: PrinterProfile): PrinterProfile {
+  const { iccProfilePath: _icc, ...rest } = p
+  return { ...rest, ...sanitizeEngineSettings(p) }
 }
 
 export const clampDrawerHeight = (px: number) => Math.min(480, Math.max(120, Math.round(px)))
@@ -104,13 +112,15 @@ export function createSettingsStore(kv: KeyValueStore) {
         const merged = { ...defaults(), ...saved, loaded: true }
         merged.libraryPrefs = mergeLibraryPrefs(DEFAULT_LIBRARY_PREFS, saved?.libraryPrefs)
         merged.printSizes = sanitizePrintSizes(saved?.printSizes)
+        merged.profiles = Array.isArray(merged.profiles) ? merged.profiles.map(sanitizeProfile) : []
         if (merged.profiles.length === 0) merged.profiles = [DEFAULT_PROFILE]
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
           merged.activeProfileId = merged.profiles[0].id
         }
         set(merged)
       },
-      upsertProfile(p) {
+      upsertProfile(raw) {
+        const p = sanitizeProfile(raw)
         const { profiles } = get()
         const exists = profiles.some((x) => x.id === p.id)
         return commit({ profiles: exists ? profiles.map((x) => (x.id === p.id ? p : x)) : [...profiles, p] })
