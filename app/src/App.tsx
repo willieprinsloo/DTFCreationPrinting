@@ -1,5 +1,12 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
+import { lazy, Suspense } from "react";
+
+// react-konva needs a real canvas; jsdom tests render the shell without it.
+const SheetCanvas =
+  import.meta.env.MODE === "test"
+    ? null
+    : lazy(() => import("./features/canvas/SheetCanvas").then((m) => ({ default: m.SheetCanvas })));
 
 export default function App() {
   return (
@@ -8,7 +15,13 @@ export default function App() {
         DTF Print Studio
       </header>
       <main className="region canvas-area" data-testid="canvas-area">
-        Film canvas
+        {SheetCanvas ? (
+          <Suspense fallback={null}>
+            <SheetCanvas />
+          </Suspense>
+        ) : (
+          "Film canvas"
+        )}
       </main>
       <aside className="region properties-panel" data-testid="properties-panel">
         Properties

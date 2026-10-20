@@ -42,7 +42,16 @@ body {
 }
 
 .canvas-area {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
   background: var(--surface-alt);
+}
+
+.sheet-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .properties-panel {
