@@ -240,7 +240,11 @@ order status update to `in_production`.
    person's login.
 
 Mirroring rule from the existing `maintop_tiff.py` applies: sources arrive **un-mirrored**; the
-app mirrors once, at output.
+app mirrors once, at output. Verified 2026-10-20: DTF Creations stores print files and gallery
+images as un-mirrored PNGs (`services/image_format.py`, "png passthrough … un-mirrored"); only
+its `?format=tiff` (generic DTF rip) download is mirrored, and `tiff_maintop` is not. The app
+must always fetch the stored PNG (`print_file_url` / `image_url`), **never** the `format=tiff`
+export, or the print would be flipped twice.
 
 ## 8. Architecture (high level)
 
