@@ -86,7 +86,7 @@ describe('AddProductDialog', () => {
   it('shows an error when the download fails', async () => {
     vi.mocked(cacheAsset).mockRejectedValue(new Error('boom'))
     render(<AddProductDialog product={product} onClose={vi.fn()} />, { wrapper: withClient(fakeClient(source(['M']))) })
-    expect(await screen.findByText('Couldn\'t download "Tee" — try again')).toBeInTheDocument()
+    expect(await screen.findByText('Couldn\'t download "Tee": boom')).toBeInTheDocument()
     expect(getSheetStore().getState().sheet.items).toHaveLength(0)
   })
 

@@ -4,6 +4,7 @@ import type { OrderFile, OrderSummary } from '../../api/types'
 import { nativeSizeMm } from '../../domain/dpi'
 import { cacheAsset } from '../../platform/tauri'
 import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
+import { downloadFailedText } from './format'
 import type { NewItem } from '../../state/sheetStore'
 
 export interface OrderFileRef { order: OrderSummary; file: OrderFile; customerName: string; key: string }
@@ -17,6 +18,7 @@ export async function downloadOrderFiles(client: DtfClient, refs: OrderFileRef[]
   const out: DownloadResult = { items: [], done: [], failed: [], authFailed: false, error: null }
   let noPdf = false
   const otherFailed: string[] = []
+  const reasons: unknown[] = []
   for (const { order: o, file: f, customerName, key } of refs) {
     try {
       const url = client.absoluteUrl(f.printFileUrl)
@@ -39,10 +41,13 @@ export async function downloadOrderFiles(client: DtfClient, refs: OrderFileRef[]
       if (e instanceof AuthRequiredError) out.authFailed = true
       out.failed.push(`${o.orderNumber} ${f.sizeLabel}`)
       if (isPdfNotInstalled(e)) noPdf = true
-      else otherFailed.push(`${o.orderNumber} ${f.sizeLabel}`)
+      else {
+        otherFailed.push(`${o.orderNumber} ${f.sizeLabel}`)
+        reasons.push(e)
+      }
     }
   }
-  const errors = [noPdf && PDF_NOT_INSTALLED, otherFailed.length > 0 && `Couldn't download ${otherFailed.join(', ')} — try again`].filter(Boolean)
+  const errors = [noPdf && PDF_NOT_INSTALLED, otherFailed.length > 0 && downloadFailedText(otherFailed, reasons)].filter(Boolean)
   out.error = errors.length > 0 ? errors.join('. ') : null
   return out
 }

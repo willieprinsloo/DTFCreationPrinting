@@ -75,7 +75,7 @@ describe('AddDesignDialog', () => {
   it('shows an error and adds nothing when the download fails', async () => {
     vi.mocked(cacheAsset).mockRejectedValue(new Error('boom'))
     render(<AddDesignDialog design={design} onClose={vi.fn()} />, { wrapper: withClient(fakeClient()) })
-    expect(await screen.findByText('Couldn\'t download "Lion" — try again')).toBeInTheDocument()
+    expect(await screen.findByText('Couldn\'t download "Lion": boom')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
     expect(getSheetStore().getState().sheet.items).toHaveLength(0)
   })

@@ -372,7 +372,7 @@ describe('LibraryBrowser', () => {
       await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
       await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Cap' }))
       await userEvent.click(within(dlg).getByRole('button', { name: 'Add 2 to sheet' }))
-      expect(await within(dlg).findByRole('alert')).toHaveTextContent('Couldn\'t download "Cap" — try again')
+      expect(await within(dlg).findByRole('alert')).toHaveTextContent('Couldn\'t download "Cap": boom')
       expect(screen.getByRole('dialog', { name: 'Library browser' })).toBeInTheDocument()
       expect(getSheetStore().getState().sheet.items.map((i) => i.source.label)).toEqual(['Tee — M'])
       expect(within(dlg).getByText('1 selected')).toBeInTheDocument()

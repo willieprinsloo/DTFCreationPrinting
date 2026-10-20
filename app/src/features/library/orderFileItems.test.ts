@@ -20,6 +20,6 @@ describe('downloadOrderFiles', () => {
   it('reports other failures as download failures', async () => {
     vi.mocked(cacheAsset).mockRejectedValue(new Error('boom'))
     const res = await downloadOrderFiles(fakeClient(), [ref(file('f1', '/a.png'))])
-    expect(res.error).toBe("Couldn't download A1 f1 — try again")
+    expect(res.error).toBe("Couldn't download A1 f1: boom")
   })
 })

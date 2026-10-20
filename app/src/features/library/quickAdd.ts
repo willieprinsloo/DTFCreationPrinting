@@ -7,6 +7,7 @@ import { printableArea } from '../../domain/geometry'
 import { ONE_SIZE, pickSize, resolveWidthMm, widthKey } from '../../domain/printSizes'
 import { cacheAsset } from '../../platform/tauri'
 import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
+import { downloadFailedText } from './format'
 import { getSettingsStore } from '../../state/settingsStore'
 import { getSheetStore, type NewItem } from '../../state/sheetStore'
 import { uiStore } from '../../state/uiStore'
@@ -42,6 +43,7 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
     const unset = new Set<string>()
     const noDesign: string[] = []
     const failed: string[] = []
+    const reasons: unknown[] = []
     let noPdf = false
 
     for (const p of products) {
@@ -72,7 +74,10 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
       } catch (e) {
         if (e instanceof AuthRequiredError) authFailed = true
         if (isPdfNotInstalled(e)) noPdf = true
-        else failed.push(p.name)
+        else {
+          failed.push(p.name)
+          reasons.push(e)
+        }
       }
     }
     if (authFailed) requireLogin()
@@ -84,7 +89,7 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
     const errors = [
       noDesign.length > 0 && `No design file for ${noDesign.join(', ')}`,
       noPdf && PDF_NOT_INSTALLED,
-      failed.length > 0 && `Couldn't download ${failed.map((n) => `"${n}"`).join(', ')} — try again`,
+      failed.length > 0 && downloadFailedText(failed.map((n) => `"${n}"`), reasons),
     ].filter((x): x is string => !!x)
     return { addedIds, error: errors.length > 0 ? errors.join('. ') : null }
   }

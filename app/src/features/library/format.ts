@@ -12,3 +12,12 @@ export const statusLabel = (status: string) => {
 }
 
 export const fileCount = (n: number) => (n === 1 ? '1 file' : `${n} files`)
+
+/**
+ * `Couldn't download "A", "B": <reason>` — the reason comes from the downloader (HTTP status,
+ * unsupported file type…) so the user can tell a flaky connection from a file that will never work.
+ */
+export function downloadFailedText(names: string[], errors: unknown[]): string {
+  const reasons = [...new Set(errors.map((e) => (e instanceof Error ? e.message : String(e))).filter((r) => r.trim()))]
+  return `Couldn't download ${names.join(', ')}${reasons.length > 0 ? `: ${reasons.join('; ')}` : ' — try again'}`
+}

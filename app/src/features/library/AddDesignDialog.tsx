@@ -5,6 +5,7 @@ import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
 import { PDF_NOT_INSTALLED, isPdfNotInstalled } from './pdfSupport'
+import { downloadFailedText } from './format'
 import { assetAspect, dpiLabel, dpiStatus, effectiveDpi, nativeSizeMm } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
@@ -48,7 +49,7 @@ export function AddDesignDialog({ design, customerName, onClose }: Props) {
       return a
     } catch (e) {
       if (e instanceof AuthRequiredError) requireLogin()
-      setError(isPdfNotInstalled(e) ? PDF_NOT_INSTALLED : `Couldn't download "${design.name}" — try again`)
+      setError(isPdfNotInstalled(e) ? PDF_NOT_INSTALLED : downloadFailedText([`"${design.name}"`], [e]))
       return null
     } finally {
       setLoading(false)

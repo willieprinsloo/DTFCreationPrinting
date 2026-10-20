@@ -153,6 +153,46 @@ fn url_extension(url: &str) -> Result<String, String> {
     supported_ext(ext)
 }
 
+/// Known image types that can't be printed are refused before downloading; any other
+/// unusable extension (none, `.php`, an id with dots…) means "look at the bytes" (None).
+fn url_ext_hint(url: &str) -> Result<Option<String>, String> {
+    match url_extension(url) {
+        Ok(e) => Ok(Some(e)),
+        Err(err) => {
+            let no_query = url.split(['?', '#']).next().unwrap_or("");
+            let last = no_query.rsplit('/').next().unwrap_or("");
+            let ext = last.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+            if ["gif", "webp", "bmp", "svg", "heic", "avif"].contains(&ext.as_str()) { Err(err) } else { Ok(None) }
+        }
+    }
+}
+
+/// The file type from its first bytes, for URLs that don't end in a usable extension.
+fn sniff_ext(path: &Path) -> Result<String, String> {
+    let mut head = [0u8; 12];
+    let n = io::Read::read(&mut fs::File::open(path).map_err(|e| format!("Could not read download: {e}"))?, &mut head)
+        .map_err(|e| format!("Could not read download: {e}"))?;
+    let h = &head[..n];
+    let ext = if h.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "png"
+    } else if h.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "jpg"
+    } else if h.starts_with(&[b'I', b'I', b'*', 0]) || h.starts_with(&[b'M', b'M', 0, b'*']) {
+        "tif"
+    } else if h.starts_with(b"%PDF") {
+        "pdf"
+    } else if h.len() >= 12 && &h[..4] == b"RIFF" && &h[8..12] == b"WEBP" {
+        return Err(unsupported("webp"));
+    } else if h.starts_with(b"GIF8") {
+        return Err(unsupported("gif"));
+    } else if h.trim_ascii_start().starts_with(b"<") {
+        return Err("The server sent a web page instead of the design file".into());
+    } else {
+        return Err("Downloaded file is not a PNG, JPEG, TIFF or PDF".into());
+    };
+    Ok(ext.into())
+}
+
 /// Rejects downloads that are not what their extension says (e.g. a login page).
 fn validate_download(path: &Path, ext: &str) -> Result<(), String> {
     if ext != "pdf" {
@@ -172,10 +212,18 @@ fn validate_image(path: &Path) -> Result<(), String> {
         .map_err(|_| "Downloaded file is not a valid image".to_string())
 }
 
-fn download_into(dir: &Path, url: &str, bearer: Option<&str>, name: &str) -> Result<PathBuf, String> {
-    let dest = dir.join(name);
-    if dest.exists() {
-        return Ok(dest);
+/// Downloads `url` into the cache as `<sha256(url)>.<ext>`. With `ext` None (the URL has no usable
+/// extension) the type is read from the downloaded bytes.
+fn download_into(dir: &Path, url: &str, bearer: Option<&str>, ext: Option<&str>) -> Result<PathBuf, String> {
+    let cached = |e: &str| dir.join(cache_file_name(url.as_bytes(), e));
+    match ext {
+        Some(e) if cached(e).exists() => return Ok(cached(e)),
+        None => {
+            if let Some(hit) = ["png", "jpg", "tif", "pdf"].iter().map(|e| cached(e)).find(|p| p.exists()) {
+                return Ok(hit);
+            }
+        }
+        _ => {}
     }
     let client = reqwest::blocking::Client::builder()
         .timeout(None)
@@ -190,18 +238,26 @@ fn download_into(dir: &Path, url: &str, bearer: Option<&str>, name: &str) -> Res
     if !resp.status().is_success() {
         return Err(format!("Download failed (HTTP {})", resp.status().as_u16()));
     }
-    let tmp = dir.join(format!("{name}.tmp"));
+    let tmp = dir.join(format!("{}.tmp", cache_file_name(url.as_bytes(), "download")));
     let result = (|| {
         let mut f = fs::File::create(&tmp).map_err(|e| format!("Could not save download: {e}"))?;
         io::copy(&mut resp, &mut f).map_err(|e| format!("Download failed: {e}"))?;
         drop(f);
-        let ext = Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("");
-        validate_download(&tmp, ext)
+        let ext = match ext {
+            Some(e) => e.to_string(),
+            None => sniff_ext(&tmp)?,
+        };
+        validate_download(&tmp, &ext)?;
+        Ok::<_, String>(ext)
     })();
-    if let Err(e) = result {
-        let _ = fs::remove_file(&tmp);
-        return Err(e);
-    }
+    let ext = match result {
+        Ok(e) => e,
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
+        }
+    };
+    let dest = cached(&ext);
     fs::rename(&tmp, &dest).map_err(|e| format!("Could not save download: {e}"))?;
     Ok(dest)
 }
@@ -214,9 +270,7 @@ pub async fn cache_asset(
 ) -> Result<AssetInfo, String> {
     let dir = cache_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let ext = url_extension(&url)?;
-        let name = cache_file_name(url.as_bytes(), &ext);
-        let file = download_into(&dir, &url, bearer.as_deref(), &name)?;
+        let file = download_into(&dir, &url, bearer.as_deref(), url_ext_hint(&url)?.as_deref())?;
         build_info(&file).inspect_err(|_| {
             let _ = fs::remove_file(&file);
         })
@@ -298,6 +352,68 @@ mod tests {
         assert_eq!(validate_download(&bad, "png").unwrap_err(), "Downloaded file is not a valid image");
         let good = make_png(d.path(), "g.png", 10, 10);
         assert!(validate_download(&good, "png").is_ok());
+    }
+
+    #[test]
+    fn sniffs_the_file_type_from_its_first_bytes() {
+        let d = tempfile::tempdir().unwrap();
+        let png = make_png(d.path(), "x.png", 4, 4);
+        assert_eq!(sniff_ext(&png).unwrap(), "png");
+        let cases: [(&[u8], Result<&str, &str>); 6] = [
+            (&[0xFF, 0xD8, 0xFF, 0xE0], Ok("jpg")),
+            (b"%PDF-1.7", Ok("pdf")),
+            (&[b'I', b'I', b'*', 0, 8, 0], Ok("tif")),
+            (b"RIFF\0\0\0\0WEBPVP8 ", Err(".webp")),
+            (b"  <!doctype html>", Err("web page")),
+            (b"hello", Err("not a PNG")),
+        ];
+        for (bytes, want) in cases {
+            let f = d.path().join("f");
+            fs::write(&f, bytes).unwrap();
+            match (sniff_ext(&f), want) {
+                (Ok(got), Ok(w)) => assert_eq!(got, w),
+                (Err(got), Err(w)) => assert!(got.contains(w), "{got}"),
+                (got, w) => panic!("{got:?} vs {w:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn url_hint_trusts_good_extensions_refuses_known_bad_ones_and_sniffs_the_rest() {
+        assert_eq!(url_ext_hint("https://x/a.PNG?v=2").unwrap().as_deref(), Some("png"));
+        assert!(url_ext_hint("https://x/a.webp").unwrap_err().contains(".webp"));
+        assert_eq!(url_ext_hint("https://x/designs/595F1778-5D57").unwrap(), None);
+        assert_eq!(url_ext_hint("https://x/image.php?id=3").unwrap(), None);
+    }
+
+    /// Serves `body` once on a local port; returns the base URL.
+    fn serve_once(body: Vec<u8>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 2048];
+            let _ = s.read(&mut buf);
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            s.write_all(head.as_bytes()).unwrap();
+            s.write_all(&body).unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[test]
+    fn downloads_a_design_whose_url_has_no_extension() {
+        let d = tempfile::tempdir().unwrap();
+        let png = fs::read(make_png(d.path(), "src.png", 6, 3)).unwrap();
+        let url = format!("{}/designs/595F1778-5D57-4DA3", serve_once(png));
+        let cache = d.path().join("cache");
+        fs::create_dir(&cache).unwrap();
+        let file = download_into(&cache, &url, None, url_ext_hint(&url).unwrap().as_deref()).unwrap();
+        assert_eq!(file.extension().unwrap(), "png");
+        assert_eq!(read_dimensions(&file).unwrap(), (6, 3));
+        // second time comes from the cache (the one-shot server is gone)
+        assert_eq!(download_into(&cache, &url, None, None).unwrap(), file);
     }
 
     #[test]

@@ -212,7 +212,7 @@ describe('ProductsTab', () => {
     render(<ProductsTab />, { wrapper: withClient(fakeClient({ ...sized(), listProducts: list(three) }), requireLogin) })
     for (const n of ['Tee', 'Hoodie', 'Cap']) await userEvent.click(await screen.findByRole('button', { name: n }))
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
-    expect(await screen.findByText('Couldn\'t download "Hoodie", "Cap" — try again')).toBeInTheDocument()
+    expect(await screen.findByText('Couldn\'t download "Hoodie", "Cap": Sign in to DTF Creations to continue')).toBeInTheDocument()
     expect(items()).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Tee' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Hoodie' })).toHaveAttribute('aria-pressed', 'true')
