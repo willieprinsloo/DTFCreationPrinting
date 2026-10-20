@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Copy, Lock, LockOpen, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
+import { uiStore, useUi } from '../../state/uiStore'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
 import type { SheetItem } from '../../domain/types'
-import { ONE_SIZE, defaultWidthMm } from '../../domain/printSizes'
+import { ONE_SIZE, resolveWidthMm, widthKey } from '../../domain/printSizes'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { useLookup } from '../library/queries/useLookup'
 import { useErrorHandler } from '../library/useErrorHandler'
 import { NumberField } from './NumberField'
-import { changeItemSize } from './changeSize'
+import { changeItemSize, rememberTypeNames } from './changeSize'
 
 const LABELS = { fine: 'Good', low: 'Low', bad: 'Too low' } as const
 const MM_PER_CM = 10
@@ -18,11 +19,13 @@ function GarmentSize({ item }: { item: SheetItem }) {
   const { client } = useDtfClient()
   const [, onLookupError] = useErrorHandler()
   const categories = useLookup(client.listProductCategories, onLookupError)
-  const table = useSettings((s) => s.printSizes.byType)
+  const printSizes = useSettings((s) => s.printSizes)
+  const notice = useUi((s) => s.printSizeNotice)
+  useEffect(() => rememberTypeNames(categories), [categories])
   const sizes = item.source.sizes ?? []
   const size = item.source.size ?? null
   const typeName = categories.find((c) => c.id === item.source.categoryId)?.name ?? ''
-  const saved = item.source.categoryId ? defaultWidthMm(table, item.source.categoryId, size) : undefined
+  const saved = item.source.categoryId ? resolveWidthMm(printSizes, item.source.categoryId, size) : undefined
   const showSave = !!item.source.categoryId && (saved === undefined || Math.abs(saved - item.widthMm) > 0.05)
   return (
     <div className="props-group">
@@ -43,10 +46,18 @@ function GarmentSize({ item }: { item: SheetItem }) {
       {showSave && (
         <button
           type="button"
-          onClick={() => void getSettingsStore().getState().setPrintWidth(item.source.categoryId!, size, item.widthMm)}
+          onClick={() => void getSettingsStore().getState().setPrintWidth(item.source.categoryId!, widthKey(printSizes, item.source.categoryId!, size), item.widthMm)}
         >
-          Save as default for {typeName || 'this type'} · {size ?? ONE_SIZE}
+          Save as default for {typeName || 'this type'} · {widthKey(printSizes, item.source.categoryId!, size) ?? ONE_SIZE}
         </button>
+      )}
+      {notice && (
+        <p className="muted" role="status">
+          {notice}{' '}
+          <button type="button" onClick={() => uiStore.getState().openSettings('print-sizes')}>
+            Open Print sizes
+          </button>
+        </p>
       )}
     </div>
   )

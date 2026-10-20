@@ -67,6 +67,8 @@ export function GangSheetsTab() {
 
   /** Adds the ticked files of an order, or all of its files when none are ticked (loading them if needed). */
   const addOrder = async (order: OrderSummary) => {
+    setError(null)
+    setNotice(null)
     let files: OrderFile[]
     try {
       files = await details.loadFiles(order.id)

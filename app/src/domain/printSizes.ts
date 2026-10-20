@@ -51,6 +51,16 @@ export function defaultWidthMm(table: PrintSizeTable, categoryId: string, size: 
   return table[categoryId]?.[size ?? ONE_SIZE]
 }
 
+/** Table column for a garment size: One size (null) for one-size-only types, else the size itself. */
+export function widthKey(ps: PrintSizes, categoryId: string, size: string | null): string | null {
+  return ps.oneSizeOnly?.[categoryId] ? null : size
+}
+
+/** Default print width (mm) for a type and garment size, honouring the type's one-size-only flag. */
+export function resolveWidthMm(ps: PrintSizes, categoryId: string, size: string | null): number | undefined {
+  return defaultWidthMm(ps.byType, categoryId, widthKey(ps, categoryId, size))
+}
+
 export const isValidWidth = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)

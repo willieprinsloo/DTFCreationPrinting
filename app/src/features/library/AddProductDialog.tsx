@@ -6,7 +6,7 @@ import { AuthRequiredError } from '../../api/dtfClient'
 import { cacheAsset } from '../../platform/tauri'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
 import { printableArea } from '../../domain/geometry'
-import { ONE_SIZE, defaultWidthMm } from '../../domain/printSizes'
+import { ONE_SIZE, resolveWidthMm } from '../../domain/printSizes'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
 import { useProductSources } from './queries/useProductSources'
@@ -24,8 +24,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const { client, requireLogin } = useDtfClient()
   const sources = useProductSources()
   const thresholds = useSettings((s) => s.thresholds)
-  const table = useSettings((s) => s.printSizes.byType)
-  const oneSizeOnly = useSettings((s) => !!s.printSizes.oneSizeOnly[product.categoryId])
+  const printSizes = useSettings((s) => s.printSizes)
   const settings = useSheet((s) => s.sheet.settings)
   const [designUrl, setDesignUrl] = useState<string | null | undefined>(undefined)
   const [sizes, setSizes] = useState<string[]>([])
@@ -101,7 +100,7 @@ export function AddProductDialog({ product, onClose }: Props) {
   const widthCmOf = (size: string | null): number | null => {
     const key = size ?? ONE_SIZE
     if (key in widthsCm) return widthsCm[key]
-    const mm = defaultWidthMm(table, product.categoryId, oneSizeOnly ? null : size)
+    const mm = resolveWidthMm(printSizes, product.categoryId, size)
     return mm !== undefined ? mm / 10 : nativeCm
   }
   const rows = (sizes.length > 0 ? sizes.map((s) => ({ size: s as string | null, qty: quantities[s] ?? 0 })) : [{ size: null, qty: single }]).map(

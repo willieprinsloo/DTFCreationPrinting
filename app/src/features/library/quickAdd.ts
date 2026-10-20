@@ -3,7 +3,7 @@ import { AuthRequiredError } from '../../api/dtfClient'
 import type { ProductSummary } from '../../api/types'
 import type { SourceRef } from '../../domain/types'
 import { printableArea } from '../../domain/geometry'
-import { ONE_SIZE, defaultWidthMm, pickSize } from '../../domain/printSizes'
+import { ONE_SIZE, pickSize, resolveWidthMm, widthKey } from '../../domain/printSizes'
 import { cacheAsset } from '../../platform/tauri'
 import { getSettingsStore } from '../../state/settingsStore'
 import { getSheetStore, type NewItem } from '../../state/sheetStore'
@@ -52,10 +52,10 @@ export function useQuickAdd(typeName: (categoryId: string) => string) {
         }
         const url = client.absoluteUrl(src.designUrl)
         const asset = await cacheAsset(url, client.bearerFor(url))
-        // A one-size-only type is printed at its One size width whatever garment sizes it comes in.
-        const size = printSizes.oneSizeOnly[p.categoryId] ? null : pickSize(src.sizes, printSizes.defaultSize)
-        const tableWidth = defaultWidthMm(printSizes.byType, p.categoryId, size)
-        if (tableWidth === undefined) unset.add(`${typeName(p.categoryId) || 'this type'} · ${size ?? ONE_SIZE}`)
+        const size = pickSize(src.sizes, printSizes.defaultSize)
+        // A one-size-only type is printed at its One size width, but the item keeps its real garment size.
+        const tableWidth = resolveWidthMm(printSizes, p.categoryId, size)
+        if (tableWidth === undefined) unset.add(`${typeName(p.categoryId) || 'this type'} · ${widthKey(printSizes, p.categoryId, size) ?? ONE_SIZE}`)
         const widthMm = tableWidth ?? Math.min((asset.widthPx / NATIVE_DPI) * 25.4, maxWidthMm)
         const source: SourceRef = {
           kind: 'gallery',

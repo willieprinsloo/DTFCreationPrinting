@@ -308,6 +308,17 @@ describe('LibraryBrowser', () => {
       expect(items[0].source).toMatchObject({ productId: 'p1', categoryId: '3', size: 'M', sizes: ['S', 'M'] })
     })
 
+    it('one-size-only: uses the One size width but the label keeps the picked size', async () => {
+      await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { 'One size': 260, M: 280 } }, oneSizeOnly: { '3': true } })
+      open(client())
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add 1 to sheet' }))
+      await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(1))
+      const it = getSheetStore().getState().sheet.items[0]
+      expect([it.widthMm, it.source.size, it.source.label]).toEqual([260, 'M', 'Tee — M'])
+    })
+
     it('missing default: adds anyway and the drawer shows the Print sizes notice', async () => {
       await getSettingsStore().getState().setPrintSizes({ byType: { '3': { S: 250 } } })
       open(client())
@@ -333,6 +344,24 @@ describe('LibraryBrowser', () => {
       await userEvent.click(within(dlg).getByRole('button', { name: 'Add with options…' }))
       expect(await screen.findByRole('dialog', { name: 'Add Tee' })).toBeInTheDocument()
       expect(getSheetStore().getState().sheet.items).toHaveLength(0)
+    })
+
+    it('"Add with options…" keeps the browser open with the no-design notice after the dialogs finish', async () => {
+      const getProductPrintSource = vi.fn(async (id: string) => ({ designUrl: id === 'p2' ? null : '/uploads/d.png', sizes: ['M'] }))
+      open(fakeClient({ listProductCategories: vi.fn(async () => [{ id: '3', name: 'T-Shirts' }]), listProducts: page([product('p1', 'Tee'), product('p2', 'Cap')]), getProductPrintSource }))
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Cap' }))
+      await waitFor(() => expect(getProductPrintSource).toHaveBeenCalledTimes(2))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add with options…' }))
+      const q = await screen.findByLabelText('Quantity M')
+      await waitFor(() => expect(screen.getByLabelText('Width M (cm)')).toBeEnabled())
+      await userEvent.clear(q)
+      await userEvent.type(q, '1')
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Add Tee' })).getByRole('button', { name: 'Add' }))
+      await waitFor(() => expect(getSheetStore().getState().sheet.items).toHaveLength(1))
+      expect(screen.getByRole('dialog', { name: 'Library browser' })).toBeInTheDocument()
+      expect(within(screen.getByRole('dialog', { name: 'Library browser' })).getByRole('alert')).toHaveTextContent('No design file for Cap')
     })
 
     it('a partly failed add keeps the panel open with the error, deselects only what went in, and fits', async () => {

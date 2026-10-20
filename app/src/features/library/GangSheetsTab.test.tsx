@@ -219,6 +219,17 @@ describe('GangSheetsTab', () => {
       expect(card).toHaveAttribute('aria-expanded', 'false')
     })
 
+    it('the no-print-files notice is not hidden by an earlier error', async () => {
+      const client = setup([])
+      vi.mocked(client.getOrderFiles).mockRejectedValue(new Error('network down'))
+      await dragCard()
+      expect(await screen.findByText('network down')).toBeInTheDocument()
+      vi.mocked(client.getOrderFiles).mockResolvedValue([])
+      await dragCard()
+      expect(await screen.findByText('Order #1042 has no print files yet')).toBeInTheDocument()
+      expect(screen.queryByText('network down')).toBeNull()
+    })
+
     it('says so when the order has no print files', async () => {
       setup([])
       await dragCard()

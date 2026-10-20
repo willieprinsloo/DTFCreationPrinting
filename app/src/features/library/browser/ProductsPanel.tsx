@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDtfClient } from '../../../api/DtfClientContext'
 import type { ProductSummary } from '../../../api/types'
 import { DEFAULT_PRODUCT_PREFS, type ProductPrefs, type ProductSort } from '../../../state/libraryPrefs'
@@ -39,9 +39,14 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
   const categories = useLookup(client.listProductCategories, onLookupError)
   const query = useProductsQuery({ search: debounced, categoryId: f.categoryId, status: f.status, limit: prefs.pageSize })
   const selection = useSelection<ProductSummary>()
-  const dialogs = useDialogQueue<ProductSummary>(onAdded)
-  const sources = useProductSources()
   const [notice, setNotice] = useState<string | null>(null)
+  const noticeRef = useRef(notice)
+  noticeRef.current = notice
+  const dialogs = useDialogQueue<ProductSummary>(() => {
+    // Keep the browser open when some selected products had no design file, so that notice isn't lost.
+    if (!noticeRef.current) onAdded()
+  })
+  const sources = useProductSources()
   const [adding, setAdding] = useState(false)
   const quickAdd = useQuickAdd((id) => categories.find((c) => c.id === id)?.name ?? '')
 
@@ -67,7 +72,9 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
   const add = async (options: boolean) => {
     const all = [...selection.map.values()]
     const missing = all.filter((p) => sources.hasNoDesign(p.id))
-    setNotice(missing.length > 0 ? `No design file for ${missing.map((p) => p.name).join(', ')}` : null)
+    const msg = missing.length > 0 ? `No design file for ${missing.map((p) => p.name).join(', ')}` : null
+    noticeRef.current = msg
+    setNotice(msg)
     const picked = all.filter((p) => !missing.includes(p))
     if (options || picked.length === 0) return dialogs.start(picked)
     setAdding(true)

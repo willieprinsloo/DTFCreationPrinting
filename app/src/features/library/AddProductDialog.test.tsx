@@ -21,7 +21,7 @@ const source = (sizes: string[], designUrl: string | null = '/uploads/d.png') =>
 beforeEach(async () => {
   vi.clearAllMocks()
   getSheetStore().getState().newSheet(DEFAULT_PROFILE)
-  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: {} })
+  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: {}, oneSizeOnly: {} })
 })
 
 describe('AddProductDialog', () => {
@@ -95,6 +95,22 @@ describe('AddProductDialog', () => {
     vi.mocked(cacheAsset).mockRejectedValue(new AuthRequiredError())
     render(<AddProductDialog product={product} onClose={vi.fn()} />, { wrapper: withClient(fakeClient(source(['M'])), requireLogin) })
     await waitFor(() => expect(requireLogin).toHaveBeenCalled())
+  })
+
+  it('a one-size-only type prefills every size row with the One size width and keeps real sizes', async () => {
+    await getSettingsStore().getState().setPrintWidth('3', null, 250)
+    await getSettingsStore().getState().setPrintWidth('3', 'M', 280)
+    await getSettingsStore().getState().setOneSizeOnly('3', true)
+    vi.mocked(cacheAsset).mockResolvedValue(asset)
+    render(<AddProductDialog product={product} onClose={vi.fn()} />, { wrapper: withClient(fakeClient(source(['S', 'M']))) })
+    await waitFor(() => expect(screen.getByLabelText('Width M (cm)')).toHaveValue(25))
+    expect(screen.getByLabelText('Width S (cm)')).toHaveValue(25)
+    const q = screen.getByLabelText('Quantity M')
+    await userEvent.clear(q)
+    await userEvent.type(q, '1')
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    const it = getSheetStore().getState().sheet.items[0]
+    expect([it.widthMm, it.source.size, it.source.label]).toEqual([250, 'M', 'Tee — M'])
   })
 
   it('prefills each size row from Print sizes (native width otherwise), editable per row, with per-row dpi', async () => {

@@ -85,7 +85,7 @@ describe('ItemProperties garment size', () => {
   const wrapper = withClient(fakeClient({ listProductCategories: vi.fn(async () => [{ id: '3', name: 'T-Shirts' }]) }))
   let pid = ''
   beforeEach(async () => {
-    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 200, L: 300 } } })
+    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { M: 200, L: 300 } }, oneSizeOnly: {} })
     uiStore.getState().setPrintSizeNotice(null)
     const s = getSheetStore().getState()
     s.newSheet(DEFAULT_PROFILE)
@@ -120,6 +120,24 @@ describe('ItemProperties garment size', () => {
     expect(getSheetStore().getState().sheet.items[0].widthMm).toBe(200)
     expect(getSheetStore().getState().sheet.items[0].source.size).toBe('S')
     expect(uiStore.getState().printSizeNotice).toMatch(/No default print size for T-Shirts · S/)
+  })
+
+  it('shows the no-default notice next to the Garment size control', async () => {
+    render(<ItemProperties ids={[pid]} />, { wrapper })
+    await userEvent.selectOptions(screen.getByLabelText('Garment size'), 'S')
+    expect(await screen.findByRole('status')).toHaveTextContent(/No default print size for T-Shirts · S/)
+  })
+
+  it('on a one-size-only type the size change uses the One size width and Save writes the One size cell', async () => {
+    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { 'One size': 240, M: 200 } }, oneSizeOnly: { '3': true } })
+    render(<ItemProperties ids={[pid]} />, { wrapper })
+    await userEvent.selectOptions(screen.getByLabelText('Garment size'), 'L')
+    expect(getSheetStore().getState().sheet.items[0].widthMm).toBe(240)
+    expect(screen.queryByRole('status')).toBeNull()
+    getSheetStore().getState().resizeItem(pid, 260)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save as default for T-Shirts · One size' }))
+    expect(getSettingsStore().getState().printSizes.byType['3']['One size']).toBe(260)
+    expect(getSettingsStore().getState().printSizes.byType['3'].L).toBeUndefined()
   })
 
   it('Save as default stores the current width and then hides', async () => {

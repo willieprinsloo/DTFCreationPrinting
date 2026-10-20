@@ -193,7 +193,7 @@ describe('ProductsTab', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('a one-size-only type uses its One size width whatever the garment sizes, with size null', async () => {
+  it('a one-size-only type uses its One size width but keeps the real garment size (R21)', async () => {
     vi.mocked(cacheAsset).mockResolvedValue(asset)
     await getSettingsStore().getState().setPrintWidth('3', null, 250)
     await getSettingsStore().getState().setOneSizeOnly('3', true)
@@ -202,7 +202,7 @@ describe('ProductsTab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(items()).toHaveLength(1))
     expect(items()[0].widthMm).toBe(250)
-    expect(items()[0].source).toMatchObject({ size: null, sizes: ['S', 'M', 'L'], label: 'Tee' })
+    expect(items()[0].source).toMatchObject({ size: 'M', sizes: ['S', 'M', 'L'], label: 'Tee — M' })
   })
 
   it('a partly failed quick add deselects only the added products and asks for sign-in once', async () => {

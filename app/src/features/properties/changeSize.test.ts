@@ -4,7 +4,8 @@ vi.mock('../../state/persist', async (orig) => {
   const m = await orig<typeof import('../../state/persist')>()
   return { ...m, createTauriStore: () => m.createMemoryStore() }
 })
-import { stepItemSize } from './changeSize'
+import { changeItemSize, rememberTypeNames, stepItemSize } from './changeSize'
+import { uiStore } from '../../state/uiStore'
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
 
@@ -13,10 +14,44 @@ const source = { kind: 'gallery' as const, id: 'p', productId: 'p', categoryId: 
 const item = () => getSheetStore().getState().sheet.items[0]
 
 beforeEach(async () => {
-  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { S: 150, M: 200, L: 300 } } })
+  await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { S: 150, M: 200, L: 300 } }, oneSizeOnly: {} })
   const s = getSheetStore().getState()
   s.newSheet(DEFAULT_PROFILE)
   s.addItems([{ asset, source, widthMm: 200, heightMm: 100, quantity: 1 }])
+})
+
+describe('one-size-only types and unsized items', () => {
+  it('changeItemSize on a one-size-only item uses the One size width with no notice', async () => {
+    await getSettingsStore().getState().setPrintSizes({ defaultSize: 'M', byType: { '3': { 'One size': 240, L: 300 } }, oneSizeOnly: { '3': true } })
+    uiStore.getState().setPrintSizeNotice(null)
+    changeItemSize(item().id, 'L')
+    expect([item().source.size, item().widthMm]).toEqual(['L', 240])
+    expect(uiStore.getState().printSizeNotice).toBeNull()
+  })
+
+  it('names the loaded type in the notice when stepping with the keyboard', () => {
+    rememberTypeNames([{ id: '3', name: 'T-Shirts' }])
+    getSheetStore().getState().updateItem(item().id, {})
+    stepItemSize(item().id, -1)
+    expect(item().source.size).toBe('S')
+    changeItemSize(item().id, 'M')
+    uiStore.getState().setPrintSizeNotice(null)
+    void getSettingsStore().getState().setPrintWidth('3', 'S', null)
+    stepItemSize(item().id, -1)
+    stepItemSize(item().id, 1)
+    stepItemSize(item().id, -1)
+    expect(uiStore.getState().printSizeNotice).toMatch(/No default print size for T-Shirts · S/)
+  })
+
+  it('with no size yet, ] goes to the first size and [ to the last', () => {
+    const set = (size: string | null) => getSheetStore().getState().setItemSize(item().id, size, 200)
+    set(null)
+    stepItemSize(item().id, 1)
+    expect(item().source.size).toBe('S')
+    set(null)
+    stepItemSize(item().id, -1)
+    expect(item().source.size).toBe('L')
+  })
 })
 
 describe('stepItemSize', () => {
