@@ -32,6 +32,8 @@ export interface SheetActions {
   duplicateItems(ids: string[]): void
   /** Throws InvalidSheetError (state unchanged) when the result has no printable width. */
   setSettings(patch: Partial<SheetSettings>): void
+  /** Switches the sheet to `profile` (id, width, margins, gap) as one undo step. Throws InvalidSheetError, state unchanged. */
+  applyProfile(profile: PrinterProfile): void
   autoPlaceAll(): void
   select(ids: string[]): void
   undo(): void
@@ -190,6 +192,17 @@ export function createSheetStore() {
             const settings = { ...sheet.settings, ...patch }
             printableArea(settings) // throws InvalidSheetError before any state change
             setSheet({ ...sheet, settings })
+          },
+          applyProfile(profile) {
+            const { sheet } = get()
+            const settings = {
+              ...sheet.settings,
+              widthMm: profile.widthMm,
+              margins: { ...profile.defaultMargins },
+              gapMm: profile.defaultGapMm,
+            }
+            printableArea(settings) // throws InvalidSheetError before any state change
+            setSheet({ ...sheet, profileId: profile.id, settings })
           },
           autoPlaceAll() {
             const { sheet } = get()

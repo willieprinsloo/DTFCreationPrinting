@@ -170,4 +170,28 @@ describe('sheetStore', () => {
     store.getState().undo()
     expect(store.getState().sheet).toBe(sheet)
   })
+
+  describe('applyProfile', () => {
+    const narrow = { ...DEFAULT_PROFILE, id: 'dtf-30', widthMm: 300, defaultGapMm: 2, defaultMargins: { topMm: 1, rightMm: 2, bottomMm: 3, leftMm: 4 } }
+
+    it('updates profileId and settings in one undo step', () => {
+      const store = fresh()
+      store.getState().applyProfile(narrow)
+      const { sheet } = store.getState()
+      expect(sheet.profileId).toBe('dtf-30')
+      expect(sheet.settings.widthMm).toBe(300)
+      expect(sheet.settings.margins).toEqual(narrow.defaultMargins)
+      expect(sheet.settings.gapMm).toBe(2)
+      store.getState().undo()
+      expect(store.getState().sheet.profileId).toBe(DEFAULT_PROFILE.id)
+      expect(store.getState().sheet.settings.widthMm).toBe(600)
+    })
+
+    it('throws and leaves state unchanged when no printable width remains', () => {
+      const store = fresh()
+      const before = store.getState().sheet
+      expect(() => store.getState().applyProfile({ ...narrow, widthMm: 5 })).toThrow(InvalidSheetError)
+      expect(store.getState().sheet).toBe(before)
+    })
+  })
 })
