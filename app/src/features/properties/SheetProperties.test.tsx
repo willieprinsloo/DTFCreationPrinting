@@ -44,7 +44,7 @@ describe('SheetProperties', () => {
     await userEvent.clear(w)
     await userEvent.type(w, '0{Enter}')
     expect(settings().widthMm).toBe(600)
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Printer width must be more than 0 mm$/)
   })
 
   it('does not store a negative margin', async () => {

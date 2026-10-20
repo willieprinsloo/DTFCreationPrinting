@@ -30,4 +30,22 @@ describe('StatusBar', () => {
     expect(screen.getByText('⚠ 1 low-res')).toBeInTheDocument()
     expect(screen.getByText('⛔ 1 problems')).toBeInTheDocument()
   })
+
+  it('shows exact used percentage', () => {
+    act(() => getSheetStore().getState().addItems([{ asset, source, widthMm: 100, heightMm: 100, quantity: 1 }]))
+    render(<StatusBar />)
+    // 10000 mm2 / (590 x (110 - 10)) mm2 = 16.9%
+    expect(screen.getByText('Used 17%')).toBeInTheDocument()
+  })
+
+  it('counts distinct orders', () => {
+    act(() => {
+      const s = getSheetStore().getState()
+      s.addItems([{ asset, source: { ...source, orderId: 'o1' }, widthMm: 50, heightMm: 50, quantity: 2 }])
+      s.addItems([{ asset, source: { ...source, id: 's2', orderId: 'o2' }, widthMm: 50, heightMm: 50, quantity: 1 }])
+    })
+    render(<StatusBar />)
+    expect(screen.getByText('3 designs')).toBeInTheDocument()
+    expect(screen.getByText('2 orders')).toBeInTheDocument()
+  })
 })

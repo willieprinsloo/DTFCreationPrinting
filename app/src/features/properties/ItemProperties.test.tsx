@@ -49,4 +49,26 @@ describe('ItemProperties', () => {
     expect(screen.queryByLabelText('Width')).toBeNull()
     expect(screen.getByRole('button', { name: /Delete/ })).toBeInTheDocument()
   })
+
+  it('shows Too low for a 100 dpi item', () => {
+    getSheetStore().setState((st) => ({
+      sheet: { ...st.sheet, items: st.sheet.items.map((i) => ({ ...i, asset: { ...i.asset, widthPx: 1000, heightPx: 500 } })) },
+    }))
+    render(<ItemProperties ids={[id]} />)
+    expect(screen.getByText('100 dpi')).toBeInTheDocument()
+    expect(screen.getByText('Too low')).toBeInTheDocument()
+  })
+
+  it('rotate left goes from 0 to 270', async () => {
+    render(<ItemProperties ids={[id]} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Rotate left 90 degrees' }))
+    expect(item().rotationDeg).toBe(270)
+  })
+
+  it('uses the lower axis for dpi (150 dpi is Low)', () => {
+    getSheetStore().getState().updateItem(id, { widthMm: 254, heightMm: 254 })
+    render(<ItemProperties ids={[id]} />)
+    expect(screen.getByText('150 dpi')).toBeInTheDocument()
+    expect(screen.getByText('Low')).toBeInTheDocument()
+  })
 })
