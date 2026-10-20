@@ -51,6 +51,17 @@ describe('sheetStore', () => {
     expect(findProblems(sheet)).toEqual([])
   })
 
+  it('fixed-length sheets place new items just below existing content', () => {
+    const store = fresh()
+    store.getState().setSettings({ lengthMode: 'fixed', fixedLengthMm: 1000 })
+    store.getState().addItems([mk(1, 100, 100)]) // occupies y 5..105
+    store.getState().addItems([mk(2, 100, 50)])
+    const { sheet } = store.getState()
+    const ys = sheet.items.slice(1).map((i) => itemBounds(i).yMm)
+    expect(Math.min(...ys)).toBeCloseTo(105 + sheet.settings.gapMm)
+    expect(findProblems(sheet)).toEqual([])
+  })
+
   it('rotated placements keep the footprint after conversion', () => {
     const store = createSheetStore()
     store.getState().newSheet({ ...DEFAULT_PROFILE, widthMm: 70 }) // printable 60: only fits rotated

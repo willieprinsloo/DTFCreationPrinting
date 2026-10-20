@@ -2,7 +2,7 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import { temporal } from 'zundo'
 import type { Asset, PrinterProfile, Sheet, SheetItem, SheetSettings, SourceRef } from '../domain/types'
-import { printableArea, sheetLengthMm } from '../domain/geometry'
+import { itemBounds, printableArea } from '../domain/geometry'
 import { autoPlace, type Placement } from '../domain/autoplace'
 
 export interface NewItem {
@@ -130,7 +130,7 @@ export function createSheetStore() {
             const originYMm =
               sheet.items.length === 0
                 ? settings.margins.topMm
-                : sheetLengthMm(sheet) - settings.margins.bottomMm + settings.gapMm
+                : Math.max(...sheet.items.map((it) => itemBounds(it).yMm + itemBounds(it).heightMm)) + settings.gapMm
             const result = pack(created, settings, originYMm)
             const byId = new Map(result.placements.map((p) => [p.id, p]))
             const placed = created.map((it) => {
