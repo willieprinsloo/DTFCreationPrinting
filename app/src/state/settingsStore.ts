@@ -16,6 +16,10 @@ export const DEFAULT_PROFILE: PrinterProfile = {
 
 export const clampDrawerHeight = (px: number) => Math.min(480, Math.max(120, Math.round(px)))
 
+export const MIN_PREVIEW_LENGTH_FLOOR_MM = 100
+export const clampMinPreviewLength = (mm: number) =>
+  Number.isFinite(mm) ? Math.max(MIN_PREVIEW_LENGTH_FLOOR_MM, mm) : 1000
+
 export interface SettingsData {
   profiles: PrinterProfile[]
   activeProfileId: string
@@ -23,6 +27,8 @@ export interface SettingsData {
   apiBaseUrl: string
   screenPxPerMm: number
   drawerHeightPx: number
+  /** Shortest film length (mm) drawn for an auto-length sheet. */
+  minPreviewLengthMm: number
   /** Most recent first, de-duplicated, max 20. */
   recentSheets: string[]
   lastPrnFolder?: string
@@ -40,6 +46,8 @@ export interface SettingsActions {
   setScreenPxPerMm(v: number): Promise<void>
   /** Clamped to 120-480 px. */
   setDrawerHeight(px: number): Promise<void>
+  /** Clamped to at least 100 mm. */
+  setMinPreviewLength(mm: number): Promise<void>
   addRecentSheet(path: string): Promise<void>
   setLastPrnFolder(folder: string): Promise<void>
 }
@@ -57,6 +65,7 @@ function defaults(): SettingsData {
     apiBaseUrl: 'https://dtfcreations.co.za/api/v1',
     screenPxPerMm: 96 / 25.4,
     drawerHeightPx: 200,
+    minPreviewLengthMm: 1000,
     recentSheets: [],
     loaded: false,
   }
@@ -103,6 +112,7 @@ export function createSettingsStore(kv: KeyValueStore) {
       setApiBaseUrl: (url) => commit({ apiBaseUrl: url }),
       setScreenPxPerMm: (v) => commit({ screenPxPerMm: v }),
       setDrawerHeight: (px) => commit({ drawerHeightPx: clampDrawerHeight(px) }),
+      setMinPreviewLength: (mm) => commit({ minPreviewLengthMm: clampMinPreviewLength(mm) }),
       addRecentSheet: (path) =>
         commit({ recentSheets: [path, ...get().recentSheets.filter((p) => p !== path)].slice(0, MAX_RECENT_SHEETS) }),
       setLastPrnFolder: (folder) => commit({ lastPrnFolder: folder }),
@@ -118,6 +128,7 @@ function pickData(s: SettingsState): SettingsData {
     apiBaseUrl: s.apiBaseUrl,
     screenPxPerMm: s.screenPxPerMm,
     drawerHeightPx: s.drawerHeightPx,
+    minPreviewLengthMm: s.minPreviewLengthMm,
     recentSheets: s.recentSheets,
     lastPrnFolder: s.lastPrnFolder,
     loaded: s.loaded,

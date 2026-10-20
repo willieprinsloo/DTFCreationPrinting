@@ -3,14 +3,14 @@ import { Layer, Rect, Shape, Stage, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
 import { useSettings } from '../../state/settingsStore'
-import { findProblems, itemBounds, printableArea, sheetLengthMm } from '../../domain/geometry'
+import { findProblems, itemBounds, printableArea, displayLengthMm } from '../../domain/geometry'
 import { dpiStatus, effectiveDpi } from '../../domain/dpi'
 import { snapPosition } from '../../domain/snapping'
 import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/types'
 import { screenToSheet } from '../../domain/viewport'
 import { ItemNode } from './ItemNode'
 import { shortcutFor } from './shortcuts'
-import { getViewportStore, pinchFactor, useViewport } from './useViewport'
+import { getViewportStore, pinchFactor, shouldAutoFit, useViewport, type FitInputs } from './useViewport'
 
 const SNAP_THRESHOLD_MM = 2
 const GRID_STEP_MM = 10
@@ -69,12 +69,13 @@ export function SheetCanvas() {
   const thresholds = useSettings((s) => s.thresholds)
 
   const sheetW = sheet.settings.widthMm
-  const sheetH = sheetLengthMm(sheet)
+  const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
+  const sheetH = displayLengthMm(sheet, minPreviewLengthMm)
   const { vp } = useViewport(sheetW, sheetH)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ w: 0, h: 0 })
-  const fittedRef = useRef(false)
+  const fitRef = useRef<FitInputs | null>(null)
   const nodesRef = useRef(new Map<string, Konva.Group>())
   const transformerRef = useRef<Konva.Transformer>(null)
   const [spaceDown, setSpaceDown] = useState(false)
@@ -91,14 +92,31 @@ export function SheetCanvas() {
       setView({ w, h })
       const vs = getViewportStore().getState()
       vs.setView(w, h)
-      if (!fittedRef.current && w > 0 && h > 0) {
-        fittedRef.current = true
-        vs.fit()
-      }
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // A new or loaded sheet goes back to auto-fit.
+  useEffect(() => {
+    getViewportStore().getState().setAutoFit(true)
+    fitRef.current = null
+  }, [sheet.id])
+
+  // Keep the whole film in view on first size, film size change and container resize,
+  // until the user navigates manually.
+  useEffect(() => {
+    if (!(view.w > 0 && view.h > 0)) return
+    const vs = getViewportStore().getState()
+    const next: FitInputs = { widthMm: sheetW, lengthMm: sheetH, viewW: view.w, viewH: view.h }
+    const prev = fitRef.current
+    fitRef.current = next
+    if (shouldAutoFit(prev, next, vs.autoFit)) {
+      vs.setSheetSize(sheetW, sheetH)
+      vs.setView(view.w, view.h)
+      vs.fit()
+    }
+  }, [sheetW, sheetH, view.w, view.h, sheet.id])
 
   // macOS WKWebView delivers trackpad pinch as non-standard gesture* events, not ctrl+wheel.
   useEffect(() => {

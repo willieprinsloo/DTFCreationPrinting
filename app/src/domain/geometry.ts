@@ -44,6 +44,12 @@ export function sheetLengthMm(sheet: Sheet): number {
   return Math.max(lowest + bottomMm, topMm + bottomMm)
 }
 
+/** Length drawn on screen: the real length, but never shorter than the preview minimum in auto mode. */
+export function displayLengthMm(sheet: Sheet, minPreviewMm: number): number {
+  if (sheet.settings.lengthMode === 'fixed') return sheet.settings.fixedLengthMm
+  return Math.max(sheetLengthMm(sheet), minPreviewMm)
+}
+
 export function findProblems(sheet: Sheet): Problem[] {
   const area = printableArea(sheet.settings)
   const bounds = sheet.items.map(itemBounds)

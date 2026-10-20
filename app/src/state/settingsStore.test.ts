@@ -107,3 +107,18 @@ describe('settingsStore recent sheets and PRN folder', () => {
     expect(b.getState().lastPrnFolder).toBe('/out')
   })
 })
+
+describe('settingsStore minPreviewLengthMm', () => {
+  it('defaults to 1000, clamps to at least 100, and persists', async () => {
+    const kv = createMemoryStore()
+    const a = createSettingsStore(kv)
+    await a.getState().load()
+    expect(a.getState().minPreviewLengthMm).toBe(1000)
+    await a.getState().setMinPreviewLength(10)
+    expect(a.getState().minPreviewLengthMm).toBe(100)
+    await a.getState().setMinPreviewLength(1500)
+    const b = createSettingsStore(kv)
+    await b.getState().load()
+    expect(b.getState().minPreviewLengthMm).toBe(1500)
+  })
+})

@@ -20,7 +20,29 @@ export function pinchFactor(prevScale: number, nextScale: number): number {
   return nextScale / prevScale
 }
 
+export interface FitInputs {
+  widthMm: number
+  lengthMm: number
+  viewW: number
+  viewH: number
+}
+
+/** True when the view should be re-fitted: auto-fit is on, the view has a size, and something relevant changed. */
+export function shouldAutoFit(prev: FitInputs | null, next: FitInputs, autoFit: boolean): boolean {
+  if (!autoFit || !(next.viewW > 0) || !(next.viewH > 0)) return false
+  if (!prev) return true
+  return (
+    prev.widthMm !== next.widthMm ||
+    prev.lengthMm !== next.lengthMm ||
+    prev.viewW !== next.viewW ||
+    prev.viewH !== next.viewH
+  )
+}
+
 export interface ViewportState {
+  /** True until the user zooms/pans manually; fit() turns it back on. */
+  autoFit: boolean
+  setAutoFit(on: boolean): void
   vp: Viewport
   viewW: number
   viewH: number
@@ -43,41 +65,44 @@ export interface ViewportState {
 export function createViewportStore() {
   return createStore<ViewportState>((set, get) => ({
     vp: { scale: 1, offsetX: 0, offsetY: 0 },
+    autoFit: true,
+    setAutoFit: (autoFit) => set({ autoFit }),
     viewW: 0,
     viewH: 0,
     sheetW: 600,
     sheetH: 10,
-    setVp: (vp) => set({ vp }),
+    // setVp is the manual-navigation entry point (pan); fit() bypasses it.
+    setVp: (vp) => set({ vp, autoFit: false }),
     setView: (viewW, viewH) => set({ viewW, viewH }),
     setSheetSize: (sheetW, sheetH) => set({ sheetW, sheetH }),
     fit() {
       const { sheetW, sheetH, viewW, viewH } = get()
-      set({ vp: fitSheet(sheetW, sheetH, viewW, viewH) })
+      set({ vp: fitSheet(sheetW, sheetH, viewW, viewH), autoFit: true })
     },
     fitWidth() {
       const { sheetW, viewW } = get()
-      set({ vp: fitWidthVp(sheetW, viewW) })
+      set({ vp: fitWidthVp(sheetW, viewW), autoFit: false })
     },
     trueSize() {
       const { vp, viewW, viewH } = get()
-      set({ vp: trueSizeVp(vp, getSettingsStore().getState().screenPxPerMm, viewW, viewH) })
+      set({ vp: trueSizeVp(vp, getSettingsStore().getState().screenPxPerMm, viewW, viewH), autoFit: false })
     },
     zoomBy(factor) {
       const { vp, viewW, viewH } = get()
-      set({ vp: zoomAt(vp, factor, viewW / 2, viewH / 2) })
+      set({ vp: zoomAt(vp, factor, viewW / 2, viewH / 2), autoFit: false })
     },
     zoomAtPoint(factor, screenX, screenY) {
-      set({ vp: zoomAt(get().vp, factor, screenX, screenY) })
+      set({ vp: zoomAt(get().vp, factor, screenX, screenY), autoFit: false })
     },
     onWheel(e, screenX, screenY) {
       const { vp } = get()
       if (e.ctrlKey || e.metaKey) {
         const step = Math.max(-MAX_WHEEL_STEP, Math.min(MAX_WHEEL_STEP, -e.deltaY * WHEEL_ZOOM_SPEED))
-        set({ vp: zoomAt(vp, Math.exp(step), screenX, screenY) })
+        set({ vp: zoomAt(vp, Math.exp(step), screenX, screenY), autoFit: false })
       } else if (e.shiftKey) {
-        set({ vp: { ...vp, offsetX: vp.offsetX - (e.deltaX || e.deltaY) } })
+        set({ vp: { ...vp, offsetX: vp.offsetX - (e.deltaX || e.deltaY) }, autoFit: false })
       } else {
-        set({ vp: { ...vp, offsetX: vp.offsetX - e.deltaX, offsetY: vp.offsetY - e.deltaY } })
+        set({ vp: { ...vp, offsetX: vp.offsetX - e.deltaX, offsetY: vp.offsetY - e.deltaY }, autoFit: false })
       }
     },
   }))

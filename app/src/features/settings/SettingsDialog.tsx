@@ -89,11 +89,14 @@ export function SettingsDialog({ onClose }: Props) {
   const apiBaseUrl = useSettings((s) => s.apiBaseUrl)
   const thresholds = useSettings((s) => s.thresholds)
   const profiles = useSettings((s) => s.profiles)
+  const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
 
   const [url, setUrl] = useState(apiBaseUrl)
   const [fine, setFine] = useState(String(thresholds.fine))
   const [low, setLow] = useState(String(thresholds.low))
   const [editing, setEditing] = useState<PrinterProfile | null>(null)
+  const [previewLen, setPreviewLen] = useState(String(minPreviewLengthMm))
+  const [previewMsg, setPreviewMsg] = useState<string | null>(null)
   const [urlMsg, setUrlMsg] = useState<string | null>(null)
   const [dpiMsg, setDpiMsg] = useState<string | null>(null)
 
@@ -121,6 +124,17 @@ export function SettingsDialog({ onClose }: Props) {
       setDpiMsg('Saved')
     } catch (e) {
       setDpiMsg(errorText(e))
+    }
+  }
+
+  const savePreviewLength = async () => {
+    const n = Number(previewLen)
+    if (!(n >= 100)) return setPreviewMsg('Preview length must be at least 100 mm')
+    try {
+      await getSettingsStore().getState().setMinPreviewLength(n)
+      setPreviewMsg('Saved')
+    } catch (e) {
+      setPreviewMsg(`Could not save: ${errorText(e)}`)
     }
   }
 
@@ -170,6 +184,20 @@ export function SettingsDialog({ onClose }: Props) {
               Save limits
             </button>
             {dpiMsg && <span role="status">{dpiMsg}</span>}
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>Film preview</h3>
+          <label className="dialog-field">
+            Preview length when empty (mm)
+            <input type="number" min={100} step="any" value={previewLen} onChange={(e) => setPreviewLen(e.target.value)} />
+          </label>
+          <div className="button-row">
+            <button type="button" onClick={() => void savePreviewLength()}>
+              Save preview length
+            </button>
+            {previewMsg && <span role="status">{previewMsg}</span>}
           </div>
         </section>
 

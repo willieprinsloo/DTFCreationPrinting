@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { InvalidSheetError, findProblems, itemBounds, printableArea, sheetLengthMm } from './geometry'
+import { InvalidSheetError, findProblems, itemBounds, printableArea, sheetLengthMm, displayLengthMm } from './geometry'
 import type { Sheet, SheetItem, SheetSettings } from './types'
 
 const m = (n: number) => ({ topMm: n, rightMm: n, bottomMm: n, leftMm: n })
@@ -79,5 +79,17 @@ describe('fixed length overflow', () => {
   })
   it('throws when the fixed length leaves no printable height', () => {
     expect(() => printableArea(settings({ lengthMode: 'fixed', fixedLengthMm: 8 }))).toThrow(InvalidSheetError)
+  })
+})
+
+describe('displayLengthMm', () => {
+  it('auto: empty sheet shows the minimum preview length', () => {
+    expect(displayLengthMm(sheet([]), 1000)).toBe(1000)
+  })
+  it('auto: content longer than the minimum wins', () => {
+    expect(displayLengthMm(sheet([item('a', { yMm: 1445, heightMm: 50 })]), 1000)).toBe(1500)
+  })
+  it('fixed: exactly the fixed length, no minimum', () => {
+    expect(displayLengthMm(sheet([], settings({ lengthMode: 'fixed', fixedLengthMm: 800 })), 1000)).toBe(800)
   })
 })
