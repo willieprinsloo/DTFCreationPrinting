@@ -27,6 +27,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 imagesize = "0.13"
 sha2 = "0.10"
 tauri-plugin-http = "2"
+tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [dev-dependencies]

@@ -20,6 +20,7 @@ export interface SettingsData {
   thresholds: DpiThresholds
   apiBaseUrl: string
   screenPxPerMm: number
+  drawerHeightPx: number
   loaded: boolean
 }
 
@@ -32,6 +33,8 @@ export interface SettingsActions {
   setThresholds(t: DpiThresholds): Promise<void>
   setApiBaseUrl(url: string): Promise<void>
   setScreenPxPerMm(v: number): Promise<void>
+  /** Clamped to 120-480 px. */
+  setDrawerHeight(px: number): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
@@ -45,6 +48,7 @@ function defaults(): SettingsData {
     thresholds: { ...DEFAULT_THRESHOLDS },
     apiBaseUrl: 'https://dtfcreations.co.za/api/v1',
     screenPxPerMm: 96 / 25.4,
+    drawerHeightPx: 200,
     loaded: false,
   }
 }
@@ -89,6 +93,7 @@ export function createSettingsStore(kv: KeyValueStore) {
       },
       setApiBaseUrl: (url) => commit({ apiBaseUrl: url }),
       setScreenPxPerMm: (v) => commit({ screenPxPerMm: v }),
+      setDrawerHeight: (px) => commit({ drawerHeightPx: Math.min(480, Math.max(120, Math.round(px))) }),
     }
   })
 }
@@ -100,6 +105,7 @@ function pickData(s: SettingsState): SettingsData {
     thresholds: s.thresholds,
     apiBaseUrl: s.apiBaseUrl,
     screenPxPerMm: s.screenPxPerMm,
+    drawerHeightPx: s.drawerHeightPx,
     loaded: s.loaded,
   }
 }

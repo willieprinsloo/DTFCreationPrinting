@@ -5,6 +5,9 @@ import { PropertiesPanel } from "./features/properties/PropertiesPanel";
 import { StatusBar } from "./features/status/StatusBar";
 import { lazy, Suspense, useState } from "react";
 import { DtfClientProvider } from "./api/DtfClientContext";
+import { LibraryDrawer } from "./features/library/LibraryDrawer";
+import { dropLibraryDrag, isLibraryDrag } from "./features/library/dragAdd";
+import { useSettings } from "./state/settingsStore";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 
 // react-konva needs a real canvas; jsdom tests render the shell without it.
@@ -15,13 +18,29 @@ const SheetCanvas =
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drawerCollapsed, setDrawerCollapsed] = useState(false);
+  const drawerHeight = useSettings((s) => s.drawerHeightPx);
   return (
     <DtfClientProvider>
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      style={{ "--drawer-h": `${drawerCollapsed ? 34 : drawerHeight}px` } as React.CSSProperties}
+    >
       <header className="region topbar" data-testid="topbar">
         <TopBar onOpenSettings={() => setSettingsOpen(true)} />
       </header>
-      <main className="region canvas-area" data-testid="canvas-area">
+      <main
+        className="region canvas-area"
+        data-testid="canvas-area"
+        onDragOver={(e) => {
+          if (isLibraryDrag(e.dataTransfer)) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (!isLibraryDrag(e.dataTransfer)) return;
+          e.preventDefault();
+          dropLibraryDrag();
+        }}
+      >
         {SheetCanvas ? (
           <Suspense fallback={null}>
             <SheetCanvas />
@@ -34,7 +53,7 @@ export default function App() {
         <PropertiesPanel />
       </aside>
       <section className="region library-drawer" data-testid="library-drawer">
-        Library
+        <LibraryDrawer collapsed={drawerCollapsed} onToggleCollapsed={() => setDrawerCollapsed((c) => !c)} />
       </section>
       <footer className="region status-bar" data-testid="status-bar">
         <StatusBar />
