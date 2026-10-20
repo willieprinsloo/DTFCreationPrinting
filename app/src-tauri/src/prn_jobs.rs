@@ -413,9 +413,11 @@ mod tests {
         image::RgbaImage::from_pixel(40, 40, image::Rgba([0, 0, 0, 255]))
             .save(&png)
             .unwrap();
+        // Escape for JSON: Windows paths contain backslashes.
+        let png_json = png.to_str().unwrap().replace('\\', "\\\\");
         let sheet = SHEET
-            .replace("/cache/a.png", png.to_str().unwrap())
-            .replace("/cache/b.tif", png.to_str().unwrap());
+            .replace("/cache/a.png", &png_json)
+            .replace("/cache/b.tif", &png_json);
         let job = job_from_sheet(&sheet, &PROFILE.replace("/icc/film.icc", "")).unwrap();
         let out = dir.path().join("x.prn");
 
