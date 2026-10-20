@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTheme } from '../../state/theme'
 import type { Viewport } from '../../domain/viewport'
 
 export const RULER_PX = 20
@@ -45,6 +46,7 @@ function cssVar(name: string, fallback: string): string {
 
 /** Top and left rulers in cm, pinned to the view edges; they follow zoom and pan. */
 export function Rulers({ vp, viewW, viewH, sheetW, sheetH, usedMm }: Props) {
+  const theme = useTheme()
   const topRef = useRef<HTMLCanvasElement>(null)
   const leftRef = useRef<HTMLCanvasElement>(null)
 
@@ -119,7 +121,7 @@ export function Rulers({ vp, viewW, viewH, sheetW, sheetH, usedMm }: Props) {
       left.fillStyle = colors.border
       left.fillRect(RULER_PX - 1, 0, 1, viewH)
     }
-  }, [vp, viewW, viewH, sheetW, sheetH, usedMm])
+  }, [vp, viewW, viewH, sheetW, sheetH, usedMm, theme])
 
   return (
     <>

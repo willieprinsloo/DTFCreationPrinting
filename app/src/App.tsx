@@ -11,6 +11,9 @@ import { PreflightDialog } from "./features/preflight/PreflightDialog";
 import { installCloseGuard } from "./features/sheets/closeGuard";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { uiStore, useUi } from "./state/uiStore";
+import { installTheme } from "./state/theme";
+
+installTheme();
 
 // react-konva needs a real canvas; jsdom tests render the shell without it.
 const SheetCanvas =

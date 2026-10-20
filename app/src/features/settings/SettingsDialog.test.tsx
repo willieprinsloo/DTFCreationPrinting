@@ -74,3 +74,19 @@ describe('Settings › General', () => {
     expect(store().thresholds).toEqual({ fine: 200, low: 150 })
   })
 })
+
+describe('Settings › General › Appearance', () => {
+  it('switches light and dark right away, and back to following the computer', async () => {
+    const { installTheme } = await import('../../state/theme')
+    installTheme()
+    render(<SettingsDialog initialTab="general" onClose={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Dark' }))
+    expect(store().theme).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Light' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    await userEvent.click(screen.getByRole('button', { name: 'Same as this computer' }))
+    expect(document.documentElement.dataset.theme).toBeUndefined()
+  })
+})

@@ -5,6 +5,7 @@ import { DEFAULT_THRESHOLDS } from '../domain/dpi'
 import { createTauriStore, type KeyValueStore } from './persist'
 import { DEFAULT_LIBRARY_PREFS, mergeLibraryPrefs, type LibraryPrefs, type LibraryPrefsPatch } from './libraryPrefs'
 import { DEFAULT_ENGINE_SETTINGS, sanitizeEngineSettings } from '../domain/engineSettings'
+import { isThemeChoice, type ThemeChoice } from '../domain/theme'
 import { DEFAULT_PRINT_SIZES, ONE_SIZE, isValidWidth, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
 
 export { DEFAULT_LIBRARY_PREFS }
@@ -66,6 +67,8 @@ export interface SettingsData {
   /** Default print widths per product type × garment size. */
   printSizes: PrintSizes
   printSizesSync: PrintSizesSync
+  /** Light or dark look; `system` follows the computer. */
+  theme: ThemeChoice
   loaded: boolean
 }
 
@@ -98,6 +101,7 @@ export interface SettingsActions {
    */
   applyServerPrintSizes(server: Omit<PrintSizes, 'defaultSize'>, pushedTypes: string[]): Promise<void>
   markPrintSizesImported(): Promise<void>
+  setTheme(theme: ThemeChoice): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
@@ -118,6 +122,7 @@ function defaults(): SettingsData {
     libraryPrefs: DEFAULT_LIBRARY_PREFS,
     printSizes: DEFAULT_PRINT_SIZES,
     printSizesSync: DEFAULT_PRINT_SIZES_SYNC,
+    theme: 'system',
     loaded: false,
   }
 }
@@ -138,6 +143,7 @@ export function createSettingsStore(kv: KeyValueStore) {
         merged.libraryPrefs = mergeLibraryPrefs(DEFAULT_LIBRARY_PREFS, saved?.libraryPrefs)
         merged.printSizes = sanitizePrintSizes(saved?.printSizes)
         merged.printSizesSync = sanitizeSync(saved?.printSizesSync)
+        if (!isThemeChoice(merged.theme)) merged.theme = 'system'
         merged.profiles = Array.isArray(merged.profiles) ? merged.profiles.map(sanitizeProfile) : []
         if (merged.profiles.length === 0) merged.profiles = [DEFAULT_PROFILE]
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
@@ -215,6 +221,7 @@ export function createSettingsStore(kv: KeyValueStore) {
           printSizesSync: { ...sync, dirtyTypes },
         })
       },
+      setTheme: (theme) => commit({ theme: isThemeChoice(theme) ? theme : 'system' }),
       markPrintSizesImported: () => commit({ printSizesSync: { ...get().printSizesSync, imported: true } }),
     }
   })
@@ -234,6 +241,7 @@ function pickData(s: SettingsState): SettingsData {
     libraryPrefs: s.libraryPrefs,
     printSizes: s.printSizes,
     printSizesSync: s.printSizesSync,
+    theme: s.theme,
     loaded: s.loaded,
   }
 }

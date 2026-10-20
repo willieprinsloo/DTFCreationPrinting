@@ -6,6 +6,9 @@
   --text: #1c2330;
   --text-muted: #5b6676;
   --accent: #2563eb;
+  /* Text on an accent background. */
+  --on-accent: #ffffff;
+  color-scheme: light;
 
   --dpi-fine: #3b82f6;
   --dpi-low: #f59e0b;
@@ -27,8 +30,9 @@
   --panel-w: 280px;
 }
 
+/* Dark follows the system unless Settings › General picks Light (data-theme="light") or Dark. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #14171c;
     --surface: #1d2129;
     --surface-alt: #262b35;
@@ -36,5 +40,19 @@
     --text: #e6e9ef;
     --text-muted: #9aa4b5;
     --accent: #60a5fa;
+    --on-accent: #0b1220;
+    color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14171c;
+  --surface: #1d2129;
+  --surface-alt: #262b35;
+  --border: #353c49;
+  --text: #e6e9ef;
+  --text-muted: #9aa4b5;
+  --accent: #60a5fa;
+  --on-accent: #0b1220;
+  color-scheme: dark;
 }

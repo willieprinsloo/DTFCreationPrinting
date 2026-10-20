@@ -143,13 +143,13 @@ button:hover:not(:disabled) {
 button[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.danger {
@@ -527,7 +527,7 @@ button.link-btn:hover:not(:disabled) {
 .library-tabs [role="tab"][aria-selected="true"] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .library-body {
@@ -732,7 +732,7 @@ button.link-btn:hover:not(:disabled) {
   pointer-events: none;
   padding: 2px var(--space-2);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: var(--radius);
   font-size: var(--font-size-small);
   max-width: 200px;
@@ -812,7 +812,7 @@ button.link-btn:hover:not(:disabled) {
 .lib-browser-tabs [role="tab"][aria-selected="true"] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .lib-browser-panel {
@@ -873,7 +873,7 @@ button.link-btn:hover:not(:disabled) {
 .seg button[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .lib-filter-summary {
@@ -1048,7 +1048,7 @@ button.link-btn:hover:not(:disabled) {
 .settings-tabs [role="tab"][aria-selected="true"] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .dialog-wide:has(.print-sizes-grid) {

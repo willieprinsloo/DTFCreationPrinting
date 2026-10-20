@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTheme } from '../../state/theme'
 import { Layer, Line, Rect, Shape, Stage, Text, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
@@ -86,7 +87,8 @@ export function SheetCanvas() {
   const transformerRef = useRef<Konva.Transformer>(null)
   const [spaceDown, setSpaceDown] = useState(false)
   const [gesture, setGesture] = useState<Gesture | null>(null)
-  const colors = useMemo(readColors, [])
+  const theme = useTheme()
+  const colors = useMemo(readColors, [theme])
 
   // Track the container size; fit once the first real size is known.
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { THEME_CHOICES, type ThemeChoice } from '../../domain/theme'
 import type { PrinterProfile } from '../../domain/types'
 import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
 import { MIN_PREVIEW_LENGTH_FLOOR_MM, getSettingsStore, useSettings } from '../../state/settingsStore'
@@ -170,6 +171,26 @@ function PrintersPanel() {
   )
 }
 
+const THEME_LABELS: Record<ThemeChoice, string> = { system: 'Same as this computer', light: 'Light', dark: 'Dark' }
+
+/** Applies as soon as it is picked (no Save needed). */
+function Appearance() {
+  const theme = useSettings((s) => s.theme)
+  return (
+    <section className="settings-section">
+      <h3>Appearance</h3>
+      <div className="seg" role="group" aria-label="Appearance">
+        {THEME_CHOICES.map((t) => (
+          <button key={t} type="button" aria-pressed={theme === t} onClick={() => void getSettingsStore().getState().setTheme(t)}>
+            {THEME_LABELS[t]}
+          </button>
+        ))}
+      </div>
+      <Help>The film always shows white, so you can judge the colours of your designs.</Help>
+    </section>
+  )
+}
+
 function GeneralPanel() {
   const apiBaseUrl = useSettings((s) => s.apiBaseUrl)
   const thresholds = useSettings((s) => s.thresholds)
@@ -208,6 +229,8 @@ function GeneralPanel() {
 
   return (
     <>
+      <Appearance />
+
       <section className="settings-section">
         <h3>Image quality warnings</h3>
         <p className="muted">
