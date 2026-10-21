@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import {
+  clampPan,
   fitSheet,
   fitWidth as fitWidthVp,
   homeView,
@@ -72,59 +73,67 @@ export interface ViewportState {
 }
 
 export function createViewportStore() {
-  return createStore<ViewportState>((set, get) => ({
-    vp: { scale: 1, offsetX: 0, offsetY: 0 },
-    autoFit: true,
-    autoMode: 'home',
-    setAutoFit: (autoFit) => set({ autoFit }),
-    viewW: 0,
-    viewH: 0,
-    sheetW: 600,
-    sheetH: 10,
-    // setVp is the manual-navigation entry point (pan); fit() bypasses it.
-    setVp: (vp) => set({ vp, autoFit: false }),
-    setView: (viewW, viewH) => set({ viewW, viewH }),
-    setSheetSize: (sheetW, sheetH) => set({ sheetW, sheetH }),
-    fit() {
+  return createStore<ViewportState>((set, get) => {
+    /** Manual navigation never takes the film out of view. */
+    const clamp = (vp: Viewport) => {
       const { sheetW, sheetH, viewW, viewH } = get()
-      set({ vp: fitSheet(sheetW, sheetH, viewW, viewH), autoFit: true, autoMode: 'fit' })
-    },
-    home() {
-      const { sheetW, viewW } = get()
-      const scale = DEFAULT_ZOOM * getSettingsStore().getState().screenPxPerMm
-      set({ vp: homeView(sheetW, viewW, scale), autoFit: true, autoMode: 'home' })
-    },
-    autoView() {
-      if (get().autoMode === 'fit') get().fit()
-      else get().home()
-    },
-    fitWidth() {
-      const { sheetW, viewW } = get()
-      set({ vp: fitWidthVp(sheetW, viewW), autoFit: false })
-    },
-    trueSize() {
-      const { vp, viewW, viewH } = get()
-      set({ vp: trueSizeVp(vp, getSettingsStore().getState().screenPxPerMm, viewW, viewH), autoFit: false })
-    },
-    zoomBy(factor) {
-      const { vp, viewW, viewH } = get()
-      set({ vp: zoomAt(vp, factor, viewW / 2, viewH / 2), autoFit: false })
-    },
-    zoomAtPoint(factor, screenX, screenY) {
-      set({ vp: zoomAt(get().vp, factor, screenX, screenY), autoFit: false })
-    },
-    onWheel(e, screenX, screenY) {
-      const { vp } = get()
-      if (e.ctrlKey || e.metaKey) {
-        const step = Math.max(-MAX_WHEEL_STEP, Math.min(MAX_WHEEL_STEP, -e.deltaY * WHEEL_ZOOM_SPEED))
-        set({ vp: zoomAt(vp, Math.exp(step), screenX, screenY), autoFit: false })
-      } else if (e.shiftKey) {
-        set({ vp: { ...vp, offsetX: vp.offsetX - (e.deltaX || e.deltaY) }, autoFit: false })
-      } else {
-        set({ vp: { ...vp, offsetX: vp.offsetX - e.deltaX, offsetY: vp.offsetY - e.deltaY }, autoFit: false })
-      }
-    },
-  }))
+      return clampPan(vp, sheetW, sheetH, viewW, viewH)
+    }
+    return {
+      vp: { scale: 1, offsetX: 0, offsetY: 0 },
+      autoFit: true,
+      autoMode: 'home',
+      setAutoFit: (autoFit) => set({ autoFit }),
+      viewW: 0,
+      viewH: 0,
+      sheetW: 600,
+      sheetH: 10,
+      // setVp is the manual-navigation entry point (pan); fit() bypasses it.
+      setVp: (vp) => set({ vp: clamp(vp), autoFit: false }),
+      // A shorter film or a bigger window may leave the view past the film's end.
+      setView: (viewW, viewH) => set({ viewW, viewH, vp: clampPan(get().vp, get().sheetW, get().sheetH, viewW, viewH) }),
+      setSheetSize: (sheetW, sheetH) => set({ sheetW, sheetH, vp: clampPan(get().vp, sheetW, sheetH, get().viewW, get().viewH) }),
+      fit() {
+        const { sheetW, sheetH, viewW, viewH } = get()
+        set({ vp: fitSheet(sheetW, sheetH, viewW, viewH), autoFit: true, autoMode: 'fit' })
+      },
+      home() {
+        const { sheetW, viewW } = get()
+        const scale = DEFAULT_ZOOM * getSettingsStore().getState().screenPxPerMm
+        set({ vp: homeView(sheetW, viewW, scale), autoFit: true, autoMode: 'home' })
+      },
+      autoView() {
+        if (get().autoMode === 'fit') get().fit()
+        else get().home()
+      },
+      fitWidth() {
+        const { sheetW, viewW } = get()
+        set({ vp: fitWidthVp(sheetW, viewW), autoFit: false })
+      },
+      trueSize() {
+        const { vp, viewW, viewH } = get()
+        set({ vp: clamp(trueSizeVp(vp, getSettingsStore().getState().screenPxPerMm, viewW, viewH)), autoFit: false })
+      },
+      zoomBy(factor) {
+        const { vp, viewW, viewH } = get()
+        set({ vp: clamp(zoomAt(vp, factor, viewW / 2, viewH / 2)), autoFit: false })
+      },
+      zoomAtPoint(factor, screenX, screenY) {
+        set({ vp: clamp(zoomAt(get().vp, factor, screenX, screenY)), autoFit: false })
+      },
+      onWheel(e, screenX, screenY) {
+        const { vp } = get()
+        if (e.ctrlKey || e.metaKey) {
+          const step = Math.max(-MAX_WHEEL_STEP, Math.min(MAX_WHEEL_STEP, -e.deltaY * WHEEL_ZOOM_SPEED))
+          set({ vp: clamp(zoomAt(vp, Math.exp(step), screenX, screenY)), autoFit: false })
+        } else if (e.shiftKey) {
+          set({ vp: clamp({ ...vp, offsetX: vp.offsetX - (e.deltaX || e.deltaY) }), autoFit: false })
+        } else {
+          set({ vp: clamp({ ...vp, offsetX: vp.offsetX - e.deltaX, offsetY: vp.offsetY - e.deltaY }), autoFit: false })
+        }
+      },
+    }
+  })
 }
 
 let viewportStore: ReturnType<typeof createViewportStore> | undefined

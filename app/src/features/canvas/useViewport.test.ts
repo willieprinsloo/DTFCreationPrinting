@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createViewportStore, DEFAULT_ZOOM, pinchFactor, shouldAutoFit } from './useViewport'
 import { getSettingsStore } from '../../state/settingsStore'
-import { screenToSheet } from '../../domain/viewport'
+import { PAN_PADDING_PX, screenToSheet } from '../../domain/viewport'
 
 const wheel = (deltaY: number, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; deltaX: number }> = {}) => ({
   deltaX: 0, deltaY, ctrlKey: false, metaKey: false, shiftKey: false, ...mods,
@@ -10,8 +10,8 @@ const wheel = (deltaY: number, mods: Partial<{ ctrlKey: boolean; metaKey: boolea
 function store() {
   const s = createViewportStore()
   s.getState().setView(800, 600)
-  s.getState().setSheetSize(600, 1000)
-  s.getState().setVp({ scale: 1, offsetX: 10, offsetY: 20 })
+  s.getState().setSheetSize(1200, 1000)
+  s.getState().setVp({ scale: 1, offsetX: -100, offsetY: 20 })
   return s
 }
 
@@ -39,9 +39,32 @@ describe('viewport store', () => {
   it('plain wheel scrolls vertically; shift-wheel scrolls horizontally', () => {
     const s = store()
     s.getState().onWheel(wheel(30), 0, 0)
-    expect(s.getState().vp).toEqual({ scale: 1, offsetX: 10, offsetY: -10 })
+    expect(s.getState().vp).toEqual({ scale: 1, offsetX: -100, offsetY: -10 })
     s.getState().onWheel(wheel(30, { shiftKey: true }), 0, 0)
-    expect(s.getState().vp).toEqual({ scale: 1, offsetX: -20, offsetY: -10 })
+    expect(s.getState().vp).toEqual({ scale: 1, offsetX: -130, offsetY: -10 })
+  })
+
+  it('stops scrolling once the end of the film is near the edge of the view', () => {
+    const s = store()
+    s.getState().onWheel(wheel(-5000), 0, 0)
+    expect(s.getState().vp.offsetY).toBe(PAN_PADDING_PX)
+    s.getState().onWheel(wheel(5000), 0, 0)
+    expect(s.getState().vp.offsetY).toBe(600 - 1000 - PAN_PADDING_PX)
+    s.getState().setVp({ scale: 1, offsetX: 5000, offsetY: -5000 })
+    expect(s.getState().vp).toEqual({ scale: 1, offsetX: PAN_PADDING_PX, offsetY: 600 - 1000 - PAN_PADDING_PX })
+  })
+
+  it('keeps a film smaller than the view wholly on screen, and re-checks when the film gets shorter', () => {
+    const s = store()
+    s.getState().zoomBy(0.1) // 120 x 100 px in an 800 x 600 view
+    s.getState().onWheel(wheel(5000), 0, 0)
+    expect(s.getState().vp.offsetY).toBeCloseTo(PAN_PADDING_PX)
+    s.getState().onWheel(wheel(-5000), 0, 0)
+    expect(s.getState().vp.offsetY).toBeCloseTo(600 - 100 - PAN_PADDING_PX)
+    s.getState().zoomBy(10)
+    s.getState().onWheel(wheel(5000), 0, 0)
+    s.getState().setSheetSize(1200, 300)
+    expect(s.getState().vp.offsetY).toBeCloseTo(PAN_PADDING_PX)
   })
 
   it('fit uses the stored sheet and view size', () => {
@@ -89,7 +112,7 @@ describe('autoFit', () => {
     s.getState().fit()
     const { vp } = s.getState()
     expect(vp.scale).toBeCloseTo((600 - 48) / 1000)
-    expect(vp.offsetX).toBeCloseTo((800 - 600 * vp.scale) / 2)
+    expect(vp.offsetX).toBeCloseTo((800 - 1200 * vp.scale) / 2)
   })
 
   it('home() opens at 30% of true size, centred across, top of the film in view', () => {
@@ -97,7 +120,7 @@ describe('autoFit', () => {
     s.getState().home()
     const { vp, autoFit, autoMode } = s.getState()
     expect(vp.scale).toBeCloseTo(DEFAULT_ZOOM * getSettingsStore().getState().screenPxPerMm)
-    expect(vp.offsetX).toBeCloseTo((800 - 600 * vp.scale) / 2)
+    expect(vp.offsetX).toBeCloseTo((800 - 1200 * vp.scale) / 2)
     expect(vp.offsetY).toBe(32)
     expect(autoFit).toBe(true)
     expect(autoMode).toBe('home')

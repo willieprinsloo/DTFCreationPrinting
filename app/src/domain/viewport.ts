@@ -69,3 +69,24 @@ export function trueSize(
   const { xMm, yMm } = screenToSheet(vp, cx, cy)
   return { scale, offsetX: cx - xMm * scale, offsetY: cy - yMm * scale }
 }
+
+/** How close (screen px) a film edge may be scrolled to the opposite side of the view. */
+export const PAN_PADDING_PX = 48
+
+/**
+ * Keeps the film in view: a film longer (or wider) than the view scrolls only until its
+ * far edge is `paddingPx` inside the view; a smaller one stays wholly on screen.
+ */
+export function clampPan(vp: Viewport, sheetW: number, sheetH: number, viewW: number, viewH: number, paddingPx = PAN_PADDING_PX): Viewport {
+  if (!(viewW > 0 && viewH > 0)) return vp
+  const axis = (offset: number, lengthPx: number, view: number) => {
+    const a = paddingPx
+    const b = view - lengthPx - paddingPx
+    return Math.min(Math.max(a, b), Math.max(Math.min(a, b), offset))
+  }
+  return {
+    ...vp,
+    offsetX: axis(vp.offsetX, sheetW * vp.scale, viewW),
+    offsetY: axis(vp.offsetY, sheetH * vp.scale, viewH),
+  }
+}

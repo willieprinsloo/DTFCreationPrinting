@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampScale, zoomAt, fitSheet, fitWidth, trueSize, screenToSheet, MIN_SCALE, MAX_SCALE } from './viewport'
+import { clampPan, clampScale, zoomAt, fitSheet, fitWidth, trueSize, screenToSheet, MIN_SCALE, MAX_SCALE } from './viewport'
 
 const base = { scale: 1, offsetX: 0, offsetY: 0 }
 
@@ -45,5 +45,19 @@ describe('viewport', () => {
   })
   it('screenToSheet inverts the transform', () => {
     expect(screenToSheet({ scale: 2, offsetX: 10, offsetY: 20 }, 110, 220)).toEqual({ xMm: 50, yMm: 100 })
+  })
+})
+
+describe('clampPan', () => {
+  it('lets a long film scroll only until its ends are near the view edges', () => {
+    const vp = (offsetY: number) => clampPan({ scale: 1, offsetX: 100, offsetY }, 600, 2000, 800, 600, 40).offsetY
+    expect(vp(500)).toBe(40)
+    expect(vp(-300)).toBe(-300)
+    expect(vp(-5000)).toBe(600 - 2000 - 40)
+  })
+  it('keeps a small film wholly in view and ignores an unmeasured view', () => {
+    expect(clampPan({ scale: 1, offsetX: -50, offsetY: 900 }, 600, 300, 800, 600, 40)).toEqual({ scale: 1, offsetX: 40, offsetY: 260 })
+    const vp = { scale: 1, offsetX: -999, offsetY: 999 }
+    expect(clampPan(vp, 600, 300, 0, 0)).toBe(vp)
   })
 })
