@@ -108,7 +108,7 @@ pub fn ensure_preview(src: &Path, dst: &Path, max_side: u32) -> Result<(), Strin
     fs::rename(&tmp, dst).map_err(|e| format!("Could not write preview: {e}"))
 }
 
-fn build_info(file: &Path) -> Result<AssetInfo, String> {
+pub(crate) fn build_info(file: &Path) -> Result<AssetInfo, String> {
     let stem = file
         .file_stem()
         .and_then(|s| s.to_str())
@@ -136,7 +136,7 @@ fn build_info(file: &Path) -> Result<AssetInfo, String> {
     })
 }
 
-fn cache_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn cache_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_cache_dir()

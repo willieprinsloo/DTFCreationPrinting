@@ -68,6 +68,38 @@ export function createPrn(sheet: Sheet, profile: PrinterProfile, outPath: string
   }
 }
 
+/** Enhance was cancelled by the user (not a failure). */
+export class EnhanceCancelledError extends Error {}
+
+export type EnhanceKind = 'artwork' | 'photo'
+export interface EnhanceJob { promise: Promise<Asset>; cancel(): void }
+
+/** Enlarges a raster design to `widthPx` x `heightPx` with Real-ESRGAN; resolves to the new cached asset. */
+export function enhanceAsset(asset: Asset, widthPx: number, heightPx: number, kind: EnhanceKind, onProgress: (fraction: number) => void): EnhanceJob {
+  const jobId = crypto.randomUUID()
+  let settled = false
+  const promise = (async () => {
+    const unlisten = await listen<{ jobId: string; fraction: number }>('upscale-progress', (e) => {
+      if (e.payload.jobId === jobId) onProgress(e.payload.fraction)
+    })
+    try {
+      return await invoke<Asset>('upscale_asset', { path: asset.path, widthPx, heightPx, kind, jobId })
+    } catch (e) {
+      if (e === CANCELLED) throw new EnhanceCancelledError(CANCELLED)
+      throw e instanceof Error ? e : new Error(String(e))
+    } finally {
+      settled = true
+      unlisten()
+    }
+  })()
+  return {
+    promise,
+    cancel() {
+      if (!settled) void invoke('cancel_upscale', { jobId }).catch(() => {})
+    },
+  }
+}
+
 /** Renders a calibration chart PRN ("white" or "colour") using the profile's current settings. */
 export function createChartPrn(kind: 'white' | 'colour', profile: PrinterProfile, outPath: string): Promise<PrnStats> {
   return invoke<PrnStats>('create_chart_prn', { kind, profileJson: JSON.stringify(profile), outPath }).catch((e) => {

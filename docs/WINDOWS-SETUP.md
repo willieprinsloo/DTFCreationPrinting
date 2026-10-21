@@ -51,6 +51,16 @@ powershell -ExecutionPolicy Bypass -File app\src-tauri\scripts\fetch-pdfium.ps1 
 It must end without a red "checksum mismatch" error. Without this step everything works except PDF
 files, which show "PDF support is not installed".
 
+Then the Real-ESRGAN upscaler used by **Enhance** (about 45 MB, pinned and checksum-verified) into
+`app\src-tauri\realesrgan\`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app\src-tauri\scripts\fetch-realesrgan.ps1 win
+```
+
+Without it everything works except Enhance, which says it is not installed. Enhance runs on the
+graphics card through Vulkan, which every current graphics driver provides.
+
 ## 4. Install, test and run
 
 ```powershell

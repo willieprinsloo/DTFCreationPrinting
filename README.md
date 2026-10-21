@@ -15,5 +15,6 @@ create a Maintop-compatible `.prn` file for the printer software (ATools 3200).
 cd app
 npm ci
 bash src-tauri/scripts/fetch-pdfium.sh mac-arm64   # or mac-x64
+bash src-tauri/scripts/fetch-realesrgan.sh mac      # upscaler for Enhance
 npm run tauri dev
 ```

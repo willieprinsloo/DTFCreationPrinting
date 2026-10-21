@@ -1221,3 +1221,34 @@ button.link-btn:hover:not(:disabled) {
   width: 100%;
   accent-color: var(--accent);
 }
+
+/* Enhance: zoomed before / after of the same spot. */
+.enhance-button {
+  margin-bottom: var(--space-2);
+}
+
+.enhance-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.enhance-pane {
+  margin: 0;
+}
+
+.enhance-zoom {
+  aspect-ratio: 1;
+  background-color: #ffffff; /* the film */
+  background-repeat: no-repeat;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: crosshair;
+}
+
+.enhance-pane figcaption {
+  margin-top: var(--space-1);
+  text-align: center;
+  color: var(--text-muted);
+}

@@ -40,6 +40,15 @@ describe('ItemProperties', () => {
     expect(screen.getByText('Jo')).toBeInTheDocument()
   })
 
+  it('offers Enhance only for a low-resolution raster design', async () => {
+    render(<ItemProperties ids={[id]} />)
+    expect(screen.queryByRole('button', { name: /Enhance/ })).toBeNull() // 300 dpi
+    getSheetStore().getState().resizeItem(id, 762) // 100 dpi
+    await screen.findByText('Too low')
+    await userEvent.click(screen.getByRole('button', { name: /Enhance/ }))
+    expect(screen.getByRole('dialog', { name: 'Enhance Logo.png' })).toBeInTheDocument()
+  })
+
   it('shows Vector (Good) for a PDF design', () => {
     const s = getSheetStore().getState()
     s.newSheet(DEFAULT_PROFILE)

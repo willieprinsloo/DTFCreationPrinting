@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Copy, Lock, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
+import { Copy, Lock, RotateCcw, RotateCw, Sparkles, Trash2 } from 'lucide-react'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { uiStore, useUi } from '../../state/uiStore'
 import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
@@ -12,6 +12,8 @@ import { useLookup } from '../library/queries/useLookup'
 import { useErrorHandler } from '../library/useErrorHandler'
 import { NumberField } from './NumberField'
 import { changeItemSize, rememberTypeNames } from './changeSize'
+import { enhancePlan } from '../../domain/enhance'
+import { EnhanceDialog } from '../enhance/EnhanceDialog'
 
 const LABELS = { fine: 'Good', low: 'Low', bad: 'Too low' } as const
 const MM_PER_CM = 10
@@ -92,6 +94,7 @@ export function ItemProperties({ ids }: { ids: string[] }) {
   const item = useSheet((s) => (ids.length === 1 ? s.sheet.items.find((i) => i.id === ids[0]) : undefined))
   const allItems = useSheet((s) => s.sheet.items)
   const [sizeError, setSizeError] = useState<string | null>(null)
+  const [enhancing, setEnhancing] = useState(false)
   const thresholds = useSettings((s) => s.thresholds)
   const profileId = useSheet((s) => s.sheet.profileId)
   const profiles = useSettings((s) => s.profiles)
@@ -164,6 +167,12 @@ export function ItemProperties({ ids }: { ids: string[] }) {
       <p className={`dpi-badge dpi-${status}`}>
         <span>{badge.label}</span> <span>{LABELS[status]}</span>
       </p>
+      {status !== 'fine' && enhancePlan(item) && (
+        <button type="button" className="enhance-button" onClick={() => setEnhancing(true)}>
+          <Sparkles size={14} /> Enhance…
+        </button>
+      )}
+      {enhancing && <EnhanceDialog item={item} onClose={() => setEnhancing(false)} />}
       <div className="source-label">
         <strong>{item.source.label}</strong>
         {item.source.customerName && <div>{item.source.customerName}</div>}

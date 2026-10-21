@@ -6,6 +6,7 @@ mod credentials;
 #[path = "prn_jobs.rs"]
 mod prn;
 mod sheet_files;
+mod upscale;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,10 +15,13 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(std::sync::Arc::new(prn::PrnJobs::default()))
+        .manage(std::sync::Arc::new(upscale::UpscaleJobs::default()))
         .setup(|app| {
             // The bundled pdfium (see build.rs); DTF_PDFIUM_PATH overrides it.
             if let Ok(dir) = app.path().resource_dir() {
                 dtf_engine::pdf::set_library_dir(&dir.join("pdfium"));
+                // The bundled Real-ESRGAN upscaler; DTF_REALESRGAN_PATH overrides it.
+                upscale::set_tool_dir(&dir.join("realesrgan"));
             }
             Ok(())
         })
@@ -30,7 +34,9 @@ pub fn run() {
             prn::cancel_prn,
             prn::reveal_in_folder,
             sheet_files::write_sheet_file,
-            sheet_files::read_sheet_file
+            sheet_files::read_sheet_file,
+            upscale::upscale_asset,
+            upscale::cancel_upscale
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

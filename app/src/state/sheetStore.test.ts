@@ -40,6 +40,26 @@ describe('sheetStore', () => {
     store.getState().updateItem(id, { whiteEnabled: false })
   })
 
+  it('replaceAsset swaps the design of every copy, keeping size and centre, as one undo step', () => {
+    const store = fresh()
+    const other: Asset = { ...asset, assetId: 'b', path: '/b.png' }
+    store.getState().addItems([mk(2), { ...mk(1), asset: other }])
+    const before = store.getState().sheet.items
+    // 4x the pixels, a hair taller from rounding
+    const enhanced: Asset = { assetId: 'a4', path: '/a4.png', previewPath: '/a4.preview.png', widthPx: 4000, heightPx: 2004 }
+    store.getState().replaceAsset('a', enhanced)
+    const after = store.getState().sheet.items
+    expect(after.map((i) => i.asset.assetId)).toEqual(['a4', 'a4', 'b'])
+    for (const [b, a] of before.slice(0, 2).map((b, i) => [b, after[i]] as const)) {
+      expect(a.widthMm).toBe(b.widthMm)
+      expect(a.heightMm).toBeCloseTo(b.widthMm * (2004 / 4000))
+      expect(a.yMm + a.heightMm / 2).toBeCloseTo(b.yMm + b.heightMm / 2)
+    }
+    expect(after[2]).toBe(before[2])
+    store.getState().undo()
+    expect(store.getState().sheet.items).toEqual(before)
+  })
+
   it('addItems with quantity creates non-overlapping items', () => {
     const store = fresh()
     store.getState().addItems([mk(3)])

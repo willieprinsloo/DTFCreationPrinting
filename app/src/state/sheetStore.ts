@@ -32,6 +32,8 @@ export interface SheetActions {
   resizeItem(id: string, widthMm: number): void
   /** Changes a product's garment size: new width (aspect kept, centre fixed), source size and label — one undo step. */
   setItemSize(id: string, size: string | null, widthMm: number): void
+  /** Swaps the design file of every item using `assetId` (e.g. for its enhanced copy); size and centre kept — one undo step. */
+  replaceAsset(assetId: string, asset: Asset): void
   removeItems(ids: string[]): void
   duplicateItems(ids: string[]): void
   /** Throws InvalidSheetError (state unchanged) when the result has no printable width. */
@@ -190,6 +192,14 @@ export function createSheetStore() {
                 yMm: it.yMm + (it.heightMm - heightMm) / 2,
                 source: { ...it.source, size, label: size ? `${name} — ${size}` : name },
               }
+            })
+          },
+          replaceAsset(assetId, asset) {
+            mapItems((it) => {
+              if (it.asset.assetId !== assetId) return it
+              const next = { ...it, asset }
+              const heightMm = heightForWidth(next, it.widthMm)
+              return { ...next, heightMm, yMm: it.yMm + (it.heightMm - heightMm) / 2 }
             })
           },
           removeItems(ids) {
