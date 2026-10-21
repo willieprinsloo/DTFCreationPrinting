@@ -81,6 +81,16 @@ pub fn check_size(src: (u32, u32), want: (u32, u32)) -> Result<f64, String> {
     Ok(factor)
 }
 
+/// `path` without Windows' `\\?\` long-path prefix (Tauri's folders carry it), which the
+/// upscaler does not see as a full path. Network (`\\?\UNC\`) paths are left as they are.
+pub fn plain_path(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with(r"UNC\") => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
+}
+
 /// Removes the work folder however the run ends.
 struct WorkDir(PathBuf);
 impl Drop for WorkDir {
@@ -130,8 +140,9 @@ pub fn upscale(
     drop(img);
 
     let mut cmd = Command::new(tool.join(EXE));
-    cmd.arg("-i").arg(&input).arg("-o").arg(&output);
-    cmd.args(["-n", model, "-s", &scale.to_string()]).arg("-m").arg(tool.join("models"));
+    cmd.arg("-i").arg(plain_path(&input)).arg("-o").arg(plain_path(&output));
+    // The upscaler finds a relative model folder next to its own program.
+    cmd.args(["-n", model, "-s", &scale.to_string(), "-m", "models"]);
     cmd.current_dir(tool).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
@@ -272,6 +283,29 @@ mod tests {
         assert!(check_size((100, 50), (100, 50)).unwrap_err().contains("enough pixels"));
         assert!(check_size((100, 50), (500, 250)).unwrap_err().contains("at most 4x"));
         assert!(check_size((9000, 9000), (36000, 36000)).unwrap_err().contains("too large"));
+    }
+
+    #[test]
+    fn long_path_prefix_is_dropped_except_for_network_paths() {
+        assert_eq!(plain_path(Path::new(r"\\?\C:\Users\a b\in.png")), PathBuf::from(r"C:\Users\a b\in.png"));
+        assert_eq!(plain_path(Path::new(r"\\?\UNC\server\share\x.png")), PathBuf::from(r"\\?\UNC\server\share\x.png"));
+        assert_eq!(plain_path(Path::new(r"C:\x.png")), PathBuf::from(r"C:\x.png"));
+    }
+
+    /// The app's folders come as `\\?\C:\...` on Windows; the upscaler must still find everything.
+    #[cfg(windows)]
+    #[test]
+    fn works_from_long_path_folders() {
+        let Some(tool) = local_tool() else { return };
+        let d = tempfile::tempdir().unwrap();
+        let long = |p: &Path| PathBuf::from(format!(r"\\?\{}", std::fs::canonicalize(p).unwrap().to_string_lossy().trim_start_matches(r"\\?\")));
+        let src = d.path().join("a.png");
+        image::RgbaImage::from_pixel(32, 32, image::Rgba([10, 200, 30, 255])).save(&src).unwrap();
+        match upscale(&long(&tool), &long(d.path()), &long(&src), (64, 64), Kind::Artwork, &AtomicBool::new(false), &mut |_| {}) {
+            Ok(out) => assert_eq!(image::open(out).unwrap().width(), 64),
+            Err(e) if e.contains("Vulkan") => eprintln!("skipped: {e}"),
+            Err(e) => panic!("{e}"),
+        }
     }
 
     #[test]
