@@ -5,7 +5,7 @@ These short test prints check our PRN files against your real printer before we 
 ## Checkpoint 1: channel order, file acceptance, short length
 
 ### What this tests
-1. **Channel order.** The file has six ink channels, numbered 0 to 5. We expect them to be Black, Cyan, Magenta, Yellow, White, White, but we have not confirmed it. The test shows which colour each channel really prints.
+1. **Channel order.** The file has six ink channels, numbered 0 to 5. Measured on 2026-10-22: Yellow, Magenta, Cyan, Black, White, White (see the results below). The test shows which colour each channel really prints.
 2. **File acceptance.** Does your printing software (Maintop) open and print a file made by our tool without complaining?
 3. **Short length.** The file is only 12 cm long, not a full metre. We need to know the printer accepts a short file with no blank lead-in.
 
@@ -58,7 +58,24 @@ Squares 4 and 5 and their digits are hard to see on clear film. Looking at them 
 
 Results recorded here (to be filled in after the print):
 
-_Not yet printed._
+**2026-10-22.** A sheet from the app printed and the printer software accepted it, but the colours were wrong.
+
+We then measured the channel order from a Maintop PRN of the colour chart (`colour-test.tif`). We compared each channel's ink in every patch with the patch colour:
+
+| Channel | Matches | Ink |
+|---|---|---|
+| 0 | yellow (correlation 0.86) | Yellow |
+| 1 | magenta (0.72) | Magenta |
+| 2 | cyan (0.67) | Cyan |
+| 3 | grey / black (0.69) | Black |
+| 4, 5 | under every patch | White |
+
+The order is **Y, M, C, K, W, W**, so the default was changed from the guessed K, C, M, Y. Profiles still on the guess are moved over when the app starts.
+
+The same file also showed how Maintop uses ink:
+- **White:** about 55 % (40 % small, 55 % medium, 5 % large drops) under every colour. Our 100 % default uses almost only large drops.
+- **Greys:** mostly cyan, magenta and yellow, with black only from about 50 % grey upwards. Our built-in model makes greys from black alone.
+- **Solid colours:** reach 100 % large drops, as ours do.
 
 
 ## Checkpoint 2: white layer (density and choke)

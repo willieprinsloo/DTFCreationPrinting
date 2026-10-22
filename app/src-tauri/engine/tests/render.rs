@@ -36,7 +36,8 @@ fn job(items: Vec<ItemSpec>) -> JobSpec {
         y_dpi: 1800,
         mirror: false,
         white_enabled: false,
-        settings: EngineSettings::default(),
+        // These tests read black from channel 0; the printer's own order is checked below.
+        settings: EngineSettings { channel_order: ["K", "C", "M", "Y", "W", "W"].map(String::from), ..EngineSettings::default() },
         items,
     }
 }
@@ -286,6 +287,16 @@ fn half_transparent_top_blends_over_below() {
         (k - 0.5).abs() < 0.02 && (m - 0.5).abs() < 0.02,
         "k {k} m {m}"
     );
+}
+
+#[test]
+fn black_goes_to_channel_3_by_default() {
+    let d = tempfile::tempdir().unwrap();
+    let p = png(d.path(), "b.png", 100, 100, |_, _| BLACK);
+    let mut j = job(vec![item(&p, 5.0, 5.0, 10.0, 10.0, 0.0)]);
+    j.settings = EngineSettings::default();
+    let (_, ext) = extents(&render(&j, d.path()));
+    assert!(ext[3].is_some() && [0, 1, 2, 4, 5].iter().all(|&c| ext[c].is_none()));
 }
 
 #[test]

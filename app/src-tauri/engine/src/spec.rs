@@ -56,7 +56,8 @@ fn default_saturation_pct() -> f32 {
 impl Default for EngineSettings {
     fn default() -> Self {
         Self {
-            channel_order: ["K", "C", "M", "Y", "W", "W"].map(String::from),
+            // Measured from a Maintop PRN of the colour chart: yellow, magenta, cyan, black, white, white.
+            channel_order: ["Y", "M", "C", "K", "W", "W"].map(String::from),
             ink_limit_pct: 280.0,
             white_density_pct: 100.0,
             white_choke_mm: 0.2,

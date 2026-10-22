@@ -4,13 +4,17 @@ const INKS: InkChannel[] = ['K', 'C', 'M', 'Y', 'W']
 /** The six PRN channels hold each of these inks once, with white twice. */
 const CHANNEL_INKS: InkChannel[] = ['K', 'C', 'M', 'Y', 'W', 'W']
 
+/** The first default, a guess that printed the wrong colours; profiles still holding it get the measured order. */
+const GUESSED_ORDER = 'K,C,M,Y,W,W'
+
 /** True when `order` is a permutation of K, C, M, Y, W, W. */
 export function isValidChannelOrder(order: unknown): order is InkChannel[] {
   return Array.isArray(order) && order.length === 6 && [...order].sort().join() === [...CHANNEL_INKS].sort().join()
 }
 
+/** Measured from a Maintop PRN of the colour chart (2026-10-22): the printer takes yellow, magenta, cyan, black. */
 export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
-  channelOrder: ['K', 'C', 'M', 'Y', 'W', 'W'],
+  channelOrder: ['Y', 'M', 'C', 'K', 'W', 'W'],
   inkLimitPct: 280,
   whiteDensityPct: 100,
   whiteChokeMm: 0.2,
@@ -50,7 +54,7 @@ export function sanitizeEngineSettings(raw: Partial<Record<keyof EngineSettings,
   const icc = typeof raw.iccProfilePath === 'string' && raw.iccProfilePath.trim() ? raw.iccProfilePath : undefined
   return {
     channelOrder:
-      isValidChannelOrder(order) ? [...order] : [...d.channelOrder],
+      isValidChannelOrder(order) && order.join() !== GUESSED_ORDER ? [...order] : [...d.channelOrder],
     inkLimitPct: inRange(raw.inkLimitPct, LIMITS.inkLimitPct[0], LIMITS.inkLimitPct[1], d.inkLimitPct),
     whiteDensityPct: inRange(raw.whiteDensityPct, LIMITS.whiteDensityPct[0], LIMITS.whiteDensityPct[1], d.whiteDensityPct),
     whiteChokeMm: inRange(raw.whiteChokeMm, LIMITS.whiteChokeMm[0], LIMITS.whiteChokeMm[1], d.whiteChokeMm),

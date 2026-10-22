@@ -183,7 +183,7 @@ describe('settingsStore printSizes', () => {
 
     it('the default profile carries the engine defaults', () => {
       expect(DEFAULT_PROFILE).toMatchObject({
-        channelOrder: ['K', 'C', 'M', 'Y', 'W', 'W'],
+        channelOrder: ['Y', 'M', 'C', 'K', 'W', 'W'],
         inkLimitPct: 280,
         whiteDensityPct: 100,
         whiteChokeMm: 0.2,
@@ -221,7 +221,7 @@ describe('settingsStore printSizes', () => {
       const s = createSettingsStore(kv)
       await s.getState().load()
       const p = s.getState().profiles[0]
-      expect(p.channelOrder).toEqual(['K', 'C', 'M', 'Y', 'W', 'W'])
+      expect(p.channelOrder).toEqual(['Y', 'M', 'C', 'K', 'W', 'W'])
       expect(p.inkLimitPct).toBe(100) // out of range: clamped to the nearest bound
       expect(p.whiteDensityPct).toBe(80)
       expect(p.whiteChokeMm).toBe(0.2)

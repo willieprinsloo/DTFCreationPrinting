@@ -33,6 +33,10 @@ describe('sanitizeEngineSettings ranges', () => {
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)
   })
 
+  it('moves profiles still on the first, guessed channel order to the measured Y, M, C, K order', () => {
+    expect(sanitizeEngineSettings({ ...d, channelOrder: ['K', 'C', 'M', 'Y', 'W', 'W'] }).channelOrder).toEqual(['Y', 'M', 'C', 'K', 'W', 'W'])
+  })
+
   it('requires the channel order to be a permutation of K, C, M, Y, W, W', () => {
     expect(sanitizeEngineSettings({ ...d, channelOrder: ['W', 'W', 'Y', 'M', 'C', 'K'] }).channelOrder).toEqual(['W', 'W', 'Y', 'M', 'C', 'K'])
     for (const bad of [
