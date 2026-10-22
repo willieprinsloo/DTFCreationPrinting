@@ -36,6 +36,9 @@ pub struct EngineSettings {
     pub ink_limit_pct: f32,
     pub white_density_pct: f32,
     pub white_choke_mm: f32,
+    /// Soft white edge: pixels of fade at each end of a white run, 0 (off) ..= 3 (see `white::edge_marks`).
+    #[serde(default)]
+    pub white_edge_steps: u8,
     pub screening: Screening,
     /// Dot-gain curves for K, C, M, Y, W (`None` = linear).
     pub curves: Option<[Vec<(f32, f32)>; 5]>,
@@ -63,6 +66,7 @@ impl Default for EngineSettings {
             ink_limit_pct: 280.0,
             white_density_pct: 100.0,
             white_choke_mm: 0.2,
+            white_edge_steps: 0,
             screening: Screening::BlueNoise,
             curves: None,
             lead_in_mm: 0.0,

@@ -558,3 +558,37 @@ fn pdf_square_prints_its_exact_footprint_with_transparent_margins() {
         assert!(ext[ch].is_none(), "channel {ch} has ink");
     }
 }
+
+#[test]
+fn soft_white_edge_fades_the_outer_pixels_on_every_side_and_only_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = png(dir.path(), "solid.png", 40, 60, |_, _| [255, 255, 255, 255]);
+    let mut i = item(&p, 10.0, 10.0, 20.0, 30.0, 0.0);
+    i.white_enabled = true;
+    let mut j = job(vec![i]);
+    j.white_enabled = true;
+    j.settings.white_density_pct = 100.0;
+    j.settings.white_choke_mm = 0.0;
+    j.settings.white_edge_steps = 2;
+    let out = render(&j, dir.path());
+    let (_, ext) = extents(&out);
+    let (top, bottom, left, right) = ext[W1].unwrap();
+    let mut r = PrnReader::open(&out).unwrap();
+    let mid = (left + right) / 2;
+    // Down the middle column: 1, 2, then full drops through every band, then 2, 1.
+    let col: Vec<u8> = (top..=bottom).map(|y| r.read_line(y).unwrap()[W1][mid]).collect();
+    assert_eq!(&col[..3], &[1, 2, 3]);
+    assert_eq!(&col[col.len() - 3..], &[3, 2, 1]);
+    assert!(col[2..col.len() - 2].iter().all(|&v| v == 3), "only the edges fade");
+    // Across the middle row, on both white channels.
+    let line = r.read_line((top + bottom) / 2).unwrap();
+    for ch in [W1, W2] {
+        assert_eq!(&line[ch][left..left + 3], &[1, 2, 3]);
+        assert_eq!(&line[ch][right - 2..=right], &[3, 2, 1]);
+    }
+    // Off, the edge keeps full drops.
+    j.settings.white_edge_steps = 0;
+    let out = render(&j, dir.path());
+    let mut r = PrnReader::open(&out).unwrap();
+    assert_eq!(r.read_line(top).unwrap()[W1][mid], 3);
+}

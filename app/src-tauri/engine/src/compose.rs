@@ -7,7 +7,7 @@ use crate::screen::{ErrorDiffuser, Screening, apply_curve, screen_row_blue_noise
 use crate::pdf::is_pdf;
 use crate::source::{BYTES_PER_PX, MAX_ALLOC, MAX_PREPARED_PX, Plane, PreparedSource, prepare, prepare_pdf};
 use crate::spec::{JobSpec, PrnStats};
-use crate::white::erode;
+use crate::white::{MAX_EDGE_STEPS, edge_context_rows, edge_marks, erode, soften};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
@@ -382,6 +382,24 @@ pub fn pdf_render_size(w_mm: f64, h_mm: f64, rot_deg: f64, x_dpi: u32, y_dpi: u3
     ((w as u32).max(1), (h as u32).max(1))
 }
 
+/// Fades the white at the edges of one band's packed lines (`white::edge_marks`): `mask` is
+/// the band's white mask, `above` / `below` the mask rows around it, `white_pcs` the PRN
+/// channels that carry white.
+#[allow(clippy::too_many_arguments)]
+fn soften_band(buf: &mut [u8], mask: &[u8], above: &[u8], below: &[u8], width: usize, bpl: usize, white_pcs: &[usize], steps: u8) {
+    let marks = edge_marks(mask, above, below, width, steps);
+    buf.par_chunks_mut(CHANNELS * bpl).zip(marks.par_chunks(width)).for_each(|(line, mk)| {
+        for (x, &m) in mk.iter().enumerate().filter(|(_, m)| **m > 0) {
+            let (byte, shift) = (x / 4, 6 - 2 * (x % 4));
+            for &pc in white_pcs {
+                let b = &mut line[pc * bpl + byte];
+                let level = soften((*b >> shift) & 3, m);
+                *b = (*b & !(3 << shift)) | (level << shift);
+            }
+        }
+    });
+}
+
 /// Path, white on, and for PDFs the pixel size to render at.
 type SrcKey = (PathBuf, bool, Option<(u32, u32)>);
 /// Source key plus choke radii (rx, ry) in source pixels.
@@ -498,6 +516,12 @@ fn render_prn_with_budget(
     };
     let colour = ColourSettings::from(s);
     let choke_mm = s.white_choke_mm.max(0.0) as f64;
+    // Soft white edge: needs each band's white mask plus its neighbours', so a band is sent
+    // once the next one is screened.
+    let edge_steps = if job.white_enabled { s.white_edge_steps.min(MAX_EDGE_STEPS) } else { 0 };
+    let soft = edge_steps > 0;
+    let ctx_px = edge_context_rows(edge_steps) * width;
+    let white_pcs: Vec<usize> = (0..CHANNELS).filter(|&pc| map[pc] == 4).collect();
 
     let mut part = out.as_os_str().to_owned();
     part.push(".part");
@@ -528,6 +552,8 @@ fn render_prn_with_budget(
             let mut tones: Vec<u16> = Vec::new();
             let mut levels: Vec<Vec<u8>> = Vec::new();
             let pool = ScratchPool::new(width);
+            let mut pending: Option<(Vec<u8>, Vec<u8>)> = None; // band buffer and white mask
+            let mut above: Vec<u8> = Vec::new(); // mask rows just above the pending band
             for band in 0..n_bands {
                 let active: Vec<&Placed> = placed
                     .iter()
@@ -613,9 +639,12 @@ fn render_prn_with_budget(
                 let bh = BAND_LINES.min(lines as usize - row0);
                 let line_bytes = CHANNELS * bpl;
                 let mut buf = vec![0u8; bh * line_bytes];
+                // White mask (tone > 0), one byte per pixel; one byte per row when not needed.
+                let mask_w = if soft { width } else { 1 };
+                let mut mask = vec![0u8; bh * mask_w];
                 match s.screening {
                     Screening::BlueNoise => {
-                        buf.par_chunks_mut(line_bytes).enumerate().for_each(|(r, line)| {
+                        buf.par_chunks_mut(line_bytes).zip(mask.par_chunks_mut(mask_w)).enumerate().for_each(|(r, (line, m))| {
                             pool.with(|sc| {
                                 let Scratch { acc, blend, tones: t, levels: lv } = sc;
                                 let row = row0 + r;
@@ -625,6 +654,11 @@ fn render_prn_with_budget(
                                 // Screen and pack whole bytes around the inked columns; the
                                 // rest of the line is already zero.
                                 let (a, b) = (a / 4 * 4, (b.div_ceil(4) * 4).min(width));
+                                if soft {
+                                    for (mv, &tv) in m[a..b].iter_mut().zip(&t[4 * width + a..4 * width + b]) {
+                                        *mv = u8::from(tv > 0);
+                                    }
+                                }
                                 for ch in 0..LOGICAL {
                                     let span = ch * width + a..ch * width + b;
                                     screen_bn(ch, &t[span.clone()], row as u32, a, &mut lv[span.clone()]);
@@ -664,6 +698,14 @@ fn render_prn_with_budget(
                                     d.process_row(t, &mut lv[r * width..(r + 1) * width]);
                                 }
                             });
+                        if soft {
+                            mask.par_chunks_mut(width).enumerate().for_each(|(r, m)| {
+                                let t = &tones[(r * LOGICAL + 4) * width..][..width];
+                                for (mv, &tv) in m.iter_mut().zip(t) {
+                                    *mv = u8::from(tv > 0);
+                                }
+                            });
+                        }
                         let levels = &levels;
                         buf.par_chunks_mut(line_bytes)
                             .enumerate()
@@ -678,8 +720,27 @@ fn render_prn_with_budget(
                     }
                 }
                 drop(views);
-                if tx.send(buf).is_err() {
-                    return Ok(()); // the writer failed; its error is reported on join
+                let mut ready = Vec::with_capacity(2);
+                if soft {
+                    let below = &mask[..ctx_px.min(mask.len())];
+                    if let Some((mut pb, pm)) = pending.take() {
+                        soften_band(&mut pb, &pm, &above, below, width, bpl, &white_pcs, edge_steps);
+                        above = pm[pm.len().saturating_sub(ctx_px)..].to_vec();
+                        ready.push(pb);
+                    }
+                    if band + 1 == n_bands {
+                        soften_band(&mut buf, &mask, &above, &[], width, bpl, &white_pcs, edge_steps);
+                        ready.push(buf);
+                    } else {
+                        pending = Some((buf, mask));
+                    }
+                } else {
+                    ready.push(buf);
+                }
+                for b in ready {
+                    if tx.send(b).is_err() {
+                        return Ok(()); // the writer failed; its error is reported on join
+                    }
                 }
                 sources.retain(|k, _| last_use[k] > band);
                 choked.retain(|k, _| sources.contains_key(&k.0));

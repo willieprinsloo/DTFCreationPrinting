@@ -30,6 +30,7 @@ pub struct ProfileDto {
     ink_limit_pct: Option<f32>,
     white_density_pct: Option<f32>,
     white_choke_mm: Option<f32>,
+    white_edge_steps: Option<u8>,
     screening: Option<Screening>,
     dot_gain: Option<DotGainDto>,
     lead_in_mm: Option<f32>,
@@ -49,6 +50,7 @@ impl ProfileDto {
             ink_limit_pct: self.ink_limit_pct.unwrap_or(d.ink_limit_pct),
             white_density_pct: self.white_density_pct.unwrap_or(d.white_density_pct),
             white_choke_mm: self.white_choke_mm.unwrap_or(d.white_choke_mm),
+            white_edge_steps: self.white_edge_steps.unwrap_or(d.white_edge_steps).min(crate::white::MAX_EDGE_STEPS),
             screening: self.screening.unwrap_or(d.screening),
             curves: if curves.iter().all(|c| c.is_empty()) {
                 None

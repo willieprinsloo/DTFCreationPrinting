@@ -35,6 +35,15 @@ describe('sanitizeEngineSettings ranges', () => {
     expect(sanitizeEngineSettings(old).renderIntent).toBe('perceptual')
   })
 
+  it('keeps the soft white edge a whole number of pixels from 0 to 3', () => {
+    expect(sanitizeEngineSettings({ ...d, whiteEdgeSteps: 2 }).whiteEdgeSteps).toBe(2)
+    expect(sanitizeEngineSettings({ ...d, whiteEdgeSteps: 9 }).whiteEdgeSteps).toBe(3)
+    expect(sanitizeEngineSettings({ ...d, whiteEdgeSteps: 1.6 }).whiteEdgeSteps).toBe(2)
+    const { whiteEdgeSteps: _w, ...old } = d
+    expect(sanitizeEngineSettings(old).whiteEdgeSteps).toBe(0)
+    expect(validateEngineSettings({ ...d, whiteEdgeSteps: 1.5 })).toMatch(/soft white edge/i)
+  })
+
   it('falls back to the default for values that are not numbers', () => {
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: NaN }).inkLimitPct).toBe(d.inkLimitPct)
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)

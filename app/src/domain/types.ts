@@ -9,6 +9,8 @@ export interface EngineSettings {
   inkLimitPct: number
   whiteDensityPct: number
   whiteChokeMm: number
+  /** Soft white edge: printer pixels of fade at each edge of the white, 0 (off) to 3. */
+  whiteEdgeSteps: number
   screening: 'blueNoise' | 'errorDiffusion'
   dotGain: DotGain
   leadInMm: number

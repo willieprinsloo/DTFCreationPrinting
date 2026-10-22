@@ -18,6 +18,7 @@ export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   inkLimitPct: 280,
   whiteDensityPct: 100,
   whiteChokeMm: 0.2,
+  whiteEdgeSteps: 0,
   screening: 'blueNoise',
   dotGain: { K: [], C: [], M: [], Y: [], W: [] },
   leadInMm: 0,
@@ -31,9 +32,12 @@ export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
  * `720x1800_6paaas.icm`. The curves map that profile's ink amounts to what Maintop's PRN
  * of the colour chart actually printed (measured 2026-10-22); they are only right with that profile.
  */
-export const MAINTOP_6PASS_PRESET: Pick<EngineSettings, 'inkLimitPct' | 'whiteDensityPct' | 'dotGain'> = {
+export const MAINTOP_6PASS_PRESET: Pick<EngineSettings, 'inkLimitPct' | 'whiteDensityPct' | 'whiteChokeMm' | 'whiteEdgeSteps' | 'dotGain'> = {
   inkLimitPct: 320,
   whiteDensityPct: 55,
+  // Maintop's PRN keeps the white to the design's edge and fades its outer 2 pixels (driver `WhiteInvaginate`).
+  whiteChokeMm: 0,
+  whiteEdgeSteps: 2,
   dotGain: {
     K: [[0.1, 0.007], [0.2, 0.018], [0.3, 0.032], [0.4, 0.046], [0.5, 0.063], [0.6, 0.101], [0.7, 0.192], [0.8, 0.335], [0.9, 0.625]],
     C: [[0.1, 0.005], [0.2, 0.018], [0.3, 0.022], [0.4, 0.036], [0.5, 0.053], [0.6, 0.124], [0.7, 0.176], [0.8, 0.552], [0.9, 0.736]],
@@ -47,6 +51,7 @@ export const LIMITS = {
   inkLimitPct: [100, 400],
   whiteDensityPct: [0, 100],
   whiteChokeMm: [0, 2],
+  whiteEdgeSteps: [0, 3],
   leadInMm: [0, 1000],
   darkness: [-100, 100],
   saturationPct: [50, 150],
@@ -76,6 +81,7 @@ export function sanitizeEngineSettings(raw: Partial<Record<keyof EngineSettings,
     inkLimitPct: inRange(raw.inkLimitPct, LIMITS.inkLimitPct[0], LIMITS.inkLimitPct[1], d.inkLimitPct),
     whiteDensityPct: inRange(raw.whiteDensityPct, LIMITS.whiteDensityPct[0], LIMITS.whiteDensityPct[1], d.whiteDensityPct),
     whiteChokeMm: inRange(raw.whiteChokeMm, LIMITS.whiteChokeMm[0], LIMITS.whiteChokeMm[1], d.whiteChokeMm),
+    whiteEdgeSteps: Math.round(inRange(raw.whiteEdgeSteps, LIMITS.whiteEdgeSteps[0], LIMITS.whiteEdgeSteps[1], d.whiteEdgeSteps)),
     screening: raw.screening === 'errorDiffusion' || raw.screening === 'blueNoise' ? raw.screening : d.screening,
     dotGain: Object.fromEntries(INKS.map((k) => [k, sanitizeCurve(gain[k])])) as DotGain,
     leadInMm: inRange(raw.leadInMm, LIMITS.leadInMm[0], LIMITS.leadInMm[1], d.leadInMm),
@@ -95,6 +101,7 @@ export function validateEngineSettings(s: EngineSettings): string | null {
   if (!within(s.inkLimitPct, L.inkLimitPct)) return 'Ink limit must be between 100 and 400 %'
   if (!within(s.whiteDensityPct, L.whiteDensityPct)) return 'White density must be between 0 and 100 %'
   if (!within(s.whiteChokeMm, L.whiteChokeMm)) return 'White choke must be between 0 and 2 mm'
+  if (!Number.isInteger(s.whiteEdgeSteps) || !within(s.whiteEdgeSteps, L.whiteEdgeSteps)) return 'Soft white edge must be 0 to 3 pixels'
   if (!within(s.leadInMm, L.leadInMm)) return 'Blank film before the first design must be between 0 and 1000 mm'
   if (!within(s.darkness, L.darkness)) return 'Lighter / darker must be between -100 and 100'
   if (!within(s.saturationPct, L.saturationPct)) return 'Colour must be between 50 and 150 %'

@@ -51,9 +51,144 @@ pub fn erode(plane: &Plane, rx: u32, ry: u32) -> Plane {
     Plane { w: plane.w, h: plane.h, data: out }
 }
 
+/// Most soft-edge steps; a run needs `10 * steps` pixels to get them all.
+pub const MAX_EDGE_STEPS: u8 = 3;
+
+/// Rows of white mask needed above and below a band to mark its edges.
+pub fn edge_context_rows(steps: u8) -> usize {
+    10 * steps.min(MAX_EDGE_STEPS) as usize
+}
+
+/// Soft white edge, as Maintop's 700DTF driver does it (`WhiteInvaginate`), in device pixels.
+/// Every run of white (`mask` != 0) along a row or a column fades out at both ends: a run of
+/// at least `10 * n` pixels gets `n` (at most `steps`) pixels of fade each side, so thin lines
+/// keep their white. Returns one mark per pixel of `mask`: 0 leaves it alone, and at `d` pixels
+/// in from an edge with `n` fade pixels the mark is `n - d` (see `soften`).
+/// `above` and `below` are the mask rows just outside `mask` (`edge_context_rows(steps)` each,
+/// fewer only at the ends of the sheet, where there is no white); all rows are `width` long.
+pub fn edge_marks(mask: &[u8], above: &[u8], below: &[u8], width: usize, steps: u8) -> Vec<u8> {
+    let steps = steps.min(MAX_EDGE_STEPS) as usize;
+    let mut marks = vec![0u8; mask.len()];
+    if steps == 0 || width == 0 {
+        return marks;
+    }
+    let fade = |len: usize| (len / 10).min(steps);
+    let mark = |m: &mut u8, v: usize| *m = (*m).max(v as u8);
+    // Along each row.
+    for (row, out) in mask.chunks(width).zip(marks.chunks_mut(width)) {
+        let mut x = 0;
+        while x < width {
+            if row[x] == 0 {
+                x += 1;
+                continue;
+            }
+            let start = x;
+            while x < width && row[x] != 0 {
+                x += 1;
+            }
+            let n = fade(x - start);
+            for d in 0..n {
+                mark(&mut out[start + d], n - d);
+                mark(&mut out[x - 1 - d], n - d);
+            }
+        }
+    }
+    // Down each column, through the context rows.
+    let (top, rows) = (above.len() / width, mask.len() / width);
+    let all = top + rows + below.len() / width;
+    let at = |y: usize, x: usize| {
+        if y < top {
+            above[y * width + x]
+        } else if y < top + rows {
+            mask[(y - top) * width + x]
+        } else {
+            below[(y - top - rows) * width + x]
+        }
+    };
+    for x in 0..width {
+        let mut y = 0;
+        while y < all {
+            if at(y, x) == 0 {
+                y += 1;
+                continue;
+            }
+            let start = y;
+            while y < all && at(y, x) != 0 {
+                y += 1;
+            }
+            // A run cut off by the context still reaches `10 * steps`, so it fades fully, and
+            // its cut end lies in the context, never in `mask`.
+            let n = fade(y - start);
+            for d in 0..n {
+                for yy in [start + d, y - 1 - d] {
+                    if (top..top + rows).contains(&yy) {
+                        mark(&mut marks[(yy - top) * width + x], n - d);
+                    }
+                }
+            }
+        }
+    }
+    marks
+}
+
+/// White drop level (0..=3) after an edge mark: 1 = one size smaller, 2 = smallest drop at most,
+/// 3 = no drop (marks from `edge_marks`).
+pub fn soften(level: u8, mark: u8) -> u8 {
+    match mark {
+        0 => level,
+        1 => level - u8::from(level > 1),
+        2 => level.min(1),
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edges_fade_like_maintop_and_thin_lines_keep_their_white() {
+        // One row: a 25-pixel run (2 fade pixels each side at steps 2) and a 9-pixel line (none).
+        let mut row = vec![0u8; 40];
+        row[1..26].fill(1);
+        row[30..39].fill(1);
+        let m = edge_marks(&row, &[], &[], 40, 2);
+        assert_eq!(&m[1..4], &[2, 1, 0]);
+        assert_eq!(&m[23..26], &[0, 1, 2]);
+        assert!(m[30..39].iter().all(|&v| v == 0));
+        // 12 pixels fade one each side; steps 1 caps the 25-pixel run at one too.
+        let mut r = vec![1u8; 12];
+        assert_eq!(edge_marks(&r, &[], &[], 12, 2)[..2], [1, 0]);
+        r = row.clone();
+        assert_eq!(edge_marks(&r, &[], &[], 40, 1)[1..3], [1, 0]);
+        assert!(edge_marks(&row, &[], &[], 40, 0).iter().all(|&v| v == 0));
+    }
+
+    #[test]
+    fn columns_fade_at_real_edges_but_not_where_the_context_cuts_the_run() {
+        // A 1-pixel-wide column: rows 0..5 are the band, 20 context rows each side.
+        let w = 1;
+        let above = vec![1u8; 20]; // white continues above the band
+        let mut below = vec![0u8; 20];
+        below[..3].fill(1); // white ends 3 rows below the band
+        let band = vec![1u8; 5];
+        let m = edge_marks(&band, &above, &below, w, 2);
+        // The run ends 3 rows below the band, so its 2 fade rows lie in `below`.
+        assert_eq!(m, vec![0, 0, 0, 0, 0]);
+        let below = vec![0u8; 20]; // white ends at the band's last row
+        let m = edge_marks(&band, &above, &below, w, 2);
+        assert_eq!(m, vec![0, 0, 0, 1, 2]);
+        let m = edge_marks(&band, &[], &below, w, 2); // top of the sheet: a 5-row run is too short
+        assert_eq!(m, vec![0; 5]);
+    }
+
+    #[test]
+    fn soften_steps_the_drop_down() {
+        assert_eq!([0, 1, 2, 3].map(|l| soften(l, 0)), [0, 1, 2, 3]);
+        assert_eq!([0, 1, 2, 3].map(|l| soften(l, 1)), [0, 1, 1, 2]);
+        assert_eq!([0, 1, 2, 3].map(|l| soften(l, 2)), [0, 1, 1, 1]);
+        assert_eq!([0, 1, 2, 3].map(|l| soften(l, 3)), [0, 0, 0, 0]);
+    }
 
     fn plane(w: u32, h: u32, f: impl Fn(u32, u32) -> u16) -> Plane {
         let mut data = Vec::new();

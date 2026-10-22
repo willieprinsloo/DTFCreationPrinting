@@ -112,10 +112,21 @@ describe('Settings › Ink & colour', () => {
     expect(await screen.findByText('C:\\driver\\720x1800_6paaas.icm')).toBeInTheDocument()
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(320)
     expect(screen.getByLabelText('White density (%)')).toHaveValue(55)
+    expect(screen.getByLabelText('White choke (mm)')).toHaveValue(0)
+    expect(screen.getByLabelText('Soft white edge')).toHaveValue('2')
     expect(screen.getByText(/Black, Cyan, Magenta, Yellow: detailed curve/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
     await screen.findByRole('status')
     expect(saved()).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: 'C:\\driver\\720x1800_6paaas.icm' })
+  })
+
+  it('saves the soft white edge', async () => {
+    page()
+    expect(screen.getByLabelText('Soft white edge')).toHaveValue('0')
+    await userEvent.selectOptions(screen.getByLabelText('Soft white edge'), '3 pixels')
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    await screen.findByRole('status')
+    expect(saved().whiteEdgeSteps).toBe(3)
   })
 
   it('keeps a detailed curve on save until a box for that ink is changed', async () => {

@@ -66,6 +66,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   const [ink, setInk] = useState(String(profile.inkLimitPct))
   const [density, setDensity] = useState(String(profile.whiteDensityPct))
   const [choke, setChoke] = useState(String(profile.whiteChokeMm))
+  const [edgeSteps, setEdgeSteps] = useState(profile.whiteEdgeSteps)
   const [screening, setScreening] = useState(profile.screening)
   const [leadIn, setLeadIn] = useState(String(profile.leadInMm))
   const [icc, setIcc] = useState(profile.iccProfilePath)
@@ -109,9 +110,11 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     const p = MAINTOP_6PASS_PRESET
     setInk(String(p.inkLimitPct))
     setDensity(String(p.whiteDensityPct))
+    setChoke(String(p.whiteChokeMm))
+    setEdgeSteps(p.whiteEdgeSteps)
     setCurves(threeBoxes(p.dotGain))
     setDetailed(detailedOnly(p.dotGain))
-    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, white ${p.whiteDensityPct} % and Maintop's ink curves. Save to keep them.`)
+    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, white ${p.whiteDensityPct} %, no white choke with a ${p.whiteEdgeSteps}-pixel soft white edge, and Maintop's ink curves. Save to keep them.`)
   }
 
   /** The settings as typed, or the plain-English reason they can't be used. */
@@ -126,6 +129,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       inkLimitPct: Number(ink),
       whiteDensityPct: Number(density),
       whiteChokeMm: Number(choke),
+      whiteEdgeSteps: edgeSteps,
       screening,
       dotGain,
       leadInMm: Number(leadIn),
@@ -230,6 +234,18 @@ function Editor({ profile }: { profile: PrinterProfile }) {
           {num('Ink limit (%)', ink, setInk, 'Most ink allowed on any spot, from 100 to 400. Lower it if dark areas look wet or crack.')}
           {num('White density (%)', density, setDensity, 'How solid the white under the design is, from 0 to 100. Lower white makes colours look duller on dark garments.')}
           {num('White choke (mm)', choke, setChoke, 'Pulls the white in from the edge of the design, from 0 to 2 mm. Raise it if you see a white halo around the colour.', '0.05')}
+          <div>
+            <label className="dialog-field">
+              Soft white edge
+              <select value={edgeSteps} onChange={(e) => { setEdgeSteps(Number(e.target.value)); touch() }}>
+                <option value={0}>Off</option>
+                <option value={1}>1 pixel</option>
+                <option value={2}>2 pixels (like Maintop)</option>
+                <option value={3}>3 pixels</option>
+              </select>
+            </label>
+            <Help>Prints the outer pixels of the white with smaller drops, so the white fades out instead of ending sharply and is less likely to show around the colour. Thin lines and small text keep their full white. Works with or without the choke.</Help>
+          </div>
           {num('Blank film before first design (mm)', leadIn, setLeadIn, 'Empty film fed before printing starts, from 0 to 1000 mm. Usually 0.')}
           <div>
             <label className="dialog-field">
