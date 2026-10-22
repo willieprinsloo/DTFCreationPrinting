@@ -25,6 +25,23 @@ export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   saturationPct: 100,
 }
 
+/**
+ * Matches Maintop on the 700DTF I3200 at 720 x 1800, 6 pass, used with Maintop's
+ * `720x1800_6paaas.icm`. The curves map that profile's ink amounts to what Maintop's PRN
+ * of the colour chart actually printed (measured 2026-10-22); they are only right with that profile.
+ */
+export const MAINTOP_6PASS_PRESET: Pick<EngineSettings, 'inkLimitPct' | 'whiteDensityPct' | 'dotGain'> = {
+  inkLimitPct: 320,
+  whiteDensityPct: 55,
+  dotGain: {
+    K: [[0.1, 0.007], [0.2, 0.018], [0.3, 0.032], [0.4, 0.046], [0.5, 0.063], [0.6, 0.101], [0.7, 0.192], [0.8, 0.335], [0.9, 0.625]],
+    C: [[0.1, 0.005], [0.2, 0.018], [0.3, 0.022], [0.4, 0.036], [0.5, 0.053], [0.6, 0.124], [0.7, 0.176], [0.8, 0.552], [0.9, 0.736]],
+    M: [[0.1, 0.007], [0.2, 0.016], [0.3, 0.029], [0.4, 0.05], [0.5, 0.072], [0.6, 0.146], [0.7, 0.244], [0.8, 0.5], [0.9, 0.83]],
+    Y: [[0.1, 0.006], [0.2, 0.019], [0.3, 0.046], [0.4, 0.062], [0.5, 0.077], [0.6, 0.138], [0.7, 0.26], [0.8, 0.69], [0.9, 0.801]],
+    W: [],
+  },
+}
+
 export const LIMITS = {
   inkLimitPct: [100, 400],
   whiteDensityPct: [0, 100],
@@ -88,6 +105,10 @@ export function validateEngineSettings(s: EngineSettings): string | null {
 }
 
 const CURVE_X = [0.25, 0.5, 0.75] as const
+
+/** True when the curve has points the three 25/50/75 % boxes can't show, so editing them would lose detail. */
+export const isDetailedCurve = (points: [number, number][]) =>
+  points.length > 0 && (points.length !== 3 || points.some(([x], i) => x !== CURVE_X[i]))
 
 /** The curve's output (as %) at 25, 50 and 75 % input; an empty curve is linear. */
 export function curveToThree(points: [number, number][]): [number, number, number] {

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { open, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { DotGain, EngineSettings as Engine, InkChannel, PrinterProfile } from '../../domain/types'
-import { curveFromThree, curveToThree, validateEngineSettings } from '../../domain/engineSettings'
+import { MAINTOP_6PASS_PRESET, curveFromThree, curveToThree, isDetailedCurve, validateEngineSettings } from '../../domain/engineSettings'
 import { createChartPrn } from '../../platform/tauri'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 
@@ -10,6 +10,11 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const INK_NAMES: Record<InkChannel, string> = { K: 'Black', C: 'Cyan', M: 'Magenta', Y: 'Yellow', W: 'White' }
 const INKS = Object.keys(INK_NAMES) as InkChannel[]
 const POINTS = [25, 50, 75]
+
+const threeBoxes = (g: DotGain) =>
+  Object.fromEntries(INKS.map((k) => [k, curveToThree(g[k]).map(String)])) as Record<InkChannel, string[]>
+const detailedOnly = (g: DotGain): Partial<DotGain> =>
+  Object.fromEntries(INKS.filter((k) => isDetailedCurve(g[k])).map((k) => [k, g[k]]))
 
 function Help({ children }: { children: string }) {
   return <p className="field-help">{children}</p>
@@ -66,9 +71,10 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   const [icc, setIcc] = useState(profile.iccProfilePath)
   const [darkness, setDarkness] = useState(profile.darkness)
   const [saturation, setSaturation] = useState(profile.saturationPct)
-  const [curves, setCurves] = useState<Record<InkChannel, string[]>>(
-    () => Object.fromEntries(INKS.map((k) => [k, curveToThree(profile.dotGain[k]).map(String)])) as Record<InkChannel, string[]>,
-  )
+  const [curves, setCurves] = useState<Record<InkChannel, string[]>>(() => threeBoxes(profile.dotGain))
+  /** Curves with more detail than the three boxes, kept as they are until a box for that ink is edited. */
+  const [detailed, setDetailed] = useState<Partial<DotGain>>(() => detailedOnly(profile.dotGain))
+  const [presetMsg, setPresetMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [chartMsg, setChartMsg] = useState<string | null>(null)
@@ -80,16 +86,31 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     setError(null)
   }
 
-  const pickIcc = async () => {
+  /** The chosen ICC/ICM file, or null when the picker was cancelled or failed. */
+  const pickIcc = async (): Promise<string | null> => {
     try {
       const f = await open({ multiple: false, filters: [{ name: 'Colour profile', extensions: ['icc', 'icm'] }] })
       if (typeof f === 'string') {
         setIcc(f)
         touch()
+        return f
       }
     } catch (e) {
       setError(`Could not open the file picker: ${errorText(e)}`)
     }
+    return null
+  }
+
+  /** The preset is only right with Maintop's profile, so nothing changes until that file is chosen. */
+  const useMaintopPreset = async () => {
+    setPresetMsg(null)
+    if (!(await pickIcc())) return
+    const p = MAINTOP_6PASS_PRESET
+    setInk(String(p.inkLimitPct))
+    setDensity(String(p.whiteDensityPct))
+    setCurves(threeBoxes(p.dotGain))
+    setDetailed(detailedOnly(p.dotGain))
+    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, white ${p.whiteDensityPct} % and Maintop's ink curves. Save to keep them.`)
   }
 
   /** The settings as typed, or the plain-English reason they can't be used. */
@@ -97,7 +118,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     const numbers = [ink, density, choke, leadIn, ...INKS.flatMap((k) => curves[k])]
     if (numbers.some((v) => v.trim() === '')) return 'Enter a number in every box'
     const dotGain = Object.fromEntries(
-      INKS.map((k) => [k, curveFromThree(curves[k].map(Number) as [number, number, number])]),
+      INKS.map((k) => [k, detailed[k] ?? curveFromThree(curves[k].map(Number) as [number, number, number])]),
     ) as DotGain
     const engine: Engine = {
       channelOrder: order,
@@ -231,6 +252,11 @@ function Editor({ profile }: { profile: PrinterProfile }) {
             <button type="button" onClick={() => { setIcc(undefined); touch() }}>Remove colour profile</button>
           )}
         </div>
+        <Help>For the 700DTF I3200 printer: choose Maintop's 720x1800_6paaas.icm (in the printer's Maintop driver folder) to print like Maintop at 720 x 1800, 6 pass. This also sets the ink limit, white and ink curves to match.</Help>
+        <div className="button-row">
+          <button type="button" onClick={() => void useMaintopPreset()}>Match Maintop 720×1800 6-pass…</button>
+          {presetMsg && <span>{presetMsg}</span>}
+        </div>
       </section>
 
       <section className="settings-section">
@@ -267,6 +293,9 @@ function Editor({ profile }: { profile: PrinterProfile }) {
         <section className="settings-section">
           <h3>Ink curves</h3>
           <Help>How strongly each ink prints at 25, 50 and 75 % (0 to 100). Leave them at 25, 50, 75 for no change. Raise a value to print that ink darker at that level.</Help>
+          {INKS.some((k) => detailed[k]) && (
+            <Help>{`${INKS.filter((k) => detailed[k]).map((k) => INK_NAMES[k]).join(', ')}: detailed curve (from a preset). Changing a box for that ink replaces it with just these three points.`}</Help>
+          )}
           <div className="curve-grid">
             <span />
             {POINTS.map((p) => <span key={p} className="curve-head">{p} %</span>)}
@@ -281,7 +310,11 @@ function Editor({ profile }: { profile: PrinterProfile }) {
                   step="any"
                   aria-label={`${INK_NAMES[k]} curve at ${p} %`}
                   value={curves[k][i]}
-                  onChange={(e) => { setCurves({ ...curves, [k]: curves[k].map((v, j) => (j === i ? e.target.value : v)) }); touch() }}
+                  onChange={(e) => {
+                    setCurves({ ...curves, [k]: curves[k].map((v, j) => (j === i ? e.target.value : v)) })
+                    setDetailed(({ [k]: _dropped, ...rest }) => rest)
+                    touch()
+                  }}
                 />
               )),
             ])}

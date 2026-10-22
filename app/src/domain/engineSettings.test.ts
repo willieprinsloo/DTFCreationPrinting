@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_ENGINE_SETTINGS, curveFromThree, curveToThree, sanitizeEngineSettings, validateEngineSettings } from './engineSettings'
+import { DEFAULT_ENGINE_SETTINGS, MAINTOP_6PASS_PRESET, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from './engineSettings'
 
 const d = DEFAULT_ENGINE_SETTINGS
 
@@ -67,6 +67,19 @@ describe('validateEngineSettings', () => {
   it('rejects a dot-gain curve that goes backwards', () => {
     const dotGain = { ...d.dotGain, C: [[0.25, 0.4], [0.5, 0.3], [0.75, 0.8]] as [number, number][] }
     expect(validateEngineSettings({ ...d, dotGain })).toMatch(/C curve/i)
+  })
+})
+
+describe('Maintop 6-pass preset', () => {
+  it('passes validation and survives sanitizing', () => {
+    expect(validateEngineSettings({ ...d, ...MAINTOP_6PASS_PRESET })).toBeNull()
+    expect(sanitizeEngineSettings({ ...d, ...MAINTOP_6PASS_PRESET }).dotGain).toEqual(MAINTOP_6PASS_PRESET.dotGain)
+  })
+  it('counts only curves the three boxes cannot show as detailed', () => {
+    expect(isDetailedCurve(MAINTOP_6PASS_PRESET.dotGain.K)).toBe(true)
+    expect(isDetailedCurve([])).toBe(false)
+    expect(isDetailedCurve(curveFromThree([30, 55, 80]))).toBe(false)
+    expect(isDetailedCurve([[0.5, 0.6]])).toBe(true)
   })
 })
 

@@ -12,6 +12,7 @@ import { createChartPrn } from '../../platform/tauri'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { SettingsDialog } from './SettingsDialog'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
+import { MAINTOP_6PASS_PRESET } from '../../domain/engineSettings'
 
 const saved = () => getSettingsStore().getState().profiles.find((p) => p.id === DEFAULT_PROFILE.id)!
 
@@ -99,6 +100,35 @@ describe('Settings › Ink & colour', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
     await screen.findByRole('status')
     expect(saved().iccProfilePath).toBeUndefined()
+  })
+
+  it('matches Maintop: picks the ICM, then sets ink limit, white and the detailed curves', async () => {
+    vi.mocked(open).mockResolvedValueOnce(null).mockResolvedValueOnce('C:\\driver\\720x1800_6paaas.icm')
+    page()
+    const preset = screen.getByRole('button', { name: 'Match Maintop 720×1800 6-pass…' })
+    await userEvent.click(preset)
+    expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(280)
+    await userEvent.click(preset)
+    expect(await screen.findByText('C:\\driver\\720x1800_6paaas.icm')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(320)
+    expect(screen.getByLabelText('White density (%)')).toHaveValue(55)
+    expect(screen.getByText(/Black, Cyan, Magenta, Yellow: detailed curve/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    await screen.findByRole('status')
+    expect(saved()).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: 'C:\\driver\\720x1800_6paaas.icm' })
+  })
+
+  it('keeps a detailed curve on save until a box for that ink is changed', async () => {
+    await getSettingsStore().getState().upsertProfile({ ...DEFAULT_PROFILE, dotGain: MAINTOP_6PASS_PRESET.dotGain })
+    page()
+    const mid = screen.getByLabelText('Cyan curve at 50 %')
+    await userEvent.clear(mid)
+    await userEvent.type(mid, '10')
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    await screen.findByRole('status')
+    expect(saved().dotGain.K).toEqual(MAINTOP_6PASS_PRESET.dotGain.K)
+    expect(saved().dotGain.C).toHaveLength(3)
+    expect(saved().dotGain.C[1]).toEqual([0.5, 0.1])
   })
 
   it('rejects a blank number with "Enter a number"', async () => {
