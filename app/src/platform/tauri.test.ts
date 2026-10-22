@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: vi.fn((p: string) => `asset://${p}`) }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: vi.fn((p: string, scheme = 'asset') => `${scheme}://${p}`) }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { DEFAULT_PROFILE } from '../state/settingsStore'
 import type { Sheet } from '../domain/types'
-import { cacheAsset, importLocalFile, assetSrc } from './tauri'
+import { cacheAsset, importLocalFile, assetSrc, thumbSrc } from './tauri'
 
 const asset = { assetId: 'a', path: '/p', previewPath: '/pp', widthPx: 1, heightPx: 2 }
 
@@ -30,6 +30,13 @@ describe('platform/tauri', () => {
   })
   it('assetSrc wraps convertFileSrc', () => {
     expect(assetSrc('/p')).toBe('asset:///p')
+  })
+  it('thumbSrc sends online images through the thumbnail cache and leaves the rest alone', () => {
+    expect(thumbSrc('https://x.test/u/a.png')).toBe('thumb://https://x.test/u/a.png')
+    expect(thumbSrc('http://localhost:8000/u/a.png')).toBe('thumb://http://localhost:8000/u/a.png')
+    expect(thumbSrc('http://asset.localhost/C%3A%2Fa.png')).toBe('http://asset.localhost/C%3A%2Fa.png')
+    expect(thumbSrc('asset://localhost/a.png')).toBe('asset://localhost/a.png')
+    expect(thumbSrc('')).toBe('')
   })
 })
 

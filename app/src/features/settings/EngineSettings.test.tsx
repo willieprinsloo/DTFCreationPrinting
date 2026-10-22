@@ -7,7 +7,7 @@ vi.mock('../../state/persist', async (orig) => {
   return { ...m, createTauriStore: () => m.createMemoryStore() }
 })
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }))
-vi.mock('../../platform/tauri', () => ({ createChartPrn: vi.fn() }))
+vi.mock('../../platform/tauri', () => ({ thumbSrc: (u: string) => u, createChartPrn: vi.fn() }))
 import { createChartPrn } from '../../platform/tauri'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { SettingsDialog } from './SettingsDialog'

@@ -14,6 +14,20 @@ export function assetSrc(path: string): string {
   return convertFileSrc(path)
 }
 
+/**
+ * A small, cached thumbnail of an online image (the app's `thumb` protocol shrinks it once and
+ * keeps it on disk). Anything else — a local file, an empty string — is returned as it is.
+ */
+export function thumbSrc(src: string): string {
+  try {
+    const u = new URL(src)
+    if ((u.protocol === 'https:' || u.protocol === 'http:') && !u.hostname.endsWith('.localhost')) return convertFileSrc(src, 'thumb')
+  } catch {
+    // not a URL
+  }
+  return src
+}
+
 export interface StoredCredentials { email: string; password: string }
 
 export function saveCredentials(email: string, password: string): Promise<void> {

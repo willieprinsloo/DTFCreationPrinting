@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
-vi.mock('../../platform/tauri', () => ({ cacheAsset: vi.fn(), importLocalFile: vi.fn(), assetSrc: (p: string) => p }))
+vi.mock('../../platform/tauri', () => ({ thumbSrc: (u: string) => u, cacheAsset: vi.fn(), importLocalFile: vi.fn(), assetSrc: (p: string) => p }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }))
 import { useLocalFiles } from './useLocalFiles'
 import { importLocalFile } from '../../platform/tauri'

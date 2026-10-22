@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import type { OrderFile, OrderSummary } from '../../api/types'
 import { fileCount, formatDate, statusLabel } from './format'
 import { useOnVisible } from './useOnVisible'
+import { thumbSrc as thumbUrl } from '../../platform/tauri'
 
 interface Props {
   order: OrderSummary
@@ -21,7 +22,7 @@ export function OrderCard({ order, name, files, thumbSrc, expanded, onVisible, o
   const date = formatDate(order.createdAt)
   return (
     <button ref={ref} type="button" className="order-card" aria-expanded={expanded} onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}>
-      <span className="order-card-thumb">{thumbSrc && <img src={thumbSrc} alt="" loading="lazy" draggable={false} />}</span>
+      <span className="order-card-thumb">{thumbSrc && <img src={thumbUrl(thumbSrc)} alt="" loading="lazy" draggable={false} />}</span>
       <strong>{order.orderNumber}</strong>
       <span className="muted">{name || 'Unknown customer'}</span>
       {date && <span className="muted">{date}</span>}

@@ -6,6 +6,7 @@ mod credentials;
 #[path = "prn_jobs.rs"]
 mod prn;
 mod sheet_files;
+mod thumbs;
 mod upscale;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,6 +17,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(std::sync::Arc::new(prn::PrnJobs::default()))
         .manage(std::sync::Arc::new(upscale::UpscaleJobs::default()))
+        // Library thumbnails: shrunk once, then served from disk (see thumbs.rs).
+        .register_asynchronous_uri_scheme_protocol("thumb", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(thumbs::respond(&app, &path)));
+        })
         .setup(|app| {
             // The bundled pdfium (see build.rs); DTF_PDFIUM_PATH overrides it.
             if let Ok(dir) = app.path().resource_dir() {

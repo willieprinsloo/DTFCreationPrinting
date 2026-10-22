@@ -4,7 +4,7 @@ import { ask, save } from '@tauri-apps/plugin-dialog'
 import { readSheetFile, writeSheetFile } from '../../platform/tauri'
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ ask: vi.fn(), save: vi.fn(), open: vi.fn() }))
-vi.mock('../../platform/tauri', () => ({ readSheetFile: vi.fn(), writeSheetFile: vi.fn() }))
+vi.mock('../../platform/tauri', () => ({ thumbSrc: (u: string) => u, readSheetFile: vi.fn(), writeSheetFile: vi.fn() }))
 import { getSheetStore } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
 

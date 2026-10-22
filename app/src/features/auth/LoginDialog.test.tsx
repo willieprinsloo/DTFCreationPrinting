@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('../../platform/tauri', () => ({
+vi.mock('../../platform/tauri', () => ({ thumbSrc: (u: string) => u,
   saveCredentials: vi.fn(async () => {}),
   clearCredentials: vi.fn(async () => {}),
 }))

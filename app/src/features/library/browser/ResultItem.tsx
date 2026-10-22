@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from 'react'
 import type { LibraryView } from '../../../state/libraryPrefs'
 import { useOnVisible } from '../useOnVisible'
 import { Check } from './Check'
+import { thumbSrc } from '../../../platform/tauri'
 
 export interface ResultRow {
   key: string
@@ -48,7 +49,7 @@ export function ResultItem({ row, view, isSub, onToggle }: Props) {
     </button>
   )
   const thumb = <span className="lib-thumb">
-      {row.thumb && <img src={row.thumb} alt="" loading="lazy" draggable={false} />}
+      {row.thumb && <img src={thumbSrc(row.thumb)} alt="" loading="lazy" draggable={false} />}
       {row.badge && <span className="lib-thumb-badge">{row.badge}</span>}
     </span>
   const common = {

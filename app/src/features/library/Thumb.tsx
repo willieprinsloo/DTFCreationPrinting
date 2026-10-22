@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { useOnVisible } from './useOnVisible'
+import { thumbSrc } from '../../platform/tauri'
 
 interface Props {
   src: string
@@ -29,7 +30,7 @@ export function Thumb({ src, label, caption, badge, onVisible, selected, onToggl
       onClick={onToggle}
       onPointerDown={onPointerDown}
     >
-      {src ? <img src={src} alt="" loading="lazy" draggable={false} /> : <span className="thumb-placeholder" data-testid="thumb-placeholder" />}
+      {src ? <img src={thumbSrc(src)} alt="" loading="lazy" draggable={false} /> : <span className="thumb-placeholder" data-testid="thumb-placeholder" />}
       {badge && <span className="thumb-badge">{badge}</span>}
       <span className="thumb-caption">{caption ?? label}</span>
     </button>
