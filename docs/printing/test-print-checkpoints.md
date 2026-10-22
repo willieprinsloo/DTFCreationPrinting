@@ -156,6 +156,11 @@ Results recorded here (to be filled in after the print):
 
 _Not yet printed._
 
+### Matching Maintop on the 700DTF I3200 (measured 2026-10-22, not yet printed)
+The printer's Maintop driver ("700DTF I3200-W-printX_TH3.10 MT Driver") holds the colour profiles `720x1800_6paaas.icm` (and 4- and 8-pass ones) and the `.cma` media files. Maintop prints in two steps: the ICC profile picks the ink mix (greys from C+M+Y, black only from about 50 % grey, a rich black), then the media file's per-ink curves cut the ink a lot in light and mid tones.
+
+**Match Maintop 720×1800 6-pass…** (Settings, Colour profile) asks for that `.icm` and sets an ink limit of 320 %, white at 55 %, and ink curves fitted so that profile plus curves give the ink Maintop's PRN of the colour chart has. The chart rendered that way is within a few percent of Maintop's on the grey ramp, rich black, skin tones and most red, green and blue patches. The darkest reds, greens and blues (10–20 %) still get 10–20 % more total ink. Light cyan and the yellow ramp were not in Maintop's file, so they are not checked. The `.icm` is Maintop's file, so it is not kept in this repository; choose it from the printer PC.
+
 ## Checkpoint 4: a real job
 
 ### What this tests
