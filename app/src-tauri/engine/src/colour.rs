@@ -1,6 +1,8 @@
-//! Colour model: sRGB -> K,C,M,Y ink amounts (built-in GCR model, or ICC).
+//! Colour model: the design's RGB (sRGB, or its own embedded profile) -> K,C,M,Y
+//! ink amounts (built-in GCR model, or the printer's ICC profile).
 use crate::EngineError;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Colour/white settings for source preparation. Task 5 folds these into
 /// `EngineSettings`.
@@ -9,12 +11,25 @@ pub struct ColourSettings {
     pub white_density_pct: f32,
     pub icc_profile_path: Option<PathBuf>,
     pub tone: Tone,
+    pub intent: RenderIntent,
 }
 
 impl Default for ColourSettings {
     fn default() -> Self {
-        Self { white_density_pct: 100.0, icc_profile_path: None, tone: Tone::default() }
+        Self { white_density_pct: 100.0, icc_profile_path: None, tone: Tone::default(), intent: RenderIntent::default() }
     }
+}
+
+/// How colours the printer can't reach are brought into its range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderIntent {
+    /// Squeezes every colour a little so out-of-range ones keep their differences (photos).
+    #[default]
+    Perceptual,
+    /// Prints reachable colours exactly and clips the rest (logos, brand colours); with
+    /// black point compensation so shadows keep their detail.
+    RelativeColorimetric,
 }
 
 /// The "Lighter / Darker" and "Less / More colour" sliders, applied to the
@@ -83,44 +98,92 @@ pub fn rgb_to_kcmy(r: f32, g: f32, b: f32) -> [f32; 4] {
 /// Which conversion to use. Cheap to share across threads; each worker calls
 /// `instance()` to get its own (lcms2 transforms are not `Sync`).
 #[derive(Debug, Clone)]
-pub enum Converter {
-    BuiltIn,
-    Icc(PathBuf),
+pub struct Converter {
+    /// The printer's ICC profile; `None` = built-in model.
+    output: Option<PathBuf>,
+    /// The design's own RGB profile; `None` = sRGB.
+    source: Option<Arc<Vec<u8>>>,
+    #[cfg_attr(not(feature = "icc"), allow(dead_code))]
+    intent: RenderIntent,
 }
 
 pub enum Instance {
-    BuiltIn,
+    BuiltIn {
+        /// Design profile -> sRGB, ahead of the built-in model.
+        #[cfg(feature = "icc")]
+        to_srgb: Option<lcms2::Transform<[u16; 3], [u16; 3]>>,
+    },
     #[cfg(feature = "icc")]
     Icc(lcms2::Transform<[u16; 3], [u16; 4]>),
 }
 
+/// True when `icc` is a usable RGB profile. The decoders hand over RGB pixels, so a CMYK
+/// or grey profile (or a broken one) can't describe them and the pixels are taken as sRGB.
+#[cfg(feature = "icc")]
+fn is_rgb_profile(icc: &[u8]) -> bool {
+    lcms2::Profile::new_icc(icc).is_ok_and(|p| p.color_space() == lcms2::ColorSpaceSignature::RgbData)
+}
+
+#[cfg(not(feature = "icc"))]
+fn is_rgb_profile(_: &[u8]) -> bool {
+    false
+}
+
 impl Converter {
-    pub fn from_settings(s: &ColourSettings) -> Result<Self, EngineError> {
-        match &s.icc_profile_path {
-            None => Ok(Converter::BuiltIn),
-            Some(p) => {
-                let c = Converter::Icc(p.clone());
-                c.instance()?; // fail early on a bad profile
-                Ok(c)
-            }
-        }
+    /// `source_icc` is the profile embedded in the design, if any.
+    pub fn from_settings(s: &ColourSettings, source_icc: Option<Vec<u8>>) -> Result<Self, EngineError> {
+        let c = Converter {
+            output: s.icc_profile_path.clone(),
+            source: source_icc.filter(|p| is_rgb_profile(p)).map(Arc::new),
+            intent: s.intent,
+        };
+        c.instance()?; // fail early on a bad profile
+        Ok(c)
+    }
+
+    /// True when the design's own colour profile is used instead of sRGB.
+    pub fn uses_source_profile(&self) -> bool {
+        self.source.is_some()
     }
 
     pub fn instance(&self) -> Result<Instance, EngineError> {
-        match self {
-            Converter::BuiltIn => Ok(Instance::BuiltIn),
-            #[cfg(feature = "icc")]
-            Converter::Icc(path) => {
-                use lcms2::*;
-                let out = Profile::new_file(path).map_err(|e| EngineError::Icc(e.to_string()))?;
-                let t = Transform::new(
-                    &Profile::new_srgb(), PixelFormat::RGB_16, &out, PixelFormat::CMYK_16, Intent::Perceptual,
-                )
-                .map_err(|e| EngineError::Icc(e.to_string()))?;
-                Ok(Instance::Icc(t))
+        #[cfg(feature = "icc")]
+        {
+            use lcms2::*;
+            fn err(e: impl std::fmt::Display) -> EngineError {
+                EngineError::Icc(e.to_string())
             }
-            #[cfg(not(feature = "icc"))]
-            Converter::Icc(_) => Err(EngineError::Icc("this build has no ICC support".into())),
+            let input = match &self.source {
+                Some(p) => Profile::new_icc(p).map_err(err)?,
+                None => Profile::new_srgb(),
+            };
+            let (intent, flags) = match self.intent {
+                RenderIntent::Perceptual => (Intent::Perceptual, Flags::default()),
+                RenderIntent::RelativeColorimetric => (Intent::RelativeColorimetric, Flags::BLACKPOINT_COMPENSATION),
+            };
+            match &self.output {
+                None => {
+                    let to_srgb = match &self.source {
+                        None => None,
+                        Some(_) => Some(
+                            Transform::new_flags(&input, PixelFormat::RGB_16, &Profile::new_srgb(), PixelFormat::RGB_16, intent, flags)
+                                .map_err(err)?,
+                        ),
+                    };
+                    Ok(Instance::BuiltIn { to_srgb })
+                }
+                Some(path) => {
+                    let out = Profile::new_file(path).map_err(err)?;
+                    let t = Transform::new_flags(&input, PixelFormat::RGB_16, &out, PixelFormat::CMYK_16, intent, flags)
+                        .map_err(err)?;
+                    Ok(Instance::Icc(t))
+                }
+            }
+        }
+        #[cfg(not(feature = "icc"))]
+        match &self.output {
+            None => Ok(Instance::BuiltIn {}),
+            Some(_) => Err(EngineError::Icc("this build has no ICC support".into())),
         }
     }
 }
@@ -129,13 +192,14 @@ impl Instance {
     /// Converts one row of RGB16 triples to KCMY16 (no alpha).
     pub fn convert(&self, rgb: &[u16], out: &mut [[u16; 4]]) {
         match self {
-            Instance::BuiltIn => {
-                for (px, o) in rgb.chunks_exact(3).zip(out.iter_mut()) {
-                    let f = |v: u16| v as f32 / 65535.0;
-                    let k = rgb_to_kcmy(f(px[0]), f(px[1]), f(px[2]));
-                    *o = k.map(|v| (v.clamp(0.0, 1.0) * 65535.0).round() as u16);
-                }
+            #[cfg(feature = "icc")]
+            Instance::BuiltIn { to_srgb: Some(t) } => {
+                let src: Vec<[u16; 3]> = rgb.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect();
+                let mut srgb = vec![[0u16; 3]; src.len()];
+                t.transform_pixels(&src, &mut srgb);
+                built_in(srgb.as_flattened(), out);
             }
+            Instance::BuiltIn { .. } => built_in(rgb, out),
             #[cfg(feature = "icc")]
             Instance::Icc(t) => {
                 let src: Vec<[u16; 3]> = rgb.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect();
@@ -146,6 +210,14 @@ impl Instance {
                 }
             }
         }
+    }
+}
+
+fn built_in(rgb: &[u16], out: &mut [[u16; 4]]) {
+    for (px, o) in rgb.chunks_exact(3).zip(out.iter_mut()) {
+        let f = |v: u16| v as f32 / 65535.0;
+        let k = rgb_to_kcmy(f(px[0]), f(px[1]), f(px[2]));
+        *o = k.map(|v| (v.clamp(0.0, 1.0) * 65535.0).round() as u16);
     }
 }
 

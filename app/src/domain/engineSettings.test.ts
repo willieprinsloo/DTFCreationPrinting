@@ -28,6 +28,13 @@ describe('sanitizeEngineSettings ranges', () => {
     expect(sanitizeEngineSettings({ ...d, darkness: 300, saturationPct: 10 })).toMatchObject({ darkness: 100, saturationPct: 50 })
   })
 
+  it('keeps a known render intent and gives anything else perceptual', () => {
+    expect(sanitizeEngineSettings({ ...d, renderIntent: 'relativeColorimetric' }).renderIntent).toBe('relativeColorimetric')
+    expect(sanitizeEngineSettings({ ...d, renderIntent: 'saturation' }).renderIntent).toBe('perceptual')
+    const { renderIntent: _r, ...old } = d
+    expect(sanitizeEngineSettings(old).renderIntent).toBe('perceptual')
+  })
+
   it('falls back to the default for values that are not numbers', () => {
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: NaN }).inkLimitPct).toBe(d.inkLimitPct)
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)

@@ -71,6 +71,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   const [icc, setIcc] = useState(profile.iccProfilePath)
   const [darkness, setDarkness] = useState(profile.darkness)
   const [saturation, setSaturation] = useState(profile.saturationPct)
+  const [intent, setIntent] = useState(profile.renderIntent)
   const [curves, setCurves] = useState<Record<InkChannel, string[]>>(() => threeBoxes(profile.dotGain))
   /** Curves with more detail than the three boxes, kept as they are until a box for that ink is edited. */
   const [detailed, setDetailed] = useState<Partial<DotGain>>(() => detailedOnly(profile.dotGain))
@@ -130,6 +131,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       leadInMm: Number(leadIn),
       darkness,
       saturationPct: saturation,
+      renderIntent: intent,
       ...(icc ? { iccProfilePath: icc } : {}),
     }
     return validateEngineSettings(engine) ?? engine
@@ -256,6 +258,16 @@ function Editor({ profile }: { profile: PrinterProfile }) {
         <div className="button-row">
           <button type="button" onClick={() => void useMaintopPreset()}>Match Maintop 720×1800 6-pass…</button>
           {presetMsg && <span>{presetMsg}</span>}
+        </div>
+        <div>
+          <label className="dialog-field">
+            Colours the printer can't reach
+            <select value={intent} onChange={(e) => { setIntent(e.target.value as Engine['renderIntent']); touch() }}>
+              <option value="perceptual">Keep the differences (photos) — recommended</option>
+              <option value="relativeColorimetric">Keep exact colours (logos, brand colours)</option>
+            </select>
+          </label>
+          <Help>Bright greens, blues and oranges on screen can be brighter than the ink can print. The first choice softens all colours a little so shades stay apart; the second prints the colours the ink can reach exactly and the rest as close as it can. Used with a colour profile. Designs saved with their own colour profile (Adobe RGB, Display P3) are printed with it.</Help>
         </div>
       </section>
 

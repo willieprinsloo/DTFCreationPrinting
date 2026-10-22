@@ -17,6 +17,8 @@ export interface EngineSettings {
   darkness: number
   /** Less (50) to more (150) colour slider, %; 100 = unchanged. */
   saturationPct: number
+  /** How out-of-range colours are fitted to the printer: squeezed (photos) or clipped (logos). */
+  renderIntent: 'perceptual' | 'relativeColorimetric'
 }
 export interface PrinterProfile extends EngineSettings { id: string; name: string; widthMm: number; xDpi: number; yDpi: number; defaultMargins: Margins; defaultGapMm: number }
 export interface SheetSettings { widthMm: number; margins: Margins; gapMm: number; lengthMode: 'auto' | 'fixed'; fixedLengthMm: number; mirror: boolean; whiteEnabled: boolean; allowRotate: boolean }

@@ -131,6 +131,16 @@ describe('Settings › Ink & colour', () => {
     expect(saved().dotGain.C[1]).toEqual([0.5, 0.1])
   })
 
+  it('saves the choice for colours the printer cannot reach', async () => {
+    page()
+    const intent = screen.getByLabelText("Colours the printer can't reach")
+    expect(intent).toHaveValue('perceptual')
+    await userEvent.selectOptions(intent, 'relativeColorimetric')
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    await screen.findByRole('status')
+    expect(saved().renderIntent).toBe('relativeColorimetric')
+  })
+
   it('rejects a blank number with "Enter a number"', async () => {
     page()
     await userEvent.clear(screen.getByLabelText('White choke (mm)'))

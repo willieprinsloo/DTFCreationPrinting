@@ -1,5 +1,5 @@
 //! Job description handed to `render_prn` (built from the sheet + printer profile).
-use crate::colour::ColourSettings;
+use crate::colour::{ColourSettings, RenderIntent};
 use crate::screen::Screening;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -47,6 +47,8 @@ pub struct EngineSettings {
     /// Colour slider, 50 ..= 150 % (100 = unchanged).
     #[serde(default = "default_saturation_pct")]
     pub saturation_pct: f32,
+    #[serde(default)]
+    pub render_intent: RenderIntent,
 }
 
 fn default_saturation_pct() -> f32 {
@@ -67,6 +69,7 @@ impl Default for EngineSettings {
             icc_profile_path: None,
             darkness: 0.0,
             saturation_pct: 100.0,
+            render_intent: RenderIntent::default(),
         }
     }
 }
@@ -77,6 +80,7 @@ impl From<&EngineSettings> for ColourSettings {
             white_density_pct: s.white_density_pct,
             icc_profile_path: s.icc_profile_path.clone(),
             tone: crate::colour::Tone { darkness: s.darkness / 100.0, saturation: s.saturation_pct / 100.0 },
+            intent: s.render_intent,
         }
     }
 }

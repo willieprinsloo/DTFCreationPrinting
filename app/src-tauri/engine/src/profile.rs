@@ -1,5 +1,6 @@
 //! The subset of the app's printer-profile JSON the engine needs (shared by the app and `prn-tool`).
 use crate::EngineSettings;
+use crate::colour::RenderIntent;
 use crate::screen::Screening;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -35,6 +36,7 @@ pub struct ProfileDto {
     icc_profile_path: Option<String>,
     darkness: Option<f32>,
     saturation_pct: Option<f32>,
+    render_intent: Option<RenderIntent>,
 }
 
 impl ProfileDto {
@@ -60,7 +62,23 @@ impl ProfileDto {
                 .map(PathBuf::from),
             darkness: self.darkness.unwrap_or(d.darkness).clamp(-100.0, 100.0),
             saturation_pct: self.saturation_pct.unwrap_or(d.saturation_pct).clamp(50.0, 150.0),
+            render_intent: self.render_intent.unwrap_or(d.render_intent),
         }
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings(extra: &str) -> EngineSettings {
+        let json = format!(r#"{{ "xDpi": 720, "yDpi": 1800 {extra} }}"#);
+        serde_json::from_str::<ProfileDto>(&json).unwrap().engine_settings()
+    }
+
+    #[test]
+    fn render_intent_defaults_to_perceptual_and_reads_relative() {
+        assert_eq!(settings("").render_intent, RenderIntent::Perceptual);
+        assert_eq!(settings(r#", "renderIntent": "relativeColorimetric""#).render_intent, RenderIntent::RelativeColorimetric);
+    }
+}

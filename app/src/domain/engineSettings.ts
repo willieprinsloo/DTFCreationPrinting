@@ -23,6 +23,7 @@ export const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   leadInMm: 0,
   darkness: 0,
   saturationPct: 100,
+  renderIntent: 'perceptual',
 }
 
 /**
@@ -80,6 +81,7 @@ export function sanitizeEngineSettings(raw: Partial<Record<keyof EngineSettings,
     leadInMm: inRange(raw.leadInMm, LIMITS.leadInMm[0], LIMITS.leadInMm[1], d.leadInMm),
     darkness: inRange(raw.darkness, LIMITS.darkness[0], LIMITS.darkness[1], d.darkness),
     saturationPct: inRange(raw.saturationPct, LIMITS.saturationPct[0], LIMITS.saturationPct[1], d.saturationPct),
+    renderIntent: raw.renderIntent === 'relativeColorimetric' ? 'relativeColorimetric' : d.renderIntent,
     ...(icc ? { iccProfilePath: icc } : {}),
   }
 }

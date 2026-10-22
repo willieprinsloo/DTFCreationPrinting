@@ -29,16 +29,25 @@ pub struct PreparedSource {
 }
 
 pub fn decode(path: &Path) -> Result<image::DynamicImage, EngineError> {
+    decode_with_profile(path).map(|(img, _)| img)
+}
+
+/// The image and the ICC profile embedded in it, if any.
+pub fn decode_with_profile(path: &Path) -> Result<(image::DynamicImage, Option<Vec<u8>>), EngineError> {
+    use image::ImageDecoder;
+    let de = |e: image::ImageError| EngineError::Decode(e.to_string());
     let mut reader = ImageReader::open(path)?;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_SIDE);
     limits.max_image_height = Some(MAX_SIDE);
     limits.max_alloc = Some(MAX_ALLOC);
-    reader.limits(limits);
-    reader
-        .with_guessed_format()?
-        .decode()
-        .map_err(|e| EngineError::Decode(e.to_string()))
+    reader.limits(limits.clone());
+    let mut decoder = reader.with_guessed_format()?.into_decoder().map_err(de)?;
+    // As `ImageReader::decode` does: refuse before allocating more than allowed.
+    limits.reserve(decoder.total_bytes()).map_err(de)?;
+    // A profile that can't be read only loses its colours, not the design.
+    let icc = decoder.icc_profile().ok().flatten();
+    Ok((image::DynamicImage::from_decoder(decoder).map_err(de)?, icc))
 }
 
 /// Bytes per pixel held at once: RGBA16 copy (8) + 4 ink planes, white and alpha (12).
@@ -46,8 +55,8 @@ pub const BYTES_PER_PX: u64 = 20;
 /// Most pixels one prepared source may have.
 pub const MAX_PREPARED_PX: u64 = MAX_ALLOC / BYTES_PER_PX;
 
-/// Decodes and prepares a source. Embedded source ICC profiles are ignored:
-/// the pixels are assumed to be sRGB.
+/// Decodes and prepares a source. An RGB colour profile embedded in the file (Adobe RGB,
+/// Display P3, ...) is used for its colours; without one the pixels are taken as sRGB.
 pub fn prepare(path: &Path, s: &ColourSettings, white_enabled: bool) -> Result<PreparedSource, EngineError> {
     prepare_with_budget(path, s, white_enabled, MAX_ALLOC)
 }
@@ -64,7 +73,7 @@ pub fn prepare_pdf(
     if w as u64 * h as u64 * BYTES_PER_PX > MAX_ALLOC {
         return Err(EngineError::Pdf(format!("design is too large to prepare ({w}\u{d7}{h} px)")));
     }
-    let conv = Converter::from_settings(s)?;
+    let conv = Converter::from_settings(s, None)?;
     let img = image::DynamicImage::ImageRgba8(crate::pdf::render_page(path, w, h)?);
     let rgba = img.to_rgba16();
     drop(img);
@@ -84,8 +93,8 @@ pub fn prepare_with_budget(
     if dw as u64 * dh as u64 * BYTES_PER_PX > budget {
         return Err(EngineError::Decode(format!("Design is too large to prepare ({dw}\u{d7}{dh} px)")));
     }
-    let conv = Converter::from_settings(s)?;
-    let img = decode(path)?;
+    let (img, icc) = decode_with_profile(path)?;
+    let conv = Converter::from_settings(s, icc)?;
     let has_alpha = img.color().has_alpha();
     // 8-bit inputs scale x257 to u16; 16-bit pass through.
     let rgba = img.to_rgba16();
@@ -330,5 +339,63 @@ mod tests {
         let s = ColourSettings { icc_profile_path: Some(bad), ..Default::default() };
         let r = prepare(&rgba_png(d.path(), [0, 0, 0, 255]), &s, true);
         assert!(matches!(r, Err(EngineError::Icc(_))));
+    }
+
+    /// Adobe RGB (1998): its green and red reach further than sRGB's.
+    #[cfg(feature = "icc")]
+    fn adobe_rgb() -> Vec<u8> {
+        use lcms2::{CIExyY, CIExyYTRIPLE, Profile, ToneCurve};
+        let xy = |x, y| CIExyY { x, y, Y: 1.0 };
+        let primaries = CIExyYTRIPLE { Red: xy(0.64, 0.33), Green: xy(0.21, 0.71), Blue: xy(0.15, 0.06) };
+        let g = ToneCurve::new(563.0 / 256.0);
+        Profile::new_rgb(&xy(0.3127, 0.3290), &primaries, &[&g, &g, &g]).unwrap().icc().unwrap()
+    }
+
+    fn png_with_profile(dir: &Path, px: [u8; 4], icc: Option<Vec<u8>>) -> std::path::PathBuf {
+        use image::ImageEncoder;
+        let p = dir.join("p.png");
+        let mut enc = image::codecs::png::PngEncoder::new(std::fs::File::create(&p).unwrap());
+        if let Some(icc) = icc {
+            enc.set_icc_profile(icc).unwrap();
+        }
+        let raw: Vec<u8> = [px; 4].concat();
+        enc.write_image(&raw, 2, 2, image::ExtendedColorType::Rgba8).unwrap();
+        p
+    }
+
+    #[cfg(feature = "icc")]
+    #[test]
+    fn embedded_rgb_profile_is_used() {
+        let d = tempfile::tempdir().unwrap();
+        let px = [40, 160, 60, 255];
+        let s = ColourSettings::default();
+        let plain = inks(&prepare(&png_with_profile(d.path(), px, None), &s, true).unwrap());
+        let adobe = inks(&prepare(&png_with_profile(d.path(), px, Some(adobe_rgb())), &s, true).unwrap());
+        // The same numbers mean a stronger green in Adobe RGB, so more cyan and yellow.
+        assert!(adobe[1] > plain[1] + 1000 && adobe[3] > plain[3] + 1000, "{plain:?} vs {adobe:?}");
+        let srgb = lcms2::Profile::new_srgb().icc().unwrap();
+        let tagged = inks(&prepare(&png_with_profile(d.path(), px, Some(srgb)), &s, true).unwrap());
+        assert!(tagged.iter().zip(plain).all(|(a, b)| a.abs_diff(b) < 400), "{plain:?} vs {tagged:?}");
+    }
+
+    #[test]
+    fn unusable_embedded_profile_is_ignored() {
+        let d = tempfile::tempdir().unwrap();
+        let px = [40, 160, 60, 255];
+        let s = ColourSettings::default();
+        let plain = inks(&prepare(&png_with_profile(d.path(), px, None), &s, true).unwrap());
+        let junk = inks(&prepare(&png_with_profile(d.path(), px, Some(b"not a profile".to_vec())), &s, true).unwrap());
+        assert_eq!(junk, plain);
+    }
+
+    #[cfg(feature = "icc")]
+    #[test]
+    fn only_rgb_profiles_are_taken_from_the_design() {
+        use crate::colour::Converter;
+        let s = ColourSettings::default();
+        assert!(Converter::from_settings(&s, Some(adobe_rgb())).unwrap().uses_source_profile());
+        let lab = lcms2::Profile::new_lab4_context(lcms2::GlobalContext::new(), &Default::default()).unwrap();
+        assert!(!Converter::from_settings(&s, Some(lab.icc().unwrap())).unwrap().uses_source_profile());
+        assert!(!Converter::from_settings(&s, None).unwrap().uses_source_profile());
     }
 }

@@ -111,6 +111,16 @@ fn failure_text(lines: &[String]) -> String {
     }
 }
 
+fn save_png(img: &image::RgbaImage, icc: Option<Vec<u8>>, path: &Path) -> image::ImageResult<()> {
+    use image::ImageEncoder;
+    let mut enc = image::codecs::png::PngEncoder::new(std::io::BufWriter::new(fs::File::create(path)?));
+    if let Some(icc) = icc {
+        // PNG can hold any profile; if this one is refused the design keeps sRGB colours.
+        let _ = enc.set_icc_profile(icc);
+    }
+    enc.write_image(img.as_raw(), img.width(), img.height(), image::ExtendedColorType::Rgba8)
+}
+
 /// Enlarges `src` to exactly `want` pixels into `<cache>/<hash>.png` and returns its path (at
 /// once if it was made before). `cancel` is polled while the upscaler runs.
 pub fn upscale(
@@ -128,7 +138,8 @@ pub fn upscale(
     if dest.exists() {
         return Ok(dest);
     }
-    let img = dtf_engine::source::decode(src).map_err(|e| e.to_string())?;
+    // The design's colour profile is put back on the result so it prints with the same colours.
+    let (img, icc) = dtf_engine::source::decode_with_profile(src).map_err(|e| e.to_string())?;
     let factor = check_size((img.width(), img.height()), want)?;
     let (model, scale) = model_for(kind, factor);
 
@@ -197,7 +208,7 @@ pub fn upscale(
         image::imageops::resize(&up, want.0, want.1, FilterType::Lanczos3)
     };
     let tmp = work.0.join("result.png");
-    up.save(&tmp).map_err(|e| format!("Could not save the enhanced design: {e}"))?;
+    save_png(&up, icc, &tmp).map_err(|e| format!("Could not save the enhanced design: {e}"))?;
     fs::rename(&tmp, &dest).map_err(|e| format!("Could not save the enhanced design: {e}"))?;
     on_progress(1.0);
     Ok(dest)
@@ -283,6 +294,20 @@ mod tests {
         assert!(check_size((100, 50), (100, 50)).unwrap_err().contains("enough pixels"));
         assert!(check_size((100, 50), (500, 250)).unwrap_err().contains("at most 4x"));
         assert!(check_size((9000, 9000), (36000, 36000)).unwrap_err().contains("too large"));
+    }
+
+    #[test]
+    fn the_result_keeps_the_design_colour_profile() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("r.png");
+        let img = image::RgbaImage::from_pixel(4, 4, image::Rgba([10, 200, 30, 255]));
+        let icc = b"profile bytes".to_vec();
+        save_png(&img, Some(icc.clone()), &p).unwrap();
+        let (back, got) = dtf_engine::source::decode_with_profile(&p).unwrap();
+        assert_eq!(got, Some(icc));
+        assert_eq!(back.to_rgba8(), img);
+        save_png(&img, None, &p).unwrap();
+        assert_eq!(dtf_engine::source::decode_with_profile(&p).unwrap().1, None);
     }
 
     #[test]
