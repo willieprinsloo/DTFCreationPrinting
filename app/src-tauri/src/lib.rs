@@ -10,6 +10,7 @@ mod send;
 mod sheet_files;
 mod thumbs;
 mod upscale;
+mod web;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,6 +46,7 @@ pub fn run() {
             prn::cancel_prn,
             prn::reveal_in_folder,
             send::send_prn,
+            web::open_website,
             sheet_files::write_sheet_file,
             sheet_files::read_sheet_file,
             upscale::upscale_asset,

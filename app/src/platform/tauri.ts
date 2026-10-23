@@ -153,6 +153,11 @@ export function sendPrn(path: string, host: string, onProgress: (fraction: numbe
   }
 }
 
+/** Opens a DTF Creations page in the default browser (only the shop's own site). */
+export function openWebsite(url: string): Promise<void> {
+  return invoke<void>('open_website', { url })
+}
+
 /** Opens Finder / Explorer with the file selected. */
 export function revealInFolder(path: string): Promise<void> {
   return invoke<void>('reveal_in_folder', { path })

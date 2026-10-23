@@ -40,6 +40,8 @@ export interface ItemNodeProps {
   onDragMove(item: SheetItem, e: Konva.KonvaEventObject<DragEvent>): void
   onDragEnd(item: SheetItem, node: Konva.Group): void
   onTransformEnd(item: SheetItem, node: Konva.Group): void
+  /** Double-click: open the design's page on DTF Creations. */
+  onOpen?(item: SheetItem): void
 }
 
 /** An item drawn in sheet millimetres: group at the item centre, rotated, image offset by half its size. */
@@ -54,6 +56,7 @@ export function ItemNode({
   onDragMove,
   onDragEnd,
   onTransformEnd,
+  onOpen,
 }: ItemNodeProps) {
   const preview = usePreviewImage(item.asset.previewPath)
   const w = item.widthMm
@@ -66,6 +69,8 @@ export function ItemNode({
       rotation={item.rotationDeg}
       draggable={draggable}
       onMouseDown={(e) => onSelect(item.id, e)}
+      onDblClick={() => onOpen?.(item)}
+      onDblTap={() => onOpen?.(item)}
       onDragMove={(e) => onDragMove(item, e)}
       onDragEnd={(e) => onDragEnd(item, e.currentTarget as Konva.Group)}
       onTransformEnd={(e) => onTransformEnd(item, e.currentTarget as Konva.Group)}

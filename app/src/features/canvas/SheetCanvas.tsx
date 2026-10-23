@@ -3,7 +3,7 @@ import { useTheme } from '../../state/theme'
 import { Layer, Line, Rect, Shape, Stage, Text, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
-import { DEFAULT_PROFILE, useSettings } from '../../state/settingsStore'
+import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
 import { FILM_COLOURS, filmShadeFor } from '../../domain/theme'
 import { findProblems, itemBounds, printableArea, displayLengthMm, sizeAfterTransform } from '../../domain/geometry'
 import { itemQuality } from '../../domain/dpi'
@@ -11,6 +11,8 @@ import { snapPosition } from '../../domain/snapping'
 import type { DpiStatus, Rect as MmRect, Sheet, SheetItem } from '../../domain/types'
 import { screenToSheet } from '../../domain/viewport'
 import { ItemNode } from './ItemNode'
+import { editPageUrl } from '../../domain/editLink'
+import { openWebsite } from '../../platform/tauri'
 import { Rulers } from './Rulers'
 import { stepItemSize } from '../properties/changeSize'
 import { shortcutFor } from './shortcuts'
@@ -288,6 +290,12 @@ export function SheetCanvas() {
     })
   }, [queuePatch])
 
+  /** Double-click a design: edit it on DTF Creations (products, catalogue designs, orders). */
+  const openEditPage = useCallback((item: SheetItem) => {
+    const url = editPageUrl(item.source, getSettingsStore().getState().apiBaseUrl)
+    if (url) void openWebsite(url).catch(() => {})
+  }, [])
+
   const onTransformEnd = useCallback((item: SheetItem, node: Konva.Group) => {
     const { widthMm, heightMm } = sizeAfterTransform(item, node.scaleX())
     node.scale({ x: 1, y: 1 })
@@ -444,6 +452,7 @@ export function SheetCanvas() {
                 onDragMove={onDragMove}
                 onDragEnd={onDragEnd}
                 onTransformEnd={onTransformEnd}
+                onOpen={openEditPage}
               />
             ))}
             <Transformer
