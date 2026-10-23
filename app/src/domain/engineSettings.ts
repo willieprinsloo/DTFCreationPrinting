@@ -156,3 +156,18 @@ export function curveFromThree(pct: [number, number, number]): [number, number][
   if (pct.every((v, i) => Math.abs(v - CURVE_X[i] * 100) < 1e-9)) return []
   return CURVE_X.map((x, i) => [x, Math.round(pct[i] * 100) / 10000] as [number, number])
 }
+
+/** The colour settings a print will use, in plain words, and a warning when the ink will be much heavier than Maintop's. */
+export function describeColour(s: EngineSettings): { text: string; warning: string | null } {
+  const icc = s.iccProfilePath?.split(/[\\/]/).pop()
+  const curves = (['K', 'C', 'M', 'Y'] as const).some((k) => (s.dotGain[k] ?? []).length > 0)
+  const parts = [
+    icc ? `colour profile ${icc}${s.iccGridPoints === 26 ? ' (like Maintop)' : ''}` : 'built-in colour model (no colour profile)',
+    curves ? 'ink curves set' : 'no ink curves',
+    `ink limit ${s.inkLimitPct} %`,
+  ]
+  const warning = curves
+    ? null
+    : 'No ink curves are set, so this prints with much more ink (darker) than Maintop. Use Settings › Ink & colour › Match Maintop to set them.'
+  return { text: parts.join(' · '), warning }
+}

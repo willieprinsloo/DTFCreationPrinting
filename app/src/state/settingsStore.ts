@@ -5,7 +5,7 @@ import { DEFAULT_THRESHOLDS } from '../domain/dpi'
 import { createTauriStore, type KeyValueStore } from './persist'
 import { DEFAULT_LIBRARY_PREFS, mergeLibraryPrefs, type LibraryPrefs, type LibraryPrefsPatch } from './libraryPrefs'
 import { DEFAULT_ENGINE_SETTINGS, sanitizeEngineSettings } from '../domain/engineSettings'
-import { isThemeChoice, type ThemeChoice } from '../domain/theme'
+import { isFilmShade, isThemeChoice, type FilmShade, type ThemeChoice } from '../domain/theme'
 import { DEFAULT_PRINT_SIZES, ONE_SIZE, isValidWidth, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
 
 export { DEFAULT_LIBRARY_PREFS }
@@ -69,6 +69,8 @@ export interface SettingsData {
   printSizesSync: PrintSizesSync
   /** Light or dark look; `system` follows the computer. */
   theme: ThemeChoice
+  /** The film behind the designs: white, or dark to see white and pale designs. */
+  filmShade: FilmShade
   loaded: boolean
 }
 
@@ -102,6 +104,7 @@ export interface SettingsActions {
   applyServerPrintSizes(server: Omit<PrintSizes, 'defaultSize'>, pushedTypes: string[]): Promise<void>
   markPrintSizesImported(): Promise<void>
   setTheme(theme: ThemeChoice): Promise<void>
+  setFilmShade(shade: FilmShade): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
@@ -123,6 +126,7 @@ function defaults(): SettingsData {
     printSizes: DEFAULT_PRINT_SIZES,
     printSizesSync: DEFAULT_PRINT_SIZES_SYNC,
     theme: 'system',
+    filmShade: 'light',
     loaded: false,
   }
 }
@@ -144,6 +148,7 @@ export function createSettingsStore(kv: KeyValueStore) {
         merged.printSizes = sanitizePrintSizes(saved?.printSizes)
         merged.printSizesSync = sanitizeSync(saved?.printSizesSync)
         if (!isThemeChoice(merged.theme)) merged.theme = 'system'
+        if (!isFilmShade(merged.filmShade)) merged.filmShade = 'light'
         merged.profiles = Array.isArray(merged.profiles) ? merged.profiles.map(sanitizeProfile) : []
         if (merged.profiles.length === 0) merged.profiles = [DEFAULT_PROFILE]
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
@@ -222,6 +227,7 @@ export function createSettingsStore(kv: KeyValueStore) {
         })
       },
       setTheme: (theme) => commit({ theme: isThemeChoice(theme) ? theme : 'system' }),
+      setFilmShade: (shade) => commit({ filmShade: isFilmShade(shade) ? shade : 'light' }),
       markPrintSizesImported: () => commit({ printSizesSync: { ...get().printSizesSync, imported: true } }),
     }
   })
@@ -242,6 +248,7 @@ function pickData(s: SettingsState): SettingsData {
     printSizes: s.printSizes,
     printSizesSync: s.printSizesSync,
     theme: s.theme,
+    filmShade: s.filmShade,
     loaded: s.loaded,
   }
 }

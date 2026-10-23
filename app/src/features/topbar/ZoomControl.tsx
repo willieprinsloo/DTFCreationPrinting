@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, Moon, Plus, Sun } from 'lucide-react'
 import { useViewport } from '../canvas/useViewport'
-import { useSettings } from '../../state/settingsStore'
+import { getSettingsStore, useSettings } from '../../state/settingsStore'
 
 const STEP = 1.25
 
@@ -11,6 +11,7 @@ export function ZoomControl() {
   const screenPxPerMm = useSettings((s) => s.screenPxPerMm)
   const percent = Math.round((vp.scale / screenPxPerMm) * 100)
   const [draft, setDraft] = useState<string | null>(null)
+  const dark = useSettings((s) => s.filmShade) === 'dark'
 
   const commit = () => {
     if (draft === null) return
@@ -41,6 +42,16 @@ export function ZoomControl() {
       </button>
       <button type="button" onClick={() => fit()}>Fit</button>
       <button type="button" onClick={() => trueSize()}>1:1</button>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label={dark ? 'Show the film white' : 'Show the film dark'}
+        title={dark ? 'Show the film white' : 'Show the film dark (to see white and pale designs)'}
+        aria-pressed={dark}
+        onClick={() => void getSettingsStore().getState().setFilmShade(dark ? 'light' : 'dark')}
+      >
+        {dark ? <Sun size={14} /> : <Moon size={14} />}
+      </button>
     </div>
   )
 }

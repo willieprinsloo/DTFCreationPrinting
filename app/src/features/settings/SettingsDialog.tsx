@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { THEME_CHOICES, type ThemeChoice } from '../../domain/theme'
+import { useCallback, useRef, useState } from 'react'
+import { THEME_CHOICES, type FilmShade, type ThemeChoice } from '../../domain/theme'
 import type { PrinterProfile } from '../../domain/types'
 import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
 import { MIN_PREVIEW_LENGTH_FLOOR_MM, getSettingsStore, useSettings } from '../../state/settingsStore'
 import type { SettingsTab } from '../../state/uiStore'
-import { EngineSettings } from './EngineSettings'
+import { EngineSettings, type SavePending } from './EngineSettings'
 import { PrintSizesPanel } from './PrintSizesPanel'
 import { ScreenCalibration } from './ScreenCalibration'
 
@@ -176,6 +176,8 @@ const THEME_LABELS: Record<ThemeChoice, string> = { system: 'Same as this comput
 /** Applies as soon as it is picked (no Save needed). */
 function Appearance() {
   const theme = useSettings((s) => s.theme)
+  const filmShade = useSettings((s) => s.filmShade)
+  const shades: Array<[FilmShade, string]> = [['light', 'White'], ['dark', 'Dark']]
   return (
     <section className="settings-section">
       <h3>Appearance</h3>
@@ -186,7 +188,15 @@ function Appearance() {
           </button>
         ))}
       </div>
-      <Help>The film always shows white, so you can judge the colours of your designs.</Help>
+      <h4>Film behind the designs</h4>
+      <div className="seg" role="group" aria-label="Film behind the designs">
+        {shades.map(([s, label]) => (
+          <button key={s} type="button" aria-pressed={filmShade === s} onClick={() => void getSettingsStore().getState().setFilmShade(s)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <Help>White shows colours as they look on a white garment. Dark makes white and pale designs easy to see. Also on the moon / sun button next to the zoom. Only changes the screen, not the print.</Help>
     </section>
   )
 }
@@ -285,6 +295,15 @@ function GeneralPanel() {
 
 export function SettingsDialog({ initialTab = 'printers', onClose }: Props) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
+  /** Unsaved ink & colour changes are saved on the way out; a value that can't be saved keeps the page open. */
+  const pending = useRef<SavePending | null>(null)
+  const onPending = useCallback((save: SavePending | null) => {
+    pending.current = save
+  }, [])
+  const leave = async (then: () => void) => {
+    if (pending.current && !(await pending.current())) return
+    then()
+  }
 
   return (
     <div className="dialog-backdrop">
@@ -292,19 +311,19 @@ export function SettingsDialog({ initialTab = 'printers', onClose }: Props) {
         <h2 id="settings-title">Settings</h2>
         <div className="settings-tabs" role="tablist" aria-label="Settings pages">
           {TABS.map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => void leave(() => setTab(id))}>
               {label}
             </button>
           ))}
         </div>
 
         {tab === 'printers' && <PrintersPanel />}
-        {tab === 'printer-ink' && <EngineSettings />}
+        {tab === 'printer-ink' && <EngineSettings onPending={onPending} />}
         {tab === 'print-sizes' && <PrintSizesPanel />}
         {tab === 'general' && <GeneralPanel />}
 
         <div className="dialog-actions">
-          <button type="button" className="primary" onClick={onClose}>
+          <button type="button" className="primary" onClick={() => void leave(onClose)}>
             Done
           </button>
         </div>

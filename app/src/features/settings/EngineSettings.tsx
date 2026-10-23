@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { open, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { DotGain, EngineSettings as Engine, InkChannel, PrinterProfile } from '../../domain/types'
-import { MAINTOP_6PASS_PRESET, curveFromThree, curveToThree, isDetailedCurve, validateEngineSettings } from '../../domain/engineSettings'
+import { MAINTOP_6PASS_PRESET, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from '../../domain/engineSettings'
 import { createChartPrn } from '../../platform/tauri'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 
@@ -61,7 +61,18 @@ function ToneSlider({ label, left, right, min, max, value, neutral, describe, on
 const describeDarkness = (v: number) => (v === 0 ? 'Normal' : v < 0 ? `${-v}% lighter` : `${v}% darker`)
 const describeColour = (v: number) => (v === 100 ? 'Normal' : v < 100 ? `${100 - v}% less colour` : `${v - 100}% more colour`)
 
-function Editor({ profile }: { profile: PrinterProfile }) {
+/** Saves the page's changes when it is left; resolves false (and shows why) when they can't be saved. */
+export type SavePending = () => Promise<boolean>
+
+/** Same value regardless of key order, for telling whether anything was changed. */
+const stable = (v: unknown): string =>
+  Array.isArray(v)
+    ? `[${v.map(stable).join(',')}]`
+    : v && typeof v === 'object'
+      ? `{${Object.keys(v).sort().map((k) => `${k}:${stable((v as Record<string, unknown>)[k])}`).join(',')}}`
+      : JSON.stringify(v)
+
+function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (save: SavePending | null) => void }) {
   const [order, setOrder] = useState<InkChannel[]>(profile.channelOrder)
   const [ink, setInk] = useState(String(profile.inkLimitPct))
   const [ucr, setUcr] = useState(String(profile.ucrPct))
@@ -150,21 +161,35 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     return validateEngineSettings(engine) ?? engine
   }
 
-  const save = async () => {
+  const save = async (): Promise<boolean> => {
     const engine = build()
     if (typeof engine === 'string') {
       setSaved(false)
-      return setError(engine)
+      setError(engine)
+      return false
     }
     const { iccProfilePath: _old, ...rest } = profile
     try {
       await getSettingsStore().getState().upsertProfile({ ...rest, ...engine })
       setError(null)
       setSaved(true)
+      return true
     } catch (e) {
       setError(`Could not save: ${errorText(e)}`)
+      return false
     }
   }
+
+  /** Leaving the page (Done, another tab or printer) keeps what was changed instead of dropping it. */
+  const saveIfChanged: SavePending = async () => {
+    const engine = build()
+    if (typeof engine !== 'string' && stable(engine) === stable(sanitizeEngineSettings(profile))) return true
+    return save()
+  }
+  useEffect(() => {
+    onPending?.(saveIfChanged)
+  })
+  useEffect(() => () => onPending?.(null), [onPending])
 
   const makeChart = async (kind: 'colour' | 'white') => {
     if (chartBusy.current) return
@@ -381,24 +406,36 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   )
 }
 
-export function EngineSettings() {
+export function EngineSettings({ onPending }: { onPending?: (save: SavePending | null) => void }) {
   const profiles = useSettings((s) => s.profiles)
   const activeId = useSettings((s) => s.activeProfileId)
   const [pickedId, setPickedId] = useState<string | null>(null)
   const profile = profiles.find((p) => p.id === (pickedId ?? activeId)) ?? profiles[0]
+  const pending = useRef<SavePending | null>(null)
+  const track = useCallback(
+    (save: SavePending | null) => {
+      pending.current = save
+      onPending?.(save)
+    },
+    [onPending],
+  )
+  const pick = async (id: string) => {
+    if (pending.current && !(await pending.current())) return
+    setPickedId(id)
+  }
   return (
     <>
       {profiles.length > 1 && (
         <label className="dialog-field">
           Settings for printer
-          <select value={profile.id} onChange={(e) => setPickedId(e.target.value)}>
+          <select value={profile.id} onChange={(e) => void pick(e.target.value)}>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </label>
       )}
-      <Editor key={profile.id} profile={profile} />
+      <Editor key={profile.id} profile={profile} onPending={track} />
     </>
   )
 }

@@ -4,6 +4,7 @@ import { Layer, Line, Rect, Shape, Stage, Text, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, useSettings } from '../../state/settingsStore'
+import { FILM_COLOURS } from '../../domain/theme'
 import { findProblems, itemBounds, printableArea, displayLengthMm, sizeAfterTransform } from '../../domain/geometry'
 import { itemQuality } from '../../domain/dpi'
 import { snapPosition } from '../../domain/snapping'
@@ -77,6 +78,7 @@ export function SheetCanvas() {
 
   const sheetW = sheet.settings.widthMm
   const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
+  const film = FILM_COLOURS[useSettings((s) => s.filmShade)]
   const sheetH = displayLengthMm(sheet, minPreviewLengthMm)
   const { vp } = useViewport(sheetW, sheetH)
 
@@ -375,9 +377,9 @@ export function SheetCanvas() {
           onContextMenu={(e) => e.evt.preventDefault()}
         >
           <Layer listening={false}>
-            <Rect x={0} y={0} width={sheetW} height={sheetH} fill="#ffffff" shadowColor="#000" shadowOpacity={0.15} shadowBlur={8} shadowForStrokeEnabled={false} />
+            <Rect x={0} y={0} width={sheetW} height={sheetH} fill={film.film} shadowColor="#000" shadowOpacity={0.15} shadowBlur={8} shadowForStrokeEnabled={false} />
             <Shape
-              stroke="rgba(28, 35, 48, 0.08)"
+              stroke={film.grid}
               strokeWidth={1}
               strokeScaleEnabled={false}
               sceneFunc={(ctx, shape) => {
@@ -394,15 +396,15 @@ export function SheetCanvas() {
               }}
             />
             {/* Margins as shaded bands */}
-            <Rect x={0} y={0} width={margins.leftMm} height={sheetH} fill="rgba(28,35,48,0.08)" />
-            <Rect x={sheetW - margins.rightMm} y={0} width={margins.rightMm} height={sheetH} fill="rgba(28,35,48,0.08)" />
-            <Rect x={margins.leftMm} y={0} width={sheetW - margins.leftMm - margins.rightMm} height={margins.topMm} fill="rgba(28,35,48,0.08)" />
+            <Rect x={0} y={0} width={margins.leftMm} height={sheetH} fill={film.margin} />
+            <Rect x={sheetW - margins.rightMm} y={0} width={margins.rightMm} height={sheetH} fill={film.margin} />
+            <Rect x={margins.leftMm} y={0} width={sheetW - margins.leftMm - margins.rightMm} height={margins.topMm} fill={film.margin} />
             <Rect
               x={margins.leftMm}
               y={sheetH - margins.bottomMm}
               width={sheetW - margins.leftMm - margins.rightMm}
               height={margins.bottomMm}
-              fill="rgba(28,35,48,0.08)"
+              fill={film.margin}
             />
             {!printable && <Rect x={0} y={0} width={sheetW} height={sheetH} fill="rgba(239,68,68,0.15)" />}
             {usedMm > 0 && (

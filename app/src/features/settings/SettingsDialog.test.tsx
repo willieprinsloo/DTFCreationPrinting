@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../state/persist', async (orig) => {
@@ -49,6 +49,51 @@ describe('Settings › Printers', () => {
   })
 })
 
+describe('Settings › Ink & colour', () => {
+  it('keeps changes when Done is pressed without Save (the colour profile stays removed)', async () => {
+    await store().upsertProfile({ ...DEFAULT_PROFILE, iccProfilePath: 'C:/driver/720x1800_6paaas.icm' })
+    const onClose = vi.fn()
+    const { unmount } = render(<SettingsDialog initialTab="printer-ink" onClose={onClose} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Remove colour profile' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(onClose).toHaveBeenCalled()
+    expect(store().profiles.find((p) => p.id === DEFAULT_PROFILE.id)?.iccProfilePath).toBeUndefined()
+    unmount()
+    render(<SettingsDialog initialTab="printer-ink" onClose={() => {}} />)
+    expect(screen.getByText(/No colour profile/)).toBeInTheDocument()
+  })
+
+  it('keeps changes when another tab is opened', async () => {
+    render(<SettingsDialog initialTab="printer-ink" onClose={() => {}} />)
+    const ink = screen.getByLabelText('Ink limit (%)')
+    await userEvent.clear(ink)
+    await userEvent.type(ink, '300')
+    await userEvent.click(screen.getByRole('tab', { name: 'General' }))
+    expect(store().profiles.find((p) => p.id === DEFAULT_PROFILE.id)?.inkLimitPct).toBe(300)
+  })
+
+  it('stays open and says why when a value cannot be saved', async () => {
+    const onClose = vi.fn()
+    render(<SettingsDialog initialTab="printer-ink" onClose={onClose} />)
+    const ink = screen.getByLabelText('Ink limit (%)')
+    await userEvent.clear(ink)
+    await userEvent.type(ink, '50')
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByText(/ink limit must be between 100 and 400/i)).toBeInTheDocument()
+    expect(store().profiles.find((p) => p.id === DEFAULT_PROFILE.id)?.inkLimitPct).toBe(DEFAULT_PROFILE.inkLimitPct)
+  })
+
+  it('closes without writing anything when nothing was changed', async () => {
+    const before = JSON.stringify(store().profiles)
+    const onClose = vi.fn()
+    render(<SettingsDialog initialTab="printer-ink" onClose={onClose} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(onClose).toHaveBeenCalled()
+    expect(JSON.stringify(store().profiles)).toBe(before)
+  })
+})
+
 describe('Settings › General', () => {
   it('saves quality warnings and empty sheet length with one button', async () => {
     render(<SettingsDialog initialTab="general" onClose={() => {}} />)
@@ -80,13 +125,25 @@ describe('Settings › General › Appearance', () => {
     const { installTheme } = await import('../../state/theme')
     installTheme()
     render(<SettingsDialog initialTab="general" onClose={() => {}} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Dark' }))
+    const look = within(screen.getByRole('group', { name: 'Appearance' }))
+    await userEvent.click(look.getByRole('button', { name: 'Dark' }))
     expect(store().theme).toBe('dark')
     expect(document.documentElement.dataset.theme).toBe('dark')
-    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
-    await userEvent.click(screen.getByRole('button', { name: 'Light' }))
+    expect(look.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(look.getByRole('button', { name: 'Light' }))
     expect(document.documentElement.dataset.theme).toBe('light')
-    await userEvent.click(screen.getByRole('button', { name: 'Same as this computer' }))
+    await userEvent.click(look.getByRole('button', { name: 'Same as this computer' }))
     expect(document.documentElement.dataset.theme).toBeUndefined()
+  })
+
+  it('shows the film dark or white, apart from the app look', async () => {
+    await store().setFilmShade('light')
+    render(<SettingsDialog initialTab="general" onClose={() => {}} />)
+    const film = within(screen.getByRole('group', { name: 'Film behind the designs' }))
+    await userEvent.click(film.getByRole('button', { name: 'Dark' }))
+    expect(store().filmShade).toBe('dark')
+    expect(film.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(film.getByRole('button', { name: 'White' }))
+    expect(store().filmShade).toBe('light')
   })
 })

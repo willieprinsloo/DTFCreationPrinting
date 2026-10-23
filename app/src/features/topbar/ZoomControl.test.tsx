@@ -21,6 +21,15 @@ describe('ZoomControl', () => {
     expect(screen.getByLabelText('Zoom percentage')).toHaveValue('100%')
   })
 
+  it('switches the film between white and dark', async () => {
+    getSettingsStore().setState({ filmShade: 'light' })
+    render(<ZoomControl />)
+    await userEvent.click(screen.getByRole('button', { name: 'Show the film dark' }))
+    expect(getSettingsStore().getState().filmShade).toBe('dark')
+    await userEvent.click(screen.getByRole('button', { name: 'Show the film white' }))
+    expect(getSettingsStore().getState().filmShade).toBe('light')
+  })
+
   it('typing 200 sets the zoom to twice true size', async () => {
     render(<ZoomControl />)
     const input = screen.getByLabelText('Zoom percentage')

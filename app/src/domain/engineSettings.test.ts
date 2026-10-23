@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_ENGINE_SETTINGS, MAINTOP_6PASS_PRESET, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from './engineSettings'
+import { DEFAULT_ENGINE_SETTINGS, MAINTOP_6PASS_PRESET, describeColour, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from './engineSettings'
 
 const d = DEFAULT_ENGINE_SETTINGS
 
@@ -99,6 +99,17 @@ describe('validateEngineSettings', () => {
   it('rejects a dot-gain curve that goes backwards', () => {
     const dotGain = { ...d.dotGain, C: [[0.25, 0.4], [0.5, 0.3], [0.75, 0.8]] as [number, number][] }
     expect(validateEngineSettings({ ...d, dotGain })).toMatch(/C curve/i)
+  })
+})
+
+describe('describeColour', () => {
+  it('names the profile and warns when no ink curves are set', () => {
+    const plain = describeColour(d)
+    expect(plain.text).toMatch(/built-in colour model/)
+    expect(plain.warning).toMatch(/darker/)
+    const maintop = describeColour({ ...d, ...MAINTOP_6PASS_PRESET, iccProfilePath: 'C:\\drv\\720x1800_6paaas.icm' })
+    expect(maintop.text).toBe('colour profile 720x1800_6paaas.icm (like Maintop) · ink curves set · ink limit 330 %')
+    expect(maintop.warning).toBeNull()
   })
 })
 
