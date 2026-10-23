@@ -40,6 +40,7 @@ pub struct ProfileDto {
     darkness: Option<f32>,
     saturation_pct: Option<f32>,
     render_intent: Option<RenderIntent>,
+    icc_grid_points: Option<u8>,
 }
 
 impl ProfileDto {
@@ -69,6 +70,7 @@ impl ProfileDto {
             darkness: self.darkness.unwrap_or(d.darkness).clamp(-100.0, 100.0),
             saturation_pct: self.saturation_pct.unwrap_or(d.saturation_pct).clamp(50.0, 150.0),
             render_intent: self.render_intent.unwrap_or(d.render_intent),
+            icc_grid_points: self.icc_grid_points.filter(|n| crate::colour::GRID_POINTS.contains(n)).unwrap_or(0),
         }
     }
 }

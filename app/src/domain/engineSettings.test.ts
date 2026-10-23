@@ -52,6 +52,14 @@ describe('sanitizeEngineSettings ranges', () => {
     expect(validateEngineSettings({ ...d, ucrStartPct: 99 })).toMatch(/start/i)
   })
 
+  it('keeps a colour table of 9 to 65 points and turns anything else off', () => {
+    expect(sanitizeEngineSettings({ ...d, iccGridPoints: 26 }).iccGridPoints).toBe(26)
+    for (const bad of [5, 100, 26.5, '26']) expect(sanitizeEngineSettings({ ...d, iccGridPoints: bad }).iccGridPoints).toBe(0)
+    const { iccGridPoints: _g, ...old } = d
+    expect(sanitizeEngineSettings(old).iccGridPoints).toBe(0)
+    expect(validateEngineSettings({ ...d, iccGridPoints: 4 })).toMatch(/colour table/i)
+  })
+
   it('falls back to the default for values that are not numbers', () => {
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: NaN }).inkLimitPct).toBe(d.inkLimitPct)
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)

@@ -25,6 +25,8 @@ export interface EngineSettings {
   saturationPct: number
   /** How out-of-range colours are fitted to the printer: squeezed (photos) or clipped (logos). */
   renderIntent: 'perceptual' | 'relativeColorimetric'
+  /** Convert through a table of the colour profile with this many points per axis, as Maintop does (26); 0 = exact. */
+  iccGridPoints: number
 }
 export interface PrinterProfile extends EngineSettings { id: string; name: string; widthMm: number; xDpi: number; yDpi: number; defaultMargins: Margins; defaultGapMm: number }
 export interface SheetSettings { widthMm: number; margins: Margins; gapMm: number; lengthMode: 'auto' | 'fixed'; fixedLengthMm: number; mirror: boolean; whiteEnabled: boolean; allowRotate: boolean }

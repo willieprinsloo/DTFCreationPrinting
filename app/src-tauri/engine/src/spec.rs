@@ -58,6 +58,9 @@ pub struct EngineSettings {
     pub saturation_pct: f32,
     #[serde(default)]
     pub render_intent: RenderIntent,
+    /// See `ColourSettings::grid_points` (0 = exact).
+    #[serde(default)]
+    pub icc_grid_points: u8,
 }
 
 fn default_saturation_pct() -> f32 {
@@ -82,6 +85,7 @@ impl Default for EngineSettings {
             darkness: 0.0,
             saturation_pct: 100.0,
             render_intent: RenderIntent::default(),
+            icc_grid_points: 0,
         }
     }
 }
@@ -93,6 +97,7 @@ impl From<&EngineSettings> for ColourSettings {
             icc_profile_path: s.icc_profile_path.clone(),
             tone: crate::colour::Tone { darkness: s.darkness / 100.0, saturation: s.saturation_pct / 100.0 },
             intent: s.render_intent,
+            grid_points: s.icc_grid_points,
         }
     }
 }

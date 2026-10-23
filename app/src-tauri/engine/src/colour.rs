@@ -12,11 +12,75 @@ pub struct ColourSettings {
     pub icc_profile_path: Option<PathBuf>,
     pub tone: Tone,
     pub intent: RenderIntent,
+    /// Convert through a table of the ICC profile with this many points per R, G and B axis,
+    /// blending the 8 nearest (trilinear), as Maintop does with 26; 0 = convert every colour
+    /// exactly. See `GridTable`.
+    pub grid_points: u8,
 }
 
 impl Default for ColourSettings {
     fn default() -> Self {
-        Self { white_density_pct: 100.0, icc_profile_path: None, tone: Tone::default(), intent: RenderIntent::default() }
+        Self { white_density_pct: 100.0, icc_profile_path: None, tone: Tone::default(), intent: RenderIntent::default(), grid_points: 0 }
+    }
+}
+
+/// Fewest and most table points per axis (`ColourSettings::grid_points`).
+pub const GRID_POINTS: std::ops::RangeInclusive<u8> = 9..=65;
+
+/// An RGB -> K,C,M,Y table of the ICC profile, `n` points per axis, read by trilinear
+/// interpolation. Maintop's 700DTF output is the profile sampled on 26 points this way (its
+/// `printX.mcm` holds the same numbers), which differs from converting each colour exactly by
+/// a few percent in the darkest colours.
+#[derive(Debug)]
+pub struct GridTable {
+    n: usize,
+    /// K, C, M, Y per node, index `(r * n + g) * n + b`.
+    nodes: Vec<[u16; 4]>,
+}
+
+impl GridTable {
+    /// Samples `convert` (16-bit RGB row -> K,C,M,Y row) at every node.
+    pub fn sample(n: usize, convert: impl FnOnce(&[u16], &mut [[u16; 4]])) -> Self {
+        let at = |i: usize| ((i as f64 * 65535.0 / (n - 1) as f64).round()) as u16;
+        let mut rgb = Vec::with_capacity(n * n * n * 3);
+        for r in 0..n {
+            for g in 0..n {
+                for b in 0..n {
+                    rgb.extend([at(r), at(g), at(b)]);
+                }
+            }
+        }
+        let mut nodes = vec![[0u16; 4]; n * n * n];
+        convert(&rgb, &mut nodes);
+        Self { n, nodes }
+    }
+
+    pub fn lookup(&self, px: [u16; 3]) -> [u16; 4] {
+        let n = self.n;
+        let top = (n - 2) as f32;
+        let mut i = [0usize; 3];
+        let mut f = [0f32; 3];
+        for c in 0..3 {
+            let p = px[c] as f32 / 65535.0 * (n - 1) as f32;
+            let base = p.floor().min(top);
+            i[c] = base as usize;
+            f[c] = p - base;
+        }
+        let node = |dr: usize, dg: usize, db: usize| &self.nodes[((i[0] + dr) * n + i[1] + dg) * n + i[2] + db];
+        let mut out = [0f32; 4];
+        for (dr, wr) in [(0, 1.0 - f[0]), (1, f[0])] {
+            for (dg, wg) in [(0, 1.0 - f[1]), (1, f[1])] {
+                for (db, wb) in [(0, 1.0 - f[2]), (1, f[2])] {
+                    let w = wr * wg * wb;
+                    if w > 0.0 {
+                        for (o, v) in out.iter_mut().zip(node(dr, dg, db)) {
+                            *o += w * *v as f32;
+                        }
+                    }
+                }
+            }
+        }
+        out.map(|v| v.round().clamp(0.0, 65535.0) as u16)
     }
 }
 
@@ -105,6 +169,8 @@ pub struct Converter {
     source: Option<Arc<Vec<u8>>>,
     #[cfg_attr(not(feature = "icc"), allow(dead_code))]
     intent: RenderIntent,
+    /// Built once from the ICC profile when `grid_points` asks for a table.
+    grid: Option<Arc<GridTable>>,
 }
 
 pub enum Instance {
@@ -115,6 +181,7 @@ pub enum Instance {
     },
     #[cfg(feature = "icc")]
     Icc(lcms2::Transform<[u16; 3], [u16; 4]>),
+    Grid(Arc<GridTable>),
 }
 
 /// True when `icc` is a usable RGB profile. The decoders hand over RGB pixels, so a CMYK
@@ -132,12 +199,17 @@ fn is_rgb_profile(_: &[u8]) -> bool {
 impl Converter {
     /// `source_icc` is the profile embedded in the design, if any.
     pub fn from_settings(s: &ColourSettings, source_icc: Option<Vec<u8>>) -> Result<Self, EngineError> {
-        let c = Converter {
+        let mut c = Converter {
             output: s.icc_profile_path.clone(),
             source: source_icc.filter(|p| is_rgb_profile(p)).map(Arc::new),
             intent: s.intent,
+            grid: None,
         };
-        c.instance()?; // fail early on a bad profile
+        let exact = c.instance()?; // fail early on a bad profile
+        if c.output.is_some() && GRID_POINTS.contains(&s.grid_points) {
+            let table = GridTable::sample(s.grid_points as usize, |rgb, out| exact.convert(rgb, out));
+            c.grid = Some(Arc::new(table));
+        }
         Ok(c)
     }
 
@@ -147,6 +219,9 @@ impl Converter {
     }
 
     pub fn instance(&self) -> Result<Instance, EngineError> {
+        if let Some(g) = &self.grid {
+            return Ok(Instance::Grid(g.clone()));
+        }
         #[cfg(feature = "icc")]
         {
             use lcms2::*;
@@ -209,6 +284,11 @@ impl Instance {
                     *o = [c[3], c[0], c[1], c[2]]; // CMYK -> K,C,M,Y
                 }
             }
+            Instance::Grid(g) => {
+                for (px, o) in rgb.chunks_exact(3).zip(out.iter_mut()) {
+                    *o = g.lookup([px[0], px[1], px[2]]);
+                }
+            }
         }
     }
 }
@@ -251,6 +331,26 @@ mod tests {
         assert!(spread(more.apply(RED)) > spread(RED));
         assert!(spread(less.apply(RED)) < spread(RED));
         assert_eq!(more.apply(MID), MID);
+    }
+
+    #[test]
+    fn grid_table_hits_its_nodes_and_blends_between_them() {
+        // A made-up conversion with a curve, so blending differs from converting exactly.
+        let f = |v: [u16; 3]| [v[0] / 2, v[1], (v[2] as u32 * v[2] as u32 / 65535) as u16, 7];
+        let t = GridTable::sample(26, |rgb, out| {
+            for (p, o) in rgb.chunks_exact(3).zip(out.iter_mut()) {
+                *o = f([p[0], p[1], p[2]]);
+            }
+        });
+        let node = |i: u32| (i * 65535 / 25) as u16; // exact for i = 0, 5, 10, ...
+        assert_eq!(t.lookup([node(5), node(10), node(25)]), f([node(5), node(10), node(25)]));
+        assert_eq!(t.lookup([65535; 3]), f([65535; 3]));
+        // Halfway between the first two nodes on the blue axis: their average, not the exact value.
+        let first = (65535.0f64 / 25.0).round() as u16;
+        let mid = t.lookup([0, 0, first / 2]);
+        assert_eq!(mid[2], (f([0, 0, first])[2] as f32 / 2.0).round() as u16);
+        assert_ne!(mid[2], f([0, 0, first / 2])[2]);
+        assert_eq!(mid[3], 7);
     }
 
     #[test]

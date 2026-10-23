@@ -75,6 +75,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
   const [darkness, setDarkness] = useState(profile.darkness)
   const [saturation, setSaturation] = useState(profile.saturationPct)
   const [intent, setIntent] = useState(profile.renderIntent)
+  const [grid, setGrid] = useState(profile.iccGridPoints)
   const [curves, setCurves] = useState<Record<InkChannel, string[]>>(() => threeBoxes(profile.dotGain))
   /** Curves with more detail than the three boxes, kept as they are until a box for that ink is edited. */
   const [detailed, setDetailed] = useState<Partial<DotGain>>(() => detailedOnly(profile.dotGain))
@@ -113,6 +114,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     setInk(String(p.inkLimitPct))
     setUcr(String(p.ucrPct))
     setUcrStart(String(p.ucrStartPct))
+    setGrid(p.iccGridPoints)
     setDensity(String(p.whiteDensityPct))
     setChoke(String(p.whiteChokeMm))
     setEdgeSteps(p.whiteEdgeSteps)
@@ -142,6 +144,7 @@ function Editor({ profile }: { profile: PrinterProfile }) {
       darkness,
       saturationPct: saturation,
       renderIntent: intent,
+      iccGridPoints: grid,
       ...(icc ? { iccProfilePath: icc } : {}),
     }
     return validateEngineSettings(engine) ?? engine
@@ -292,6 +295,17 @@ function Editor({ profile }: { profile: PrinterProfile }) {
             </select>
           </label>
           <Help>Bright greens, blues and oranges on screen can be brighter than the ink can print. The first choice softens all colours a little so shades stay apart; the second prints the colours the ink can reach exactly and the rest as close as it can. Used with a colour profile. Designs saved with their own colour profile (Adobe RGB, Display P3) are printed with it.</Help>
+        </div>
+        <div>
+          <label className="dialog-field">
+            Colour conversion
+            <select value={grid} onChange={(e) => { setGrid(Number(e.target.value)); touch() }}>
+              <option value={0}>Exact</option>
+              <option value={26}>Like Maintop (26-point table)</option>
+              {grid !== 0 && grid !== 26 && <option value={grid}>{grid}-point table</option>}
+            </select>
+          </label>
+          <Help>Maintop doesn't work out every colour from the profile: it looks colours up in a table of the profile and blends between its points. That changes the darkest colours by a few percent. Choose "Like Maintop" with Maintop's profile to print the same ink as Maintop. Used with a colour profile.</Help>
         </div>
       </section>
 
