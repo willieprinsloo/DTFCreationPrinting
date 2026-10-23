@@ -71,6 +71,9 @@ export function profileName(path: string | undefined): string | undefined {
   return path.split(/[\\/]/).pop()
 }
 
+/** True when black, cyan, magenta or yellow has an ink curve (without curves prints come out far too heavy). */
+export const hasInkCurves = (s: EngineSettings) => (['K', 'C', 'M', 'Y'] as const).some((k) => (s.dotGain[k] ?? []).length > 0)
+
 /**
  * True for printer settings nobody has changed from the old plain defaults (no colour profile,
  * no curves): those are moved to the Maintop defaults once.

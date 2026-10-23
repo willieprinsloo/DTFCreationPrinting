@@ -37,8 +37,7 @@ struct SheetDto {
 #[serde(rename_all = "camelCase")]
 struct SheetSettingsDto {
     width_mm: f64,
-    mirror: bool,
-    // whiteEnabled in saved sheets is ignored: white is always printed.
+    // mirror and whiteEnabled in saved sheets are ignored: prints are always mirrored with white.
 }
 
 #[derive(Deserialize)]
@@ -98,7 +97,9 @@ pub fn job_from_sheet(sheet_json: &str, profile_json: &str) -> Result<JobSpec, S
         width_mm: sheet.settings.width_mm,
         x_dpi,
         y_dpi,
-        mirror: sheet.settings.mirror,
+        // DTF film is printed on its back, so the print is always mirrored; saved sheets'
+        // mirror flags (older sheets could turn it off) are ignored.
+        mirror: true,
         // White underbase is always printed; saved sheets' white flags are ignored.
         white_enabled: true,
         items: sheet
@@ -337,6 +338,9 @@ mod tests {
         assert_eq!(job.width_mm, 580.0);
         assert_eq!((job.x_dpi, job.y_dpi), (720, 1800));
         assert!(job.mirror);
+        let unmirrored = SHEET.replace(r#""mirror": true"#, r#""mirror": false"#);
+        assert!(unmirrored.contains(r#""mirror": false"#));
+        assert!(job_from_sheet(&unmirrored, PROFILE).unwrap().mirror, "always mirrored");
         // white is always printed, even though the saved sheet has it off
         assert!(job.white_enabled);
         assert_eq!(job.items.len(), 2);

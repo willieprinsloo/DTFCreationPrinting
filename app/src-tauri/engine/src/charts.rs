@@ -101,7 +101,8 @@ fn white_chart_in(dir: &Path, out: &Path, width_mm: f64, x_dpi: u32, y_dpi: u32,
                 width_mm: CELL_W_MM,
                 x_dpi,
                 y_dpi,
-                mirror: false,
+                // Mirrored like every print, so the chart reads the right way round on the shirt.
+                mirror: true,
                 white_enabled: true,
                 settings: EngineSettings { white_density_pct: density, white_choke_mm: choke, ..base.clone() },
                 items: vec![ItemSpec {
@@ -329,7 +330,8 @@ fn colour_chart_in(dir: &Path, out: &Path, png: Option<&Path>, width_mm: f64, x_
         width_mm,
         x_dpi,
         y_dpi,
-        mirror: false,
+        // Mirrored like every print, so the chart reads the right way round on the shirt.
+        mirror: true,
         white_enabled: true,
         settings: base.clone(),
         items: vec![ItemSpec {

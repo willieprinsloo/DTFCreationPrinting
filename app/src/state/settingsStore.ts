@@ -4,7 +4,7 @@ import type { DpiThresholds, PrinterProfile } from '../domain/types'
 import { DEFAULT_THRESHOLDS } from '../domain/dpi'
 import { createTauriStore, type KeyValueStore } from './persist'
 import { DEFAULT_LIBRARY_PREFS, mergeLibraryPrefs, type LibraryPrefs, type LibraryPrefsPatch } from './libraryPrefs'
-import { DEFAULT_ENGINE_SETTINGS, MAINTOP_DEFAULTS, isUntouchedPlain, sanitizeEngineSettings } from '../domain/engineSettings'
+import { DEFAULT_ENGINE_SETTINGS, MAINTOP_DEFAULTS, hasInkCurves, isUntouchedPlain, sanitizeEngineSettings } from '../domain/engineSettings'
 import { isFilmMode, isThemeChoice, type FilmMode, type ThemeChoice } from '../domain/theme'
 import { DEFAULT_PRINT_SIZES, ONE_SIZE, isValidWidth, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
 
@@ -78,6 +78,10 @@ export interface SettingsData {
   filmMode: FilmMode
   /** Untouched printers were moved to the Maintop defaults (done once). */
   maintopDefaults: boolean
+  /** Printers without ink curves were moved to the standard setup (done once). */
+  standardSetupV2: boolean
+  /** Create PRN sends the file to ATools as soon as it is made. */
+  sendAfterCreate: boolean
   loaded: boolean
 }
 
@@ -112,6 +116,7 @@ export interface SettingsActions {
   markPrintSizesImported(): Promise<void>
   setTheme(theme: ThemeChoice): Promise<void>
   setFilmMode(mode: FilmMode): Promise<void>
+  setSendAfterCreate(on: boolean): Promise<void>
 }
 
 export type SettingsState = SettingsData & SettingsActions
@@ -135,6 +140,8 @@ function defaults(): SettingsData {
     theme: 'system',
     filmMode: 'auto',
     maintopDefaults: true,
+    standardSetupV2: true,
+    sendAfterCreate: true,
     loaded: false,
   }
 }
@@ -162,12 +169,20 @@ export function createSettingsStore(kv: KeyValueStore) {
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
           merged.activeProfileId = merged.profiles[0].id
         }
-        // Printers still on the old plain settings get the Maintop setup, once.
-        const upgrade = saved !== undefined && saved !== null && saved.maintopDefaults !== true
+        // Printers still on the old plain settings, or without ink curves (which print far too
+        // heavy), get the standard setup, once each.
+        const hasSaved = saved !== undefined && saved !== null
+        const plainUpgrade = hasSaved && saved.maintopDefaults !== true
+        const curvesUpgrade = hasSaved && saved.standardSetupV2 !== true
+        const upgrade = plainUpgrade || curvesUpgrade
         if (upgrade) {
-          merged.profiles = merged.profiles.map((p) => (isUntouchedPlain(p) ? sanitizeProfile({ ...p, ...MAINTOP_DEFAULTS }) : p))
+          merged.profiles = merged.profiles.map((p) =>
+            (plainUpgrade && isUntouchedPlain(p)) || (curvesUpgrade && !hasInkCurves(p)) ? sanitizeProfile({ ...p, ...MAINTOP_DEFAULTS }) : p,
+          )
           merged.maintopDefaults = true
+          merged.standardSetupV2 = true
         }
+        if (typeof merged.sendAfterCreate !== 'boolean') merged.sendAfterCreate = true
         set(merged)
         if (upgrade) {
           const { loaded: _loaded, ...persisted } = pickData(get())
@@ -246,6 +261,7 @@ export function createSettingsStore(kv: KeyValueStore) {
       },
       setTheme: (theme) => commit({ theme: isThemeChoice(theme) ? theme : 'system' }),
       setFilmMode: (mode) => commit({ filmMode: isFilmMode(mode) ? mode : 'auto' }),
+      setSendAfterCreate: (on) => commit({ sendAfterCreate: on }),
       markPrintSizesImported: () => commit({ printSizesSync: { ...get().printSizesSync, imported: true } }),
     }
   })
@@ -268,6 +284,8 @@ function pickData(s: SettingsState): SettingsData {
     theme: s.theme,
     filmMode: s.filmMode,
     maintopDefaults: s.maintopDefaults,
+    standardSetupV2: s.standardSetupV2,
+    sendAfterCreate: s.sendAfterCreate,
     loaded: s.loaded,
   }
 }

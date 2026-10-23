@@ -39,15 +39,17 @@ describe('settingsStore', () => {
     expect(c.getState().filmMode).toBe('auto')
   })
 
-  it('moves printers still on the old plain settings to the Maintop setup once, and keeps changed ones', async () => {
+  it('gives printers without ink curves the standard setup once, and keeps printers with their own curves', async () => {
     const kv = createMemoryStore()
-    const custom = { ...BASE_PROFILE, id: 'custom', name: 'Custom', inkLimitPct: 300 }
-    await kv.set('settings', { profiles: [BASE_PROFILE, custom], activeProfileId: BASE_PROFILE.id })
+    const ownCurves = { ...BASE_PROFILE, id: 'own', name: 'Own', inkLimitPct: 300, dotGain: { ...BASE_PROFILE.dotGain, K: [[0.5, 0.4]] as [number, number][] } }
+    const noCurves = { ...BASE_PROFILE, id: 'nocurves', name: 'No curves', iccProfilePath: 'C:/old/720x1800_6paaas.icm' }
+    await kv.set('settings', { profiles: [BASE_PROFILE, ownCurves, noCurves], activeProfileId: BASE_PROFILE.id, maintopDefaults: true })
     const a = createSettingsStore(kv)
     await a.getState().load()
     expect(a.getState().profiles[0]).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: MAINTOP_BUNDLED_ICC })
-    expect(a.getState().profiles[1].inkLimitPct).toBe(300)
+    expect(a.getState().profiles[1]).toMatchObject({ inkLimitPct: 300, dotGain: ownCurves.dotGain })
     expect(a.getState().profiles[1].iccProfilePath).toBeUndefined()
+    expect(a.getState().profiles[2]).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: MAINTOP_BUNDLED_ICC })
     // Done once: a printer set back to plain afterwards stays plain.
     await a.getState().upsertProfile(BASE_PROFILE)
     const b = createSettingsStore(kv)

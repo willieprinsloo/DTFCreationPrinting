@@ -75,6 +75,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
   const profiles = useSettings((s) => s.profiles)
   const activeId = useSettings((s) => s.activeProfileId)
   const thresholds = useSettings((s) => s.thresholds)
+  const sendAfterCreate = useSettings((s) => s.sendAfterCreate)
   const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,6 +159,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
       const stats = await job.current.promise
       setDone({ path, stats })
       setProgress(null)
+      if (sendAfterCreate) void send(path)
       if (markOrders && result.orderIds.length > 0) {
         setUpdatingOrders(true)
         try {
@@ -237,6 +239,15 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
             Print anyway — I've checked the low-quality designs
           </label>
         )}
+        <label className="dialog-check">
+          <input
+            type="checkbox"
+            checked={sendAfterCreate}
+            disabled={busy}
+            onChange={(e) => void getSettingsStore().getState().setSendAfterCreate(e.target.checked)}
+          />
+          Send to printer when created (ATools on {printHost === LOCAL_PRINT_HOST ? 'this computer' : printHost})
+        </label>
         {result.orderIds.length > 0 && (
           <label className="dialog-check">
             <input type="checkbox" checked={markOrders} disabled={busy} onChange={(e) => setMarkOrders(e.target.checked)} />

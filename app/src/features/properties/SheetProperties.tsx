@@ -123,10 +123,6 @@ export function SheetProperties() {
 
       <div className="props-group toggles">
         <label>
-          <input type="checkbox" checked={settings.mirror} onChange={(e) => apply({ mirror: e.target.checked })} />
-          Mirror for printing
-        </label>
-        <label>
           <input type="checkbox" checked={settings.allowRotate} onChange={(e) => apply({ allowRotate: e.target.checked })} />
           Allow rotating in auto-place
         </label>

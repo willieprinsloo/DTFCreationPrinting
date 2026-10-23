@@ -54,7 +54,8 @@ describe('PreflightDialog', () => {
     vi.mocked(createPrn).mockReset()
     vi.mocked(revealInFolder).mockClear()
     getSheetStore().getState().newSheet(DEFAULT_PROFILE, 'Job')
-    getSettingsStore().setState({ profiles: [DEFAULT_PROFILE], activeProfileId: DEFAULT_PROFILE.id, setLastPrnFolder: vi.fn().mockResolvedValue(undefined) })
+    vi.mocked(sendPrn).mockReset()
+    getSettingsStore().setState({ profiles: [DEFAULT_PROFILE], activeProfileId: DEFAULT_PROFILE.id, sendAfterCreate: false, setLastPrnFolder: vi.fn().mockResolvedValue(undefined) })
   })
 
   it('disables Create for an empty sheet', () => {
@@ -154,6 +155,22 @@ describe('PreflightDialog', () => {
     expect(screen.getByRole('button', { name: 'Send to printer' })).toBeDisabled()
     act(() => finish(1000))
     expect(await screen.findByText('Sent to the printing software (ATools) on this computer.')).toBeInTheDocument()
+  })
+
+  it('sends to the printer by itself when the box is ticked (the default), and the box is remembered', async () => {
+    getSettingsStore().setState({ sendAfterCreate: true, setSendAfterCreate: vi.fn(async (on: boolean) => getSettingsStore().setState({ sendAfterCreate: on })) })
+    const job = controlledJob()
+    vi.mocked(sendPrn).mockImplementation(() => ({ promise: Promise.resolve(1000), cancel: vi.fn() }))
+    addItem(3000)
+    renderDialog()
+    expect(screen.getByRole('checkbox', { name: /Send to printer when created/ })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    expect(await screen.findByText('Sent to the printing software (ATools) on this computer.')).toBeInTheDocument()
+    expect(sendPrn).toHaveBeenCalledWith('/out/x.prn', '127.0.0.1', expect.any(Function))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Send to printer when created/ }))
+    expect(getSettingsStore().getState().sendAfterCreate).toBe(false)
   })
 
   it('sends to the computer set on the printer, and shows why it could not', async () => {
