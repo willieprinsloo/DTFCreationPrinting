@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { open, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import type { DotGain, EngineSettings as Engine, InkChannel, PrinterProfile } from '../../domain/types'
-import { MAINTOP_6PASS_PRESET, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from '../../domain/engineSettings'
+import { BUNDLED_PROFILE_PREFIX, MAINTOP_6PASS_PRESET, MAINTOP_BUNDLED_ICC, profileName, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from '../../domain/engineSettings'
 import { createChartPrn } from '../../platform/tauri'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 
@@ -117,10 +117,10 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
     return null
   }
 
-  /** The preset is only right with Maintop's profile, so nothing changes until that file is chosen. */
-  const useMaintopPreset = async () => {
-    setPresetMsg(null)
-    if (!(await pickIcc())) return
+  /** Uses the Maintop profile shipped with the app, so no file has to be found. */
+  const useMaintopPreset = () => {
+    setIcc(MAINTOP_BUNDLED_ICC)
+    touch()
     const p = MAINTOP_6PASS_PRESET
     setInk(String(p.inkLimitPct))
     setUcr(String(p.ucrPct))
@@ -299,16 +299,16 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
       <section className="settings-section">
         <h3>Colour profile</h3>
         <Help>Optional. Load the ICC file from Maintop or your ink supplier to match their colours. Without one, a built-in colour model is used.</Help>
-        <p>{icc ?? 'No colour profile — the built-in colour model is used'}</p>
+        <p>{icc === undefined ? 'No colour profile — the built-in colour model is used' : icc.startsWith(BUNDLED_PROFILE_PREFIX) ? profileName(icc) : icc}</p>
         <div className="button-row">
           <button type="button" onClick={() => void pickIcc()}>Choose colour profile…</button>
           {icc && (
             <button type="button" onClick={() => { setIcc(undefined); touch() }}>Remove colour profile</button>
           )}
         </div>
-        <Help>For the 700DTF I3200 printer: choose Maintop's 720x1800_6paaas.icm (in the printer's Maintop driver folder) to print like Maintop at 720 x 1800, 6 pass. This also sets the ink limit, white and ink curves to match.</Help>
+        <Help>For the 700DTF I3200 printer at 720 x 1800, 6 pass: sets Maintop's colour profile (built into the app) with the ink limit, white and ink curves that match Maintop. New printers start this way.</Help>
         <div className="button-row">
-          <button type="button" onClick={() => void useMaintopPreset()}>Match Maintop 720×1800 6-pass…</button>
+          <button type="button" onClick={useMaintopPreset}>Match Maintop 720×1800 6-pass</button>
           {presetMsg && <span>{presetMsg}</span>}
         </div>
         <div>

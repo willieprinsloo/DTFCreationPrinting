@@ -11,8 +11,8 @@ vi.mock('../../platform/tauri', () => ({ thumbSrc: (u: string) => u, createChart
 import { createChartPrn } from '../../platform/tauri'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { SettingsDialog } from './SettingsDialog'
-import { DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
-import { MAINTOP_6PASS_PRESET } from '../../domain/engineSettings'
+import { BASE_PROFILE, DEFAULT_PROFILE, getSettingsStore } from '../../state/settingsStore'
+import { MAINTOP_6PASS_PRESET, MAINTOP_BUNDLED_ICC } from '../../domain/engineSettings'
 
 const saved = () => getSettingsStore().getState().profiles.find((p) => p.id === DEFAULT_PROFILE.id)!
 
@@ -20,7 +20,8 @@ beforeEach(async () => {
   vi.mocked(open).mockReset()
   vi.mocked(save).mockReset()
   vi.mocked(createChartPrn).mockReset()
-  await getSettingsStore().getState().upsertProfile(DEFAULT_PROFILE)
+  // Most tests check plain values; the Maintop setup the app starts with is tested on its own.
+  await getSettingsStore().getState().upsertProfile(BASE_PROFILE)
 })
 
 const page = () => render(<SettingsDialog initialTab="printer-ink" onClose={() => {}} />)
@@ -102,14 +103,12 @@ describe('Settings › Ink & colour', () => {
     expect(saved().iccProfilePath).toBeUndefined()
   })
 
-  it('matches Maintop: picks the ICM, then sets ink limit, white and the detailed curves', async () => {
-    vi.mocked(open).mockResolvedValueOnce(null).mockResolvedValueOnce('C:\\driver\\720x1800_6paaas.icm')
+  it('matches Maintop with the profile built into the app (no file to find), then sets ink limit, white and the detailed curves', async () => {
     page()
-    const preset = screen.getByRole('button', { name: 'Match Maintop 720×1800 6-pass…' })
-    await userEvent.click(preset)
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(280)
-    await userEvent.click(preset)
-    expect(await screen.findByText('C:\\driver\\720x1800_6paaas.icm')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Match Maintop 720×1800 6-pass' }))
+    expect(open).not.toHaveBeenCalled()
+    expect(screen.getByText('Maintop 720×1800 6-pass (built into the app)')).toBeInTheDocument()
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(330)
     expect(screen.getByLabelText('Less colour under black (%)')).toHaveValue(13.9)
     expect(screen.getByLabelText('…starting from black (%)')).toHaveValue(42)
@@ -120,7 +119,14 @@ describe('Settings › Ink & colour', () => {
     expect(screen.getByText(/Black, Cyan, Magenta, Yellow: detailed curve/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
     await screen.findByRole('status')
-    expect(saved()).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: 'C:\\driver\\720x1800_6paaas.icm' })
+    expect(saved()).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: MAINTOP_BUNDLED_ICC })
+  })
+
+  it('a new install starts on the Maintop setup', async () => {
+    await getSettingsStore().getState().upsertProfile(DEFAULT_PROFILE)
+    page()
+    expect(screen.getByText('Maintop 720×1800 6-pass (built into the app)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(MAINTOP_6PASS_PRESET.inkLimitPct)
   })
 
   it('saves less colour under black, and refuses more than 50 %', async () => {

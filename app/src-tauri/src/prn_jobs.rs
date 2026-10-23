@@ -58,14 +58,46 @@ struct AssetDto {
     path: PathBuf,
 }
 
+/// Where colour profiles shipped with the app live (set at startup).
+static PROFILE_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+pub fn set_profile_dir(dir: &Path) {
+    let _ = PROFILE_DIR.set(dir.to_path_buf());
+}
+
+/// A printer profile's colour profile written as `bundled:<file>` is one shipped with the app.
+const BUNDLED: &str = "bundled:";
+
+/// The engine settings of a printer profile, with a shipped colour profile turned into its path.
+fn settings_of(profile: ProfileDto) -> Result<dtf_engine::EngineSettings, String> {
+    let mut s = profile.engine_settings();
+    resolve_bundled(&mut s, PROFILE_DIR.get().map(PathBuf::as_path))?;
+    Ok(s)
+}
+
+fn resolve_bundled(s: &mut dtf_engine::EngineSettings, dir: Option<&Path>) -> Result<(), String> {
+    let Some(name) = s.icc_profile_path.as_ref().and_then(|p| p.to_str()).and_then(|p| p.strip_prefix(BUNDLED)) else {
+        return Ok(());
+    };
+    let path = dir.map(|d| d.join(name)).filter(|p| p.is_file()).ok_or_else(|| {
+        format!(
+            "The built-in colour profile {name} is missing from this installation. Choose the .icm in Settings › Ink & colour."
+        )
+    })?;
+    s.icc_profile_path = Some(path);
+    Ok(())
+}
+
 /// Builds the engine job from the app's sheet and printer profile JSON.
 pub fn job_from_sheet(sheet_json: &str, profile_json: &str) -> Result<JobSpec, String> {
     let sheet: SheetDto = serde_json::from_str(sheet_json).map_err(failed)?;
     let profile: ProfileDto = serde_json::from_str(profile_json).map_err(failed)?;
+    let (x_dpi, y_dpi) = (profile.x_dpi, profile.y_dpi);
+    let settings = settings_of(profile)?;
     Ok(JobSpec {
         width_mm: sheet.settings.width_mm,
-        x_dpi: profile.x_dpi,
-        y_dpi: profile.y_dpi,
+        x_dpi,
+        y_dpi,
         mirror: sheet.settings.mirror,
         // White underbase is always printed; saved sheets' white flags are ignored.
         white_enabled: true,
@@ -82,7 +114,7 @@ pub fn job_from_sheet(sheet_json: &str, profile_json: &str) -> Result<JobSpec, S
                 white_enabled: true,
             })
             .collect(),
-        settings: profile.engine_settings(),
+        settings,
     })
 }
 
@@ -193,7 +225,7 @@ pub async fn create_prn(
 pub fn chart_from_profile(kind: &str, profile_json: &str, out: &Path) -> Result<PrnStatsDto, String> {
     let profile: ProfileDto = serde_json::from_str(profile_json).map_err(failed)?;
     let (x_dpi, y_dpi) = (profile.x_dpi, profile.y_dpi);
-    let settings = profile.engine_settings();
+    let settings = settings_of(profile)?;
     let started = std::time::Instant::now();
     let width = 600.0;
     let lines = match kind {
@@ -258,6 +290,22 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
 mod tests {
     use super::*;
     use dtf_engine::screen::Screening;
+
+    #[test]
+    fn a_bundled_colour_profile_becomes_its_file_and_a_missing_one_says_so() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("m.icm"), b"x").unwrap();
+        let with = |p: &str| dtf_engine::EngineSettings { icc_profile_path: Some(PathBuf::from(p)), ..Default::default() };
+        let mut s = with("bundled:m.icm");
+        resolve_bundled(&mut s, Some(d.path())).unwrap();
+        assert_eq!(s.icc_profile_path, Some(d.path().join("m.icm")));
+        let err = resolve_bundled(&mut with("bundled:gone.icm"), Some(d.path())).unwrap_err();
+        assert!(err.contains("gone.icm") && err.contains("missing"), "{err}");
+        assert!(resolve_bundled(&mut with("bundled:m.icm"), None).is_err());
+        let mut own = with("C:/profiles/own.icm");
+        resolve_bundled(&mut own, Some(d.path())).unwrap();
+        assert_eq!(own.icc_profile_path, Some(PathBuf::from("C:/profiles/own.icm")));
+    }
     use dtf_engine::EngineError;
 
     const SHEET: &str = r#"{

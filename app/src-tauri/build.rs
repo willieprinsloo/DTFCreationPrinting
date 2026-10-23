@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 fn main() {
     stage_pdfium();
     stage_realesrgan();
+    stage_colour_profiles();
     tauri_build::build()
 }
 
@@ -66,6 +67,31 @@ fn stage_realesrgan() {
     } else {
         println!("cargo:warning=Real-ESRGAN for {target} not found: Enhance will not work (run scripts/fetch-realesrgan.sh, then touch build.rs)");
         want.push(("README.txt".into(), b"The Real-ESRGAN upscaler was not bundled in this build.\n".to_vec()));
+    }
+    sync(&root.join("bundle"), want);
+}
+
+/// Copies the printer colour profiles (`.icm` / `.icc`) put in `colour-profiles/src/` into
+/// `colour-profiles/bundle/`, shipped as the `colour-profiles/` resource folder. They are the
+/// printer maker's files, so they are never kept in git; without them the built-in Maintop
+/// profile is missing and the app asks for the `.icm` instead.
+fn stage_colour_profiles() {
+    let root = manifest_dir().join("colour-profiles");
+    let src = root.join("src");
+    let mut want: Vec<(PathBuf, Vec<u8>)> = Vec::new();
+    if src.is_dir() {
+        watch(&src);
+        for e in fs::read_dir(&src).expect("read colour-profiles").flatten() {
+            let p = e.path();
+            let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+            if p.is_file() && (ext == "icm" || ext == "icc") {
+                want.push((e.file_name().into(), fs::read(&p).expect("read colour profile")));
+            }
+        }
+    }
+    if want.is_empty() {
+        println!("cargo:warning=no colour profiles in colour-profiles/src: the built-in Maintop profile will be missing");
+        want.push(("README.txt".into(), b"No colour profiles were bundled in this build.\n".to_vec()));
     }
     sync(&root.join("bundle"), want);
 }

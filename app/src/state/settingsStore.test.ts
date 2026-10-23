@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createMemoryStore } from './persist'
-import { createSettingsStore, DEFAULT_LIBRARY_PREFS, DEFAULT_PROFILE } from './settingsStore'
+import { BASE_PROFILE, createSettingsStore, DEFAULT_LIBRARY_PREFS, DEFAULT_PROFILE } from './settingsStore'
+import { MAINTOP_6PASS_PRESET, MAINTOP_BUNDLED_ICC } from '../domain/engineSettings'
 
 describe('settingsStore', () => {
   it('loads defaults on a fresh store', async () => {
@@ -36,6 +37,23 @@ describe('settingsStore', () => {
     const c = createSettingsStore(kv)
     await c.getState().load()
     expect(c.getState().filmMode).toBe('auto')
+  })
+
+  it('moves printers still on the old plain settings to the Maintop setup once, and keeps changed ones', async () => {
+    const kv = createMemoryStore()
+    const custom = { ...BASE_PROFILE, id: 'custom', name: 'Custom', inkLimitPct: 300 }
+    await kv.set('settings', { profiles: [BASE_PROFILE, custom], activeProfileId: BASE_PROFILE.id })
+    const a = createSettingsStore(kv)
+    await a.getState().load()
+    expect(a.getState().profiles[0]).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: MAINTOP_BUNDLED_ICC })
+    expect(a.getState().profiles[1].inkLimitPct).toBe(300)
+    expect(a.getState().profiles[1].iccProfilePath).toBeUndefined()
+    // Done once: a printer set back to plain afterwards stays plain.
+    await a.getState().upsertProfile(BASE_PROFILE)
+    const b = createSettingsStore(kv)
+    await b.getState().load()
+    expect(b.getState().profiles[0].iccProfilePath).toBeUndefined()
+    expect(b.getState().profiles[0].inkLimitPct).toBe(280)
   })
 
   it('persists upserted profiles across stores', async () => {
@@ -196,8 +214,9 @@ describe('settingsStore printSizes', () => {
   describe('printer engine settings', () => {
     const LINEAR = { K: [], C: [], M: [], Y: [], W: [] }
 
-    it('the default profile carries the engine defaults', () => {
-      expect(DEFAULT_PROFILE).toMatchObject({
+    it('the default profile is set up like Maintop, on top of the plain engine defaults', () => {
+      expect(DEFAULT_PROFILE).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: MAINTOP_BUNDLED_ICC })
+      expect(BASE_PROFILE).toMatchObject({
         channelOrder: ['Y', 'M', 'C', 'K', 'W', 'W'],
         inkLimitPct: 280,
         whiteDensityPct: 100,
@@ -206,7 +225,7 @@ describe('settingsStore printSizes', () => {
         dotGain: LINEAR,
         leadInMm: 0,
       })
-      expect(DEFAULT_PROFILE.iccProfilePath).toBeUndefined()
+      expect(BASE_PROFILE.iccProfilePath).toBeUndefined()
     })
 
     it('gives profiles saved before engine settings existed the defaults', async () => {

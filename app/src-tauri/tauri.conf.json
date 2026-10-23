@@ -30,7 +30,8 @@
     "resources": {
       "pdfium/bundle/*": "pdfium/",
       "realesrgan/bundle/*": "realesrgan/",
-      "realesrgan/bundle/models/*": "realesrgan/models/"
+      "realesrgan/bundle/models/*": "realesrgan/models/",
+      "colour-profiles/bundle/*": "colour-profiles/"
     },
     "icon": [
       "icons/32x32.png",

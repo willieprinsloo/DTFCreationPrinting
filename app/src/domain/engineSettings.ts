@@ -55,6 +55,40 @@ export const MAINTOP_6PASS_PRESET: Pick<EngineSettings, 'inkLimitPct' | 'ucrStar
   },
 }
 
+/** A colour profile shipped with the app is stored as `bundled:<file name>`. */
+export const BUNDLED_PROFILE_PREFIX = 'bundled:'
+/** Maintop's 700DTF profile for 720 x 1800, 6 pass, shipped with the app. */
+export const MAINTOP_BUNDLED_ICC = `${BUNDLED_PROFILE_PREFIX}720x1800_6paaas.icm`
+
+/** What a new printer starts with: the Maintop 6-pass match, with the profile shipped with the app. */
+export const MAINTOP_DEFAULTS: Partial<EngineSettings> = { ...MAINTOP_6PASS_PRESET, iccProfilePath: MAINTOP_BUNDLED_ICC }
+
+/** The colour profile as people see it: the file name, or what the shipped one is. */
+export function profileName(path: string | undefined): string | undefined {
+  if (!path) return undefined
+  if (path === MAINTOP_BUNDLED_ICC) return 'Maintop 720×1800 6-pass (built into the app)'
+  if (path.startsWith(BUNDLED_PROFILE_PREFIX)) return `${path.slice(BUNDLED_PROFILE_PREFIX.length)} (built into the app)`
+  return path.split(/[\\/]/).pop()
+}
+
+/**
+ * True for printer settings nobody has changed from the old plain defaults (no colour profile,
+ * no curves): those are moved to the Maintop defaults once.
+ */
+export function isUntouchedPlain(s: EngineSettings): boolean {
+  const d = DEFAULT_ENGINE_SETTINGS
+  return (
+    !s.iccProfilePath &&
+    INKS.every((k) => (s.dotGain[k] ?? []).length === 0) &&
+    s.inkLimitPct === d.inkLimitPct &&
+    s.ucrPct === d.ucrPct &&
+    s.whiteDensityPct === d.whiteDensityPct &&
+    s.whiteChokeMm === d.whiteChokeMm &&
+    s.whiteEdgeSteps === d.whiteEdgeSteps &&
+    s.iccGridPoints === d.iccGridPoints
+  )
+}
+
 export const LIMITS = {
   inkLimitPct: [100, 400],
   ucrStartPct: [0, 95],
@@ -159,10 +193,10 @@ export function curveFromThree(pct: [number, number, number]): [number, number][
 
 /** The colour settings a print will use, in plain words, and a warning when the ink will be much heavier than Maintop's. */
 export function describeColour(s: EngineSettings): { text: string; warning: string | null } {
-  const icc = s.iccProfilePath?.split(/[\\/]/).pop()
+  const icc = profileName(s.iccProfilePath)
   const curves = (['K', 'C', 'M', 'Y'] as const).some((k) => (s.dotGain[k] ?? []).length > 0)
   const parts = [
-    icc ? `colour profile ${icc}${s.iccGridPoints === 26 ? ' (like Maintop)' : ''}` : 'built-in colour model (no colour profile)',
+    icc ? `colour profile ${icc}${s.iccGridPoints === 26 ? ', converted like Maintop' : ''}` : 'built-in colour model (no colour profile)',
     curves ? 'ink curves set' : 'no ink curves',
     `ink limit ${s.inkLimitPct} %`,
   ]

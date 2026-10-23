@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { THEME_CHOICES, type FilmMode, type ThemeChoice } from '../../domain/theme'
 import type { PrinterProfile } from '../../domain/types'
-import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
+import { DEFAULT_ENGINE_SETTINGS, MAINTOP_DEFAULTS } from '../../domain/engineSettings'
 import { MIN_PREVIEW_LENGTH_FLOOR_MM, getSettingsStore, useSettings } from '../../state/settingsStore'
 import type { SettingsTab } from '../../state/uiStore'
 import { EngineSettings, type SavePending } from './EngineSettings'
@@ -126,6 +126,7 @@ function PrintersPanel() {
     defaultMargins: { topMm: 5, rightMm: 5, bottomMm: 5, leftMm: 5 },
     defaultGapMm: 3,
     ...DEFAULT_ENGINE_SETTINGS,
+    ...MAINTOP_DEFAULTS,
   })
 
   if (editing) {

@@ -7,3 +7,5 @@
 /gen/schemas
 /pdfium/
 /realesrgan/
+# Printer colour profiles are the printer maker's files: bundled from here, never committed.
+/colour-profiles/

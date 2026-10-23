@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_ENGINE_SETTINGS, MAINTOP_6PASS_PRESET, describeColour, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from './engineSettings'
+import { DEFAULT_ENGINE_SETTINGS, MAINTOP_6PASS_PRESET, MAINTOP_DEFAULTS, describeColour, isUntouchedPlain, curveFromThree, curveToThree, isDetailedCurve, sanitizeEngineSettings, validateEngineSettings } from './engineSettings'
 
 const d = DEFAULT_ENGINE_SETTINGS
 
@@ -108,8 +108,18 @@ describe('describeColour', () => {
     expect(plain.text).toMatch(/built-in colour model/)
     expect(plain.warning).toMatch(/darker/)
     const maintop = describeColour({ ...d, ...MAINTOP_6PASS_PRESET, iccProfilePath: 'C:\\drv\\720x1800_6paaas.icm' })
-    expect(maintop.text).toBe('colour profile 720x1800_6paaas.icm (like Maintop) · ink curves set · ink limit 330 %')
+    expect(maintop.text).toBe('colour profile 720x1800_6paaas.icm, converted like Maintop · ink curves set · ink limit 330 %')
+    expect(describeColour({ ...d, ...MAINTOP_DEFAULTS }).text).toMatch(/^colour profile Maintop 720×1800 6-pass \(built into the app\)/)
     expect(maintop.warning).toBeNull()
+  })
+})
+
+describe('isUntouchedPlain', () => {
+  it('spots printers still on the old plain settings and nothing else', () => {
+    expect(isUntouchedPlain(d)).toBe(true)
+    expect(isUntouchedPlain({ ...d, inkLimitPct: 300 })).toBe(false)
+    expect(isUntouchedPlain({ ...d, iccProfilePath: 'C:/own.icm' })).toBe(false)
+    expect(isUntouchedPlain({ ...d, ...MAINTOP_DEFAULTS })).toBe(false)
   })
 })
 

@@ -4,14 +4,15 @@ import type { DpiThresholds, PrinterProfile } from '../domain/types'
 import { DEFAULT_THRESHOLDS } from '../domain/dpi'
 import { createTauriStore, type KeyValueStore } from './persist'
 import { DEFAULT_LIBRARY_PREFS, mergeLibraryPrefs, type LibraryPrefs, type LibraryPrefsPatch } from './libraryPrefs'
-import { DEFAULT_ENGINE_SETTINGS, sanitizeEngineSettings } from '../domain/engineSettings'
+import { DEFAULT_ENGINE_SETTINGS, MAINTOP_DEFAULTS, isUntouchedPlain, sanitizeEngineSettings } from '../domain/engineSettings'
 import { isFilmMode, isThemeChoice, type FilmMode, type ThemeChoice } from '../domain/theme'
 import { DEFAULT_PRINT_SIZES, ONE_SIZE, isValidWidth, sanitizePrintSizes, type PrintSizes } from '../domain/printSizes'
 
 export { DEFAULT_LIBRARY_PREFS }
 export type { LibraryPrefs, LibraryPrefsPatch }
 
-export const DEFAULT_PROFILE: PrinterProfile = {
+/** The printer with plain engine settings (no colour profile or curves). */
+export const BASE_PROFILE: PrinterProfile = {
   id: 'dtf-60',
   name: 'DTF 60 cm',
   widthMm: 600,
@@ -21,6 +22,9 @@ export const DEFAULT_PROFILE: PrinterProfile = {
   defaultGapMm: 3,
   ...DEFAULT_ENGINE_SETTINGS,
 }
+
+/** The printer the app starts with: set up to print like Maintop (700DTF, 720 x 1800, 6 pass). */
+export const DEFAULT_PROFILE: PrinterProfile = { ...BASE_PROFILE, ...MAINTOP_DEFAULTS }
 
 /** Fills engine settings missing from older saved profiles and repairs bad ones. */
 export function sanitizeProfile(p: PrinterProfile): PrinterProfile {
@@ -71,6 +75,8 @@ export interface SettingsData {
   theme: ThemeChoice
   /** The film behind the designs: like the app look, or always white / dark. */
   filmMode: FilmMode
+  /** Untouched printers were moved to the Maintop defaults (done once). */
+  maintopDefaults: boolean
   loaded: boolean
 }
 
@@ -127,6 +133,7 @@ function defaults(): SettingsData {
     printSizesSync: DEFAULT_PRINT_SIZES_SYNC,
     theme: 'system',
     filmMode: 'auto',
+    maintopDefaults: true,
     loaded: false,
   }
 }
@@ -154,7 +161,17 @@ export function createSettingsStore(kv: KeyValueStore) {
         if (!merged.profiles.some((p) => p.id === merged.activeProfileId)) {
           merged.activeProfileId = merged.profiles[0].id
         }
+        // Printers still on the old plain settings get the Maintop setup, once.
+        const upgrade = saved !== undefined && saved !== null && saved.maintopDefaults !== true
+        if (upgrade) {
+          merged.profiles = merged.profiles.map((p) => (isUntouchedPlain(p) ? sanitizeProfile({ ...p, ...MAINTOP_DEFAULTS }) : p))
+          merged.maintopDefaults = true
+        }
         set(merged)
+        if (upgrade) {
+          const { loaded: _loaded, ...persisted } = pickData(get())
+          await kv.set(SETTINGS_KEY, persisted)
+        }
       },
       upsertProfile(raw) {
         const p = sanitizeProfile(raw)
@@ -249,6 +266,7 @@ function pickData(s: SettingsState): SettingsData {
     printSizesSync: s.printSizesSync,
     theme: s.theme,
     filmMode: s.filmMode,
+    maintopDefaults: s.maintopDefaults,
     loaded: s.loaded,
   }
 }

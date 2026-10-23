@@ -30,6 +30,8 @@ pub fn run() {
                 dtf_engine::pdf::set_library_dir(&dir.join("pdfium"));
                 // The bundled Real-ESRGAN upscaler; DTF_REALESRGAN_PATH overrides it.
                 upscale::set_tool_dir(&dir.join("realesrgan"));
+                // Colour profiles shipped with the app ("bundled:<file>" in a printer profile).
+                prn::set_profile_dir(&dir.join("colour-profiles"));
             }
             Ok(())
         })
