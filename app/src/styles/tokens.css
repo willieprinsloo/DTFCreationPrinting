@@ -8,6 +8,9 @@
   --accent: #2563eb;
   /* Text on an accent background. */
   --on-accent: #ffffff;
+  /* Checkerboard behind transparent thumbnails. */
+  --checker-a: #d8d8d8;
+  --checker-b: #f4f4f4;
   color-scheme: light;
 
   --dpi-fine: #3b82f6;
@@ -41,6 +44,8 @@
     --text-muted: #9aa4b5;
     --accent: #60a5fa;
     --on-accent: #0b1220;
+    --checker-a: #2a2f38;
+    --checker-b: #343a45;
     color-scheme: dark;
   }
 }
@@ -54,5 +59,7 @@
   --text-muted: #9aa4b5;
   --accent: #60a5fa;
   --on-accent: #0b1220;
+  --checker-a: #2a2f38;
+  --checker-b: #343a45;
   color-scheme: dark;
 }

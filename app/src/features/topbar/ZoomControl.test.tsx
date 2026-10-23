@@ -22,12 +22,18 @@ describe('ZoomControl', () => {
   })
 
   it('switches the film between white and dark', async () => {
-    getSettingsStore().setState({ filmShade: 'light' })
+    getSettingsStore().setState({ filmMode: 'light' })
     render(<ZoomControl />)
     await userEvent.click(screen.getByRole('button', { name: 'Show the film dark' }))
-    expect(getSettingsStore().getState().filmShade).toBe('dark')
+    expect(getSettingsStore().getState().filmMode).toBe('dark')
     await userEvent.click(screen.getByRole('button', { name: 'Show the film white' }))
-    expect(getSettingsStore().getState().filmShade).toBe('light')
+    expect(getSettingsStore().getState().filmMode).toBe('light')
+  })
+
+  it('shows the film dark when it follows a dark app look', () => {
+    getSettingsStore().setState({ filmMode: 'auto', theme: 'dark' })
+    render(<ZoomControl />)
+    expect(screen.getByRole('button', { name: 'Show the film white' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('typing 200 sets the zoom to twice true size', async () => {

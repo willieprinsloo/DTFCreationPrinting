@@ -23,19 +23,19 @@ describe('settingsStore', () => {
     expect(st.screenPxPerMm).toBeCloseTo(96 / 25.4)
   })
 
-  it('keeps the film shade across restarts and repairs a bad one', async () => {
+  it('keeps the film setting across restarts (following the app look by default) and repairs a bad one', async () => {
     const kv = createMemoryStore()
     const a = createSettingsStore(kv)
     await a.getState().load()
-    expect(a.getState().filmShade).toBe('light')
-    await a.getState().setFilmShade('dark')
+    expect(a.getState().filmMode).toBe('auto')
+    await a.getState().setFilmMode('dark')
     const b = createSettingsStore(kv)
     await b.getState().load()
-    expect(b.getState().filmShade).toBe('dark')
-    await kv.set('settings', { filmShade: 'purple' })
+    expect(b.getState().filmMode).toBe('dark')
+    await kv.set('settings', { filmMode: 'purple' })
     const c = createSettingsStore(kv)
     await c.getState().load()
-    expect(c.getState().filmShade).toBe('light')
+    expect(c.getState().filmMode).toBe('auto')
   })
 
   it('persists upserted profiles across stores', async () => {

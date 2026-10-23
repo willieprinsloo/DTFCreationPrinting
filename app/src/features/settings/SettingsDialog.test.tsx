@@ -136,14 +136,16 @@ describe('Settings › General › Appearance', () => {
     expect(document.documentElement.dataset.theme).toBeUndefined()
   })
 
-  it('shows the film dark or white, apart from the app look', async () => {
-    await store().setFilmShade('light')
+  it('lets the film follow the app look or stay white or dark', async () => {
+    await store().setFilmMode('auto')
     render(<SettingsDialog initialTab="general" onClose={() => {}} />)
     const film = within(screen.getByRole('group', { name: 'Film behind the designs' }))
     await userEvent.click(film.getByRole('button', { name: 'Dark' }))
-    expect(store().filmShade).toBe('dark')
+    expect(store().filmMode).toBe('dark')
     expect(film.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(film.getByRole('button', { name: 'White' }))
-    expect(store().filmShade).toBe('light')
+    expect(store().filmMode).toBe('light')
+    await userEvent.click(film.getByRole('button', { name: 'Same as the app' }))
+    expect(store().filmMode).toBe('auto')
   })
 })

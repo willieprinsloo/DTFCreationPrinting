@@ -4,7 +4,7 @@ import { Layer, Line, Rect, Shape, Stage, Text, Transformer } from 'react-konva'
 import type Konva from 'konva'
 import { useSheet, getSheetStore, type ItemPatch } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, useSettings } from '../../state/settingsStore'
-import { FILM_COLOURS } from '../../domain/theme'
+import { FILM_COLOURS, filmShadeFor } from '../../domain/theme'
 import { findProblems, itemBounds, printableArea, displayLengthMm, sizeAfterTransform } from '../../domain/geometry'
 import { itemQuality } from '../../domain/dpi'
 import { snapPosition } from '../../domain/snapping'
@@ -78,7 +78,7 @@ export function SheetCanvas() {
 
   const sheetW = sheet.settings.widthMm
   const minPreviewLengthMm = useSettings((s) => s.minPreviewLengthMm)
-  const film = FILM_COLOURS[useSettings((s) => s.filmShade)]
+  const film = FILM_COLOURS[filmShadeFor(useSettings((s) => s.filmMode), useTheme())]
   const sheetH = displayLengthMm(sheet, minPreviewLengthMm)
   const { vp } = useViewport(sheetW, sheetH)
 

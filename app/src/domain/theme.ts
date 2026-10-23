@@ -7,7 +7,11 @@ export const isThemeChoice = (v: unknown): v is ThemeChoice => THEME_CHOICES.inc
 
 /** How the film is drawn behind the designs: white, or dark so white and pale designs show. */
 export type FilmShade = 'light' | 'dark'
-export const isFilmShade = (v: unknown): v is FilmShade => v === 'light' || v === 'dark'
+/** The film setting: like the app's light/dark look (`auto`), or always white / dark. */
+export type FilmMode = 'auto' | FilmShade
+export const FILM_MODES: FilmMode[] = ['auto', 'light', 'dark']
+export const isFilmMode = (v: unknown): v is FilmMode => FILM_MODES.includes(v as FilmMode)
+export const filmShadeFor = (mode: FilmMode, theme: Theme): FilmShade => (mode === 'auto' ? theme : mode)
 
 /** Film, grid and margin colours for each shade. */
 export const FILM_COLOURS: Record<FilmShade, { film: string; grid: string; margin: string }> = {

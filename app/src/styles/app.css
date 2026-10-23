@@ -612,7 +612,7 @@ button.link-btn:hover:not(:disabled) {
   min-height: 0;
   width: 100%;
   object-fit: contain;
-  background: repeating-conic-gradient(#d8d8d8 0% 25%, #f4f4f4 0% 50%) 0 0 / 12px 12px;
+  background: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0 0 / 12px 12px;
 }
 
 .thumb-placeholder {
@@ -685,7 +685,7 @@ button.link-btn:hover:not(:disabled) {
   height: 72px;
   margin-bottom: var(--space-1, 4px);
   border-radius: 4px;
-  background: repeating-conic-gradient(#d8d8d8 0% 25%, #f4f4f4 0% 50%) 0 0 / 12px 12px;
+  background: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0 0 / 12px 12px;
   overflow: hidden;
 }
 
@@ -953,7 +953,7 @@ button.link-btn:hover:not(:disabled) {
   display: block;
   border-radius: 4px;
   overflow: hidden;
-  background: repeating-conic-gradient(#d8d8d8 0% 25%, #f4f4f4 0% 50%) 0 0 / 12px 12px;
+  background: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0 0 / 12px 12px;
 }
 
 .lib-thumb img {

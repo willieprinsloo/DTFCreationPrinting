@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { THEME_CHOICES, type FilmShade, type ThemeChoice } from '../../domain/theme'
+import { THEME_CHOICES, type FilmMode, type ThemeChoice } from '../../domain/theme'
 import type { PrinterProfile } from '../../domain/types'
 import { DEFAULT_ENGINE_SETTINGS } from '../../domain/engineSettings'
 import { MIN_PREVIEW_LENGTH_FLOOR_MM, getSettingsStore, useSettings } from '../../state/settingsStore'
@@ -176,8 +176,8 @@ const THEME_LABELS: Record<ThemeChoice, string> = { system: 'Same as this comput
 /** Applies as soon as it is picked (no Save needed). */
 function Appearance() {
   const theme = useSettings((s) => s.theme)
-  const filmShade = useSettings((s) => s.filmShade)
-  const shades: Array<[FilmShade, string]> = [['light', 'White'], ['dark', 'Dark']]
+  const filmMode = useSettings((s) => s.filmMode)
+  const modes: Array<[FilmMode, string]> = [['auto', 'Same as the app'], ['light', 'White'], ['dark', 'Dark']]
   return (
     <section className="settings-section">
       <h3>Appearance</h3>
@@ -190,13 +190,13 @@ function Appearance() {
       </div>
       <h4>Film behind the designs</h4>
       <div className="seg" role="group" aria-label="Film behind the designs">
-        {shades.map(([s, label]) => (
-          <button key={s} type="button" aria-pressed={filmShade === s} onClick={() => void getSettingsStore().getState().setFilmShade(s)}>
+        {modes.map(([m, label]) => (
+          <button key={m} type="button" aria-pressed={filmMode === m} onClick={() => void getSettingsStore().getState().setFilmMode(m)}>
             {label}
           </button>
         ))}
       </div>
-      <Help>White shows colours as they look on a white garment. Dark makes white and pale designs easy to see. Also on the moon / sun button next to the zoom. Only changes the screen, not the print.</Help>
+      <Help>"Same as the app" makes the film dark when the app is dark. White shows colours as they look on a white garment; dark makes white and pale designs easy to see. Also on the moon / sun button next to the zoom. Only changes the screen, not the print.</Help>
     </section>
   )
 }

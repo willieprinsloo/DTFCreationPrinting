@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { effectiveTheme, isThemeChoice } from './theme'
+import { effectiveTheme, isThemeChoice , filmShadeFor } from './theme'
 import { createMemoryStore } from '../state/persist'
 import { createSettingsStore } from '../state/settingsStore'
 
@@ -25,5 +25,14 @@ describe('theme', () => {
     await kv.set('settings', { theme: 'blue' })
     await again.getState().load()
     expect(again.getState().theme).toBe('system')
+  })
+})
+
+describe('filmShadeFor', () => {
+  it('follows the app look unless the film is pinned to white or dark', () => {
+    expect(filmShadeFor('auto', 'dark')).toBe('dark')
+    expect(filmShadeFor('auto', 'light')).toBe('light')
+    expect(filmShadeFor('light', 'dark')).toBe('light')
+    expect(filmShadeFor('dark', 'light')).toBe('dark')
   })
 })
