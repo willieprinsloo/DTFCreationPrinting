@@ -18,6 +18,9 @@ use tauri::http::{Response, StatusCode, header};
 
 /// Long side of a thumbnail in pixels (the library shows them at up to ~200 px).
 pub const THUMB_MAX_SIDE: u32 = 320;
+/// Size of the small version the DTF Creations server makes of every upload (made when the file
+/// is uploaded, so it is ready at once): about 50 KB instead of several MB.
+const SERVER_THUMB_SIZE: u32 = 256;
 /// Thumbnails are only fetched from the hosts the app's image policy allows.
 const ALLOWED: [(&str, &str, Option<u16>); 2] = [("https", "dtfcreations.co.za", None), ("http", "localhost", Some(8000))];
 /// Largest image accepted for a thumbnail.
@@ -33,6 +36,20 @@ pub fn source_url(path: &str) -> Option<String> {
         .iter()
         .any(|(s, h, p)| u.scheme() == *s && u.host_str() == Some(*h) && u.port() == *p)
         .then(|| u.to_string())
+}
+
+/// The server's own small version of an image under `/uploads/`
+/// (`/api/v1/uploads/thumbnail/<file>?size=256&format=png`), or None for anything else.
+fn server_thumb_url(url: &str) -> Option<String> {
+    let mut u = url::Url::parse(url).ok()?;
+    let rest = u.path().strip_prefix("/uploads/")?.to_string();
+    let ext = rest.rsplit_once('.')?.1.to_ascii_lowercase();
+    if rest.starts_with("_thumbs/") || !["png", "jpg", "jpeg", "webp"].contains(&ext.as_str()) {
+        return None;
+    }
+    u.set_path(&format!("/api/v1/uploads/thumbnail/{rest}"));
+    u.set_query(Some(&format!("size={SERVER_THUMB_SIZE}&format=png")));
+    Some(u.to_string())
 }
 
 /// Percent-decoding (the webview encodes the URL with `encodeURIComponent`).
@@ -165,7 +182,8 @@ pub fn thumbnail(dir: &Path, assets: &Path, url: &str) -> Result<PathBuf, String
             if remote::recently_checked(url) {
                 return Ok(thumb.clone()); // another request checked it while this one waited
             }
-            match remote::check(&client()?, url, None, &thumb, false) {
+            let source = server_thumb_url(url).unwrap_or_else(|| url.to_string());
+            match remote::check(&client()?, &source, None, &thumb, false) {
                 remote::Check::Changed(r) => {
                     // Keep showing the old one if the new one can't be made.
                     let _ = thumb_from(r, &thumb);
@@ -192,8 +210,16 @@ pub fn thumbnail(dir: &Path, assets: &Path, url: &str) -> Result<PathBuf, String
         if thumb.exists() {
             return Ok(thumb.clone()); // another request made it while this one waited
         }
-        let resp = client()?.get(url).send().map_err(|e| format!("Download failed: {e}"))?;
-        thumb_from(resp, &thumb)?;
+        let client = client()?;
+        // The server's small version first; the full image if the server can't make one.
+        let small = server_thumb_url(url)
+            .and_then(|s| client.get(s).send().ok())
+            .filter(|r| r.status().is_success())
+            .is_some_and(|r| thumb_from(r, &thumb).is_ok());
+        if !small {
+            let resp = client.get(url).send().map_err(|e| format!("Download failed: {e}"))?;
+            thumb_from(resp, &thumb)?;
+        }
         remote::mark_checked(url);
         Ok(thumb.clone())
     })
@@ -298,6 +324,37 @@ mod tests {
         // A design replaced in the designs cache drops its thumbnail.
         forget(&assets, &url);
         assert!(!t.exists() && !remote::fingerprint_path(&t).exists());
+    }
+
+    #[test]
+    fn uploads_use_the_server_s_small_version_and_other_files_do_not() {
+        assert_eq!(
+            server_thumb_url("https://dtfcreations.co.za/uploads/c00da57c.png").as_deref(),
+            Some("https://dtfcreations.co.za/api/v1/uploads/thumbnail/c00da57c.png?size=256&format=png")
+        );
+        assert_eq!(
+            server_thumb_url("http://localhost:8000/uploads/print-files/print-9a.PNG").as_deref(),
+            Some("http://localhost:8000/api/v1/uploads/thumbnail/print-files/print-9a.PNG?size=256&format=png")
+        );
+        assert!(server_thumb_url("https://dtfcreations.co.za/uploads/designs/a.pdf").is_none());
+        assert!(server_thumb_url("https://dtfcreations.co.za/uploads/_thumbs/256/png/a.png").is_none());
+        assert!(server_thumb_url("https://dtfcreations.co.za/media/a.png").is_none());
+    }
+
+    #[test]
+    fn falls_back_to_the_full_image_when_the_server_has_no_small_version() {
+        // The test server answers every path with the same PNG, so this checks the plain path:
+        // an address outside /uploads/ downloads the image itself.
+        use std::sync::Arc;
+        let d = tempfile::tempdir().unwrap();
+        let (thumbs, assets) = (d.path().join("thumbs"), d.path().join("assets"));
+        fs::create_dir_all(&thumbs).unwrap();
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::new(40, 20).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        let (url, sent) = remote::tests::serve(Arc::new(Mutex::new(out.into_inner())), Arc::new(Mutex::new("\"a\"".into())));
+        let t = thumbnail(&thumbs, &assets, &url).unwrap();
+        assert_eq!(read_dimensions(&t).unwrap(), (40, 20));
+        assert_eq!(*sent.lock().unwrap(), 1);
     }
 
     #[test]
