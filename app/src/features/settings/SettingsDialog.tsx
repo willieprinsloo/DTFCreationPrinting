@@ -78,7 +78,7 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
         {field('Resolution across the film (dpi)', p.xDpi, (v) => setP({ ...p, xDpi: num(v) }))}
         {field('Resolution along the film (dpi)', p.yDpi, (v) => setP({ ...p, yDpi: num(v) }))}
       </div>
-      <Help>Use the same print mode as in Maintop or ATools, for example 720 × 1800 dpi.</Help>
+      <Help>Use the same print mode as in your printing software, for example 720 × 1800 dpi.</Help>
 
       <h4>Starting layout for new sheets</h4>
       <div className="field-grid">

@@ -106,9 +106,9 @@ describe('Settings › Ink & colour', () => {
   it('matches Maintop with the profile built into the app (no file to find), then sets ink limit, white and the detailed curves', async () => {
     page()
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(280)
-    await userEvent.click(screen.getByRole('button', { name: 'Match Maintop 720×1800 6-pass' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Use standard DTF settings (720×1800 6-pass)' }))
     expect(open).not.toHaveBeenCalled()
-    expect(screen.getByText('Maintop 720×1800 6-pass (built into the app)')).toBeInTheDocument()
+    expect(screen.getByText('Standard DTF 720×1800 6-pass (built into the app)')).toBeInTheDocument()
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(330)
     expect(screen.getByLabelText('Less colour under black (%)')).toHaveValue(13.9)
     expect(screen.getByLabelText('…starting from black (%)')).toHaveValue(42)
@@ -125,7 +125,7 @@ describe('Settings › Ink & colour', () => {
   it('a new install starts on the Maintop setup', async () => {
     await getSettingsStore().getState().upsertProfile(DEFAULT_PROFILE)
     page()
-    expect(screen.getByText('Maintop 720×1800 6-pass (built into the app)')).toBeInTheDocument()
+    expect(screen.getByText('Standard DTF 720×1800 6-pass (built into the app)')).toBeInTheDocument()
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(MAINTOP_6PASS_PRESET.inkLimitPct)
   })
 

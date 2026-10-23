@@ -66,7 +66,7 @@ export const MAINTOP_DEFAULTS: Partial<EngineSettings> = { ...MAINTOP_6PASS_PRES
 /** The colour profile as people see it: the file name, or what the shipped one is. */
 export function profileName(path: string | undefined): string | undefined {
   if (!path) return undefined
-  if (path === MAINTOP_BUNDLED_ICC) return 'Maintop 720×1800 6-pass (built into the app)'
+  if (path === MAINTOP_BUNDLED_ICC) return 'Standard DTF 720×1800 6-pass (built into the app)'
   if (path.startsWith(BUNDLED_PROFILE_PREFIX)) return `${path.slice(BUNDLED_PROFILE_PREFIX.length)} (built into the app)`
   return path.split(/[\\/]/).pop()
 }
@@ -196,12 +196,12 @@ export function describeColour(s: EngineSettings): { text: string; warning: stri
   const icc = profileName(s.iccProfilePath)
   const curves = (['K', 'C', 'M', 'Y'] as const).some((k) => (s.dotGain[k] ?? []).length > 0)
   const parts = [
-    icc ? `colour profile ${icc}${s.iccGridPoints === 26 ? ', converted like Maintop' : ''}` : 'built-in colour model (no colour profile)',
+    icc ? `colour profile ${icc}${s.iccGridPoints === 26 ? ', converted through a 26-point table' : ''}` : 'built-in colour model (no colour profile)',
     curves ? 'ink curves set' : 'no ink curves',
     `ink limit ${s.inkLimitPct} %`,
   ]
   const warning = curves
     ? null
-    : 'No ink curves are set, so this prints with much more ink (darker) than Maintop. Use Settings › Ink & colour › Match Maintop to set them.'
+    : 'No ink curves are set, so this prints with much more ink (darker) than it should. Use Settings › Ink & colour › Use standard DTF settings to set them.'
   return { text: parts.join(' · '), warning }
 }

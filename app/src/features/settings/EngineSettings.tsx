@@ -131,7 +131,7 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
     setEdgeSteps(p.whiteEdgeSteps)
     setCurves(threeBoxes(p.dotGain))
     setDetailed(detailedOnly(p.dotGain))
-    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, ${p.ucrPct} % less colour under black, white ${p.whiteDensityPct} %, no white choke with a ${p.whiteEdgeSteps}-pixel soft white edge, and Maintop's ink curves. Save to keep them.`)
+    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, ${p.ucrPct} % less colour under black, white ${p.whiteDensityPct} %, no white choke with a ${p.whiteEdgeSteps}-pixel soft white edge, and the standard ink curves. Save to keep them.`)
   }
 
   /** The settings as typed, or the plain-English reason they can't be used. */
@@ -266,8 +266,8 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
         <h3>Ink and white</h3>
         <div className="field-grid">
           {num('Ink limit (%)', ink, setInk, 'Most ink allowed on any spot, from 100 to 400. Lower it if dark areas look wet or crack.')}
-          {num('Less colour under black (%)', ucr, setUcr, 'Takes cyan, magenta and yellow out where black is heavy, up to this much less at full black, from 0 (off) to 50. Saves ink and keeps dark areas from going muddy or wet. Maintop uses about 13.')}
-          {num('…starting from black (%)', ucrStart, setUcrStart, 'How much black there must be before colour is taken out, from 0 to 95. Maintop starts at 40.')}
+          {num('Less colour under black (%)', ucr, setUcr, 'Takes cyan, magenta and yellow out where black is heavy, up to this much less at full black, from 0 (off) to 50. Saves ink and keeps dark areas from going muddy or wet. The standard setting is about 14.')}
+          {num('…starting from black (%)', ucrStart, setUcrStart, 'How much black there must be before colour is taken out, from 0 to 95. The standard setting starts at 42.')}
           {num('White density (%)', density, setDensity, 'How solid the white under the design is, from 0 to 100. Lower white makes colours look duller on dark garments.')}
           {num('White choke (mm)', choke, setChoke, 'Pulls the white in from the edge of the design, from 0 to 2 mm. Raise it if you see a white halo around the colour.', '0.05')}
           <div>
@@ -276,7 +276,7 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
               <select value={edgeSteps} onChange={(e) => { setEdgeSteps(Number(e.target.value)); touch() }}>
                 <option value={0}>Off</option>
                 <option value={1}>1 pixel</option>
-                <option value={2}>2 pixels (like Maintop)</option>
+                <option value={2}>2 pixels (standard)</option>
                 <option value={3}>3 pixels</option>
               </select>
             </label>
@@ -298,7 +298,7 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
 
       <section className="settings-section">
         <h3>Colour profile</h3>
-        <Help>Optional. Load the ICC file from Maintop or your ink supplier to match their colours. Without one, a built-in colour model is used.</Help>
+        <Help>Optional. The standard DTF profile is built in; you can also load an ICC file from your ink supplier. Without one, a simple built-in colour model is used.</Help>
         <p>{icc === undefined ? 'No colour profile — the built-in colour model is used' : icc.startsWith(BUNDLED_PROFILE_PREFIX) ? profileName(icc) : icc}</p>
         <div className="button-row">
           <button type="button" onClick={() => void pickIcc()}>Choose colour profile…</button>
@@ -306,9 +306,9 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
             <button type="button" onClick={() => { setIcc(undefined); touch() }}>Remove colour profile</button>
           )}
         </div>
-        <Help>For the 700DTF I3200 printer at 720 x 1800, 6 pass: sets Maintop's colour profile (built into the app) with the ink limit, white and ink curves that match Maintop. New printers start this way.</Help>
+        <Help>For the 700DTF I3200 printer at 720 x 1800, 6 pass: sets the standard colour profile (built into the app) with its ink limit, white and ink curves. New printers start this way.</Help>
         <div className="button-row">
-          <button type="button" onClick={useMaintopPreset}>Match Maintop 720×1800 6-pass</button>
+          <button type="button" onClick={useMaintopPreset}>Use standard DTF settings (720×1800 6-pass)</button>
           {presetMsg && <span>{presetMsg}</span>}
         </div>
         <div>
@@ -326,11 +326,11 @@ function Editor({ profile, onPending }: { profile: PrinterProfile; onPending?: (
             Colour conversion
             <select value={grid} onChange={(e) => { setGrid(Number(e.target.value)); touch() }}>
               <option value={0}>Exact</option>
-              <option value={26}>Like Maintop (26-point table)</option>
+              <option value={26}>Through a 26-point table (standard)</option>
               {grid !== 0 && grid !== 26 && <option value={grid}>{grid}-point table</option>}
             </select>
           </label>
-          <Help>Maintop doesn't work out every colour from the profile: it looks colours up in a table of the profile and blends between its points. That changes the darkest colours by a few percent. Choose "Like Maintop" with Maintop's profile to print the same ink as Maintop. Used with a colour profile.</Help>
+          <Help>The standard setting doesn't work out every colour from the profile exactly: it looks colours up in a table of the profile and blends between its points, which changes the darkest colours by a few percent. Keep it with the standard profile. Used with a colour profile.</Help>
         </div>
       </section>
 
