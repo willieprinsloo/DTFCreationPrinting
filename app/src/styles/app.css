@@ -601,7 +601,7 @@ button.link-btn:hover:not(:disabled) {
 .thumb {
   flex: none;
   flex-direction: column;
-  width: 96px;
+  width: 106px; /* 10 % larger than the first 96 px, so designs are easier to see */
   padding: var(--space-1);
   align-items: stretch;
   min-height: 0;
@@ -676,13 +676,13 @@ button.link-btn:hover:not(:disabled) {
 .order-card {
   flex-direction: column;
   align-items: flex-start;
-  min-width: 140px;
+  min-width: 154px;
   gap: 2px;
 }
 
 .order-card-thumb {
   align-self: stretch;
-  height: 72px;
+  height: 79px;
   margin-bottom: var(--space-1, 4px);
   border-radius: 4px;
   background: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0 0 / 12px 12px;
