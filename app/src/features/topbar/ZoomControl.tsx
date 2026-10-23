@@ -3,7 +3,6 @@ import { Minus, Moon, Plus, Sun } from 'lucide-react'
 import { useViewport } from '../canvas/useViewport'
 import { getSettingsStore, useSettings } from '../../state/settingsStore'
 import { useTheme } from '../../state/theme'
-import { filmShadeFor } from '../../domain/theme'
 
 const STEP = 1.25
 
@@ -13,7 +12,13 @@ export function ZoomControl() {
   const screenPxPerMm = useSettings((s) => s.screenPxPerMm)
   const percent = Math.round((vp.scale / screenPxPerMm) * 100)
   const [draft, setDraft] = useState<string | null>(null)
-  const dark = filmShadeFor(useSettings((s) => s.filmMode), useTheme()) === 'dark'
+  const dark = useTheme() === 'dark'
+  /** Switches the whole app light / dark; the film follows it again. */
+  const toggleLook = () => {
+    const s = getSettingsStore().getState()
+    // Both change at once; saving them is best effort (the look still changes if it fails).
+    void Promise.all([s.setTheme(dark ? 'light' : 'dark'), s.setFilmMode('auto')]).catch(() => {})
+  }
 
   const commit = () => {
     if (draft === null) return
@@ -47,10 +52,10 @@ export function ZoomControl() {
       <button
         type="button"
         className="icon-btn"
-        aria-label={dark ? 'Show the film white' : 'Show the film dark'}
-        title={dark ? 'Show the film white' : 'Show the film dark (to see white and pale designs)'}
+        aria-label={dark ? 'Switch to the light look' : 'Switch to the dark look'}
+        title={dark ? 'Switch to the light look' : 'Switch to the dark look (also makes white and pale designs easy to see)'}
         aria-pressed={dark}
-        onClick={() => void getSettingsStore().getState().setFilmMode(dark ? 'light' : 'dark')}
+        onClick={toggleLook}
       >
         {dark ? <Sun size={14} /> : <Moon size={14} />}
       </button>

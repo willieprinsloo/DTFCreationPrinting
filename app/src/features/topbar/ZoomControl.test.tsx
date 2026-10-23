@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../../state/persist', async (orig) => {
+  const m = await orig<typeof import('../../state/persist')>()
+  return { ...m, createTauriStore: () => m.createMemoryStore() }
+})
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { act } from 'react'
@@ -21,19 +26,13 @@ describe('ZoomControl', () => {
     expect(screen.getByLabelText('Zoom percentage')).toHaveValue('100%')
   })
 
-  it('switches the film between white and dark', async () => {
-    getSettingsStore().setState({ filmMode: 'light' })
+  it('switches the whole app between light and dark, with the film following', async () => {
+    getSettingsStore().setState({ theme: 'light', filmMode: 'light' })
     render(<ZoomControl />)
-    await userEvent.click(screen.getByRole('button', { name: 'Show the film dark' }))
-    expect(getSettingsStore().getState().filmMode).toBe('dark')
-    await userEvent.click(screen.getByRole('button', { name: 'Show the film white' }))
-    expect(getSettingsStore().getState().filmMode).toBe('light')
-  })
-
-  it('shows the film dark when it follows a dark app look', () => {
-    getSettingsStore().setState({ filmMode: 'auto', theme: 'dark' })
-    render(<ZoomControl />)
-    expect(screen.getByRole('button', { name: 'Show the film white' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Switch to the dark look' }))
+    expect(getSettingsStore().getState()).toMatchObject({ theme: 'dark', filmMode: 'auto' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Switch to the light look' }))
+    expect(getSettingsStore().getState().theme).toBe('light')
   })
 
   it('typing 200 sets the zoom to twice true size', async () => {

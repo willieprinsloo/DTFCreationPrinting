@@ -205,7 +205,7 @@ function Appearance() {
           </button>
         ))}
       </div>
-      <Help>"Same as the app" makes the film dark when the app is dark. White shows colours as they look on a white garment; dark makes white and pale designs easy to see. Also on the moon / sun button next to the zoom. Only changes the screen, not the print.</Help>
+      <Help>"Same as the app" makes the film dark when the app is dark. White shows colours as they look on a white garment; dark makes white and pale designs easy to see. The moon / sun button next to the zoom switches the whole app between light and dark. Only changes the screen, not the print.</Help>
     </section>
   )
 }

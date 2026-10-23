@@ -159,7 +159,7 @@ describe('PreflightDialog', () => {
   it('sends to the computer set on the printer, and shows why it could not', async () => {
     getSettingsStore().setState({ profiles: [{ ...DEFAULT_PROFILE, printHost: 'print-pc' }] })
     const job = controlledJob()
-    vi.mocked(sendPrn).mockReturnValue({ promise: Promise.reject(new Error('Could not reach the printing software (ATools) at print-pc')), cancel: vi.fn() })
+    vi.mocked(sendPrn).mockImplementation(() => ({ promise: Promise.reject(new Error('Could not reach the printing software (ATools) at print-pc')), cancel: vi.fn() }))
     addItem(3000)
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: 'Create' }))
