@@ -34,6 +34,25 @@ pub fn ink_limit(t: [f32; 4], limit: f32) -> [f32; 4] {
     [k, c * s, m * s, y * s]
 }
 
+/// Less colour under black (under-colour removal), as Maintop's 700DTF output shows: where
+/// black `k` is above `start`, C, M and Y are each cut by `slope * (k - start)` of themselves.
+/// K, C, M, Y tones 0..1.
+pub fn under_colour(t: [f32; 4], start: f32, slope: f32) -> [f32; 4] {
+    let [k, c, m, y] = t;
+    if k <= start {
+        return t;
+    }
+    let s = (1.0 - slope * (k - start)).clamp(0.0, 1.0);
+    [k, c * s, m * s, y * s]
+}
+
+/// The `under_colour` start and slope for settings that cut `pct` % at full black from
+/// `start_pct` % black on (None when off).
+fn under_colour_params(start_pct: f32, pct: f32) -> Option<(f32, f32)> {
+    let start = (start_pct / 100.0).clamp(0.0, 0.95);
+    (pct > 0.0).then(|| (start, (pct / 100.0).min(1.0) / (1.0 - start)))
+}
+
 /// Most memory (bytes) all prepared sources may take at once before new ones
 /// are prepared one at a time instead of in parallel.
 pub const MEMORY_BUDGET: u64 = 4 << 30;
@@ -169,6 +188,8 @@ struct Ctx {
     dy: f64,
     mirror: bool,
     limit: f32,
+    /// `under_colour` start and slope.
+    ucr: Option<(f32, f32)>,
     luts: Option<Vec<Vec<u16>>>,
 }
 
@@ -303,7 +324,11 @@ fn composite_row(
         std::array::from_fn(|_| it.next().unwrap())
     };
     for (px, t) in acc[lo..hi].iter().enumerate().map(|(i, t)| (i + lo, t)) {
-        let [k, c, m, y] = ink_limit([t[0], t[1], t[2], t[3]], ctx.limit);
+        let mut kcmy = [t[0], t[1], t[2], t[3]];
+        if let Some((start, slope)) = ctx.ucr {
+            kcmy = under_colour(kcmy, start, slope);
+        }
+        let [k, c, m, y] = ink_limit(kcmy, ctx.limit);
         // + 0.5 then truncate: the same as round() for these non-negative values, but cheaper.
         let mut q = [k, c, m, y, t[4]].map(|v| (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16);
         if let Some(l) = &ctx.luts {
@@ -508,6 +533,7 @@ fn render_prn_with_budget(
         dy,
         mirror: job.mirror,
         limit: s.ink_limit_pct / 100.0,
+        ucr: under_colour_params(s.ucr_start_pct, s.ucr_pct),
         luts: s.curves.as_ref().map(|cs| {
             cs.iter()
                 .map(|c| (0..=65535u16).map(|t| apply_curve(t, c)).collect())
@@ -773,6 +799,21 @@ fn render_prn_with_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn under_colour_cuts_cmy_more_as_black_rises_and_keeps_k() {
+        let (start, slope) = under_colour_params(40.0, 12.0).unwrap();
+        assert!((slope - 0.2).abs() < 1e-6);
+        assert_eq!(under_colour([0.4, 0.8, 0.5, 0.2], start, slope), [0.4, 0.8, 0.5, 0.2]);
+        let [k, c, m, y] = under_colour([1.0, 1.0, 0.5, 0.25], start, slope);
+        assert_eq!(k, 1.0);
+        for (got, want) in [(c, 0.88), (m, 0.44), (y, 0.22)] {
+            assert!((got - want).abs() < 1e-6, "{got} vs {want}");
+        }
+        let [_, c, ..] = under_colour([0.7, 1.0, 0.0, 0.0], start, slope);
+        assert!((c - 0.94).abs() < 1e-6);
+        assert_eq!(under_colour_params(40.0, 0.0), None);
+    }
 
     #[test]
     fn ink_limit_scales_cmy_and_keeps_k() {

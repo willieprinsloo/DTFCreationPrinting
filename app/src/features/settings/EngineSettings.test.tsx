@@ -110,7 +110,9 @@ describe('Settings › Ink & colour', () => {
     expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(280)
     await userEvent.click(preset)
     expect(await screen.findByText('C:\\driver\\720x1800_6paaas.icm')).toBeInTheDocument()
-    expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(320)
+    expect(screen.getByLabelText('Ink limit (%)')).toHaveValue(330)
+    expect(screen.getByLabelText('Less colour under black (%)')).toHaveValue(13.2)
+    expect(screen.getByLabelText('…starting from black (%)')).toHaveValue(40)
     expect(screen.getByLabelText('White density (%)')).toHaveValue(55)
     expect(screen.getByLabelText('White choke (mm)')).toHaveValue(0)
     expect(screen.getByLabelText('Soft white edge')).toHaveValue('2')
@@ -118,6 +120,22 @@ describe('Settings › Ink & colour', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
     await screen.findByRole('status')
     expect(saved()).toMatchObject({ ...MAINTOP_6PASS_PRESET, iccProfilePath: 'C:\\driver\\720x1800_6paaas.icm' })
+  })
+
+  it('saves less colour under black, and refuses more than 50 %', async () => {
+    page()
+    expect(screen.getByLabelText('Less colour under black (%)')).toHaveValue(0)
+    await userEvent.clear(screen.getByLabelText('Less colour under black (%)'))
+    await userEvent.type(screen.getByLabelText('Less colour under black (%)'), '60')
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    expect(await screen.findByText(/less colour under black must be between 0 and 50/i)).toBeInTheDocument()
+    await userEvent.clear(screen.getByLabelText('Less colour under black (%)'))
+    await userEvent.type(screen.getByLabelText('Less colour under black (%)'), '10')
+    await userEvent.clear(screen.getByLabelText('…starting from black (%)'))
+    await userEvent.type(screen.getByLabelText('…starting from black (%)'), '50')
+    await userEvent.click(screen.getByRole('button', { name: 'Save ink & colour settings' }))
+    await screen.findByRole('status')
+    expect(saved()).toMatchObject({ ucrPct: 10, ucrStartPct: 50 })
   })
 
   it('saves the soft white edge', async () => {

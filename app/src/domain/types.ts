@@ -7,6 +7,10 @@ export interface EngineSettings {
   /** The ink written to each of the PRN's 6 channels, in order. */
   channelOrder: InkChannel[]
   inkLimitPct: number
+  /** Less colour under black: from this much black (%) up, cyan, magenta and yellow are cut... */
+  ucrStartPct: number
+  /** ...rising to this many % less at full black; 0 = off. */
+  ucrPct: number
   whiteDensityPct: number
   whiteChokeMm: number
   /** Soft white edge: printer pixels of fade at each edge of the white, 0 (off) to 3. */

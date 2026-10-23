@@ -64,6 +64,8 @@ const describeColour = (v: number) => (v === 100 ? 'Normal' : v < 100 ? `${100 -
 function Editor({ profile }: { profile: PrinterProfile }) {
   const [order, setOrder] = useState<InkChannel[]>(profile.channelOrder)
   const [ink, setInk] = useState(String(profile.inkLimitPct))
+  const [ucr, setUcr] = useState(String(profile.ucrPct))
+  const [ucrStart, setUcrStart] = useState(String(profile.ucrStartPct))
   const [density, setDensity] = useState(String(profile.whiteDensityPct))
   const [choke, setChoke] = useState(String(profile.whiteChokeMm))
   const [edgeSteps, setEdgeSteps] = useState(profile.whiteEdgeSteps)
@@ -109,17 +111,19 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     if (!(await pickIcc())) return
     const p = MAINTOP_6PASS_PRESET
     setInk(String(p.inkLimitPct))
+    setUcr(String(p.ucrPct))
+    setUcrStart(String(p.ucrStartPct))
     setDensity(String(p.whiteDensityPct))
     setChoke(String(p.whiteChokeMm))
     setEdgeSteps(p.whiteEdgeSteps)
     setCurves(threeBoxes(p.dotGain))
     setDetailed(detailedOnly(p.dotGain))
-    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, white ${p.whiteDensityPct} %, no white choke with a ${p.whiteEdgeSteps}-pixel soft white edge, and Maintop's ink curves. Save to keep them.`)
+    setPresetMsg(`Set ink limit ${p.inkLimitPct} %, ${p.ucrPct} % less colour under black, white ${p.whiteDensityPct} %, no white choke with a ${p.whiteEdgeSteps}-pixel soft white edge, and Maintop's ink curves. Save to keep them.`)
   }
 
   /** The settings as typed, or the plain-English reason they can't be used. */
   const build = (): Engine | string => {
-    const numbers = [ink, density, choke, leadIn, ...INKS.flatMap((k) => curves[k])]
+    const numbers = [ink, ucr, ucrStart, density, choke, leadIn, ...INKS.flatMap((k) => curves[k])]
     if (numbers.some((v) => v.trim() === '')) return 'Enter a number in every box'
     const dotGain = Object.fromEntries(
       INKS.map((k) => [k, detailed[k] ?? curveFromThree(curves[k].map(Number) as [number, number, number])]),
@@ -127,6 +131,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
     const engine: Engine = {
       channelOrder: order,
       inkLimitPct: Number(ink),
+      ucrPct: Number(ucr),
+      ucrStartPct: Number(ucrStart),
       whiteDensityPct: Number(density),
       whiteChokeMm: Number(choke),
       whiteEdgeSteps: edgeSteps,
@@ -232,6 +238,8 @@ function Editor({ profile }: { profile: PrinterProfile }) {
         <h3>Ink and white</h3>
         <div className="field-grid">
           {num('Ink limit (%)', ink, setInk, 'Most ink allowed on any spot, from 100 to 400. Lower it if dark areas look wet or crack.')}
+          {num('Less colour under black (%)', ucr, setUcr, 'Takes cyan, magenta and yellow out where black is heavy, up to this much less at full black, from 0 (off) to 50. Saves ink and keeps dark areas from going muddy or wet. Maintop uses about 13.')}
+          {num('…starting from black (%)', ucrStart, setUcrStart, 'How much black there must be before colour is taken out, from 0 to 95. Maintop starts at 40.')}
           {num('White density (%)', density, setDensity, 'How solid the white under the design is, from 0 to 100. Lower white makes colours look duller on dark garments.')}
           {num('White choke (mm)', choke, setChoke, 'Pulls the white in from the edge of the design, from 0 to 2 mm. Raise it if you see a white halo around the colour.', '0.05')}
           <div>

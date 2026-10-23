@@ -34,6 +34,12 @@ pub struct EngineSettings {
     /// Logical channel ("K","C","M","Y","W") written to each PRN channel 0..5.
     pub channel_order: [String; 6],
     pub ink_limit_pct: f32,
+    /// Less colour under black: where black is above `ucr_start_pct`, cyan, magenta and yellow
+    /// are cut, rising to `ucr_pct` % less at full black (0 = off; see `compose::under_colour`).
+    #[serde(default)]
+    pub ucr_start_pct: f32,
+    #[serde(default)]
+    pub ucr_pct: f32,
     pub white_density_pct: f32,
     pub white_choke_mm: f32,
     /// Soft white edge: pixels of fade at each end of a white run, 0 (off) ..= 3 (see `white::edge_marks`).
@@ -64,6 +70,8 @@ impl Default for EngineSettings {
             // Measured from a Maintop PRN of the colour chart: yellow, magenta, cyan, black, white, white.
             channel_order: ["Y", "M", "C", "K", "W", "W"].map(String::from),
             ink_limit_pct: 280.0,
+            ucr_start_pct: 40.0,
+            ucr_pct: 0.0,
             white_density_pct: 100.0,
             white_choke_mm: 0.2,
             white_edge_steps: 0,

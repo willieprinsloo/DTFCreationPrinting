@@ -44,6 +44,14 @@ describe('sanitizeEngineSettings ranges', () => {
     expect(validateEngineSettings({ ...d, whiteEdgeSteps: 1.5 })).toMatch(/soft white edge/i)
   })
 
+  it('gives old profiles no colour cut under black and clamps the cut', () => {
+    const { ucrPct: _u, ucrStartPct: _s, ...old } = d
+    expect(sanitizeEngineSettings(old)).toMatchObject({ ucrPct: 0, ucrStartPct: 40 })
+    expect(sanitizeEngineSettings({ ...d, ucrPct: 80, ucrStartPct: 120 })).toMatchObject({ ucrPct: 50, ucrStartPct: 95 })
+    expect(validateEngineSettings({ ...d, ucrPct: -1 })).toMatch(/less colour under black/i)
+    expect(validateEngineSettings({ ...d, ucrStartPct: 99 })).toMatch(/start/i)
+  })
+
   it('falls back to the default for values that are not numbers', () => {
     expect(sanitizeEngineSettings({ ...d, inkLimitPct: NaN }).inkLimitPct).toBe(d.inkLimitPct)
     expect(sanitizeEngineSettings({ ...d, whiteChokeMm: 'x' }).whiteChokeMm).toBe(d.whiteChokeMm)

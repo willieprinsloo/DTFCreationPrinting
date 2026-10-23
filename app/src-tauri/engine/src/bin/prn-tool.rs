@@ -18,6 +18,7 @@ fn main() -> ExitCode {
         Some("chart") if args.len() >= 3 && args[1] == "channels" => chart_channels(&args[2..]),
         Some("chart") if args.len() >= 3 && args[1] == "white" => chart_white(&args[2..]),
         Some("chart") if args.len() >= 3 && args[1] == "colour" => chart_colour(&args[2..]),
+        Some("convert") if args.len() >= 2 => convert(&args[1..]),
         _ => Err(USAGE.into()),
     };
     match r {
@@ -29,7 +30,8 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "usage:\n  prn-tool inspect <file>\n  prn-tool preview <file> <out.png> [--scale 0.1]\n  prn-tool chart channels <out.prn> [--profile p.json] [--width-mm 600]\n  prn-tool chart white <out.prn> [--profile p.json] [--width-mm 600]\n  prn-tool chart colour <out.prn> [--png chart.png] [--profile p.json] [--width-mm 600]";
+const USAGE: &str = "usage:\n  prn-tool inspect <file>\n  prn-tool preview <file> <out.png> [--scale 0.1]\n  prn-tool chart channels <out.prn> [--profile p.json] [--width-mm 600]\n  prn-tool chart white <out.prn> [--profile p.json] [--width-mm 600]\n  prn-tool chart colour <out.prn> [--png chart.png] [--profile p.json] [--width-mm 600]
+  prn-tool convert [--profile p.json] <r,g,b> ...   (prints K C M Y tones from the colour profile, before ink limits and curves)";
 
 type R<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -246,6 +248,28 @@ fn chart_colour(args: &[String]) -> R<()> {
     println!("wrote {} ({} lines x {} px)", out.display(), lines, w);
     if let Some(p) = png {
         println!("wrote {} (280 x 200 mm at 508 dpi; print at 100 % size)", p.display());
+    }
+    Ok(())
+}
+
+/// Prints the colour conversion of each 8-bit `r,g,b` argument as K, C, M, Y tones (0..1).
+fn convert(args: &[String]) -> R<()> {
+    let (settings, _, _) = profile_settings(args)?;
+    let colour = dtf_engine::colour::ColourSettings::from(&settings);
+    let conv = dtf_engine::colour::Converter::from_settings(&colour, None).map_err(|e| e.to_string())?.instance().map_err(|e| e.to_string())?;
+    let mut skip = false;
+    for a in args {
+        if std::mem::take(&mut skip) || a.starts_with("--") {
+            skip = a.starts_with("--");
+            continue;
+        }
+        let rgb: Vec<u16> = a.split(',').map(|v| v.trim().parse::<u8>().map(|v| v as u16 * 257)).collect::<Result<_, _>>()?;
+        if rgb.len() != 3 {
+            return Err(format!("{a}: expected r,g,b").into());
+        }
+        let mut out = [[0u16; 4]];
+        conv.convert(&rgb, &mut out);
+        println!("{a} {}", out[0].map(|v| format!("{:.5}", v as f64 / 65535.0)).join(" "));
     }
     Ok(())
 }

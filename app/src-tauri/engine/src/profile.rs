@@ -28,6 +28,8 @@ pub struct ProfileDto {
     pub y_dpi: u32,
     channel_order: Option<[String; 6]>,
     ink_limit_pct: Option<f32>,
+    ucr_start_pct: Option<f32>,
+    ucr_pct: Option<f32>,
     white_density_pct: Option<f32>,
     white_choke_mm: Option<f32>,
     white_edge_steps: Option<u8>,
@@ -48,6 +50,8 @@ impl ProfileDto {
         EngineSettings {
             channel_order: self.channel_order.unwrap_or(d.channel_order),
             ink_limit_pct: self.ink_limit_pct.unwrap_or(d.ink_limit_pct),
+            ucr_start_pct: self.ucr_start_pct.unwrap_or(d.ucr_start_pct).clamp(0.0, 95.0),
+            ucr_pct: self.ucr_pct.unwrap_or(d.ucr_pct).clamp(0.0, 50.0),
             white_density_pct: self.white_density_pct.unwrap_or(d.white_density_pct),
             white_choke_mm: self.white_choke_mm.unwrap_or(d.white_choke_mm),
             white_edge_steps: self.white_edge_steps.unwrap_or(d.white_edge_steps).min(crate::white::MAX_EDGE_STEPS),

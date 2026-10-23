@@ -161,6 +161,15 @@ The printer's Maintop driver ("700DTF I3200-W-printX_TH3.10 MT Driver") holds th
 
 **Match Maintop 720×1800 6-pass…** (Settings, Colour profile) asks for that `.icm` and sets an ink limit of 320 %, white at 55 %, and ink curves fitted so that profile plus curves give the ink Maintop's PRN of the colour chart has. The chart rendered that way is within a few percent of Maintop's on the grey ramp, rich black, skin tones and most red, green and blue patches. The darkest reds, greens and blues (10–20 %) still get 10–20 % more total ink. Light cyan and the yellow ramp were not in Maintop's file, so they are not checked. The `.icm` is Maintop's file, so it is not kept in this repository; choose it from the printer PC.
 
+**Closer match (fitted 2026-10-23, not yet printed).** The dark, strong colours were off because Maintop takes cyan, magenta and yellow out under heavy black: from 40 % black up, each is cut by 0.22 × (black − 40 %), so 13 % less at full black. Our engine had no such step, so it was added ("Less colour under black" in Settings). With that step, a 330 % limit (now barely in play) and new 41-point ink curves (every 2.5 %) fitted to the engine's own 16-bit colour conversion, the chart rendered by our engine was measured against Maintop's PRN over 54 patches:
+
+| | Average difference | Patches off by more than 5 % | Worst |
+|---|---|---|---|
+| Before (320 %, 9-point curves) | 1.75 ink-% | 17 | 19 % (dark red) |
+| After | 0.50 ink-% | 1 | 7 % (darkest blue) |
+
+Fitting the curves on two thirds of the patches and testing on the rest gives 0.85 ink-% (1.66 without the new step), so the fit is not just memorising the chart. What was ruled out: Maintop's own `printX.mcm` colour tables (they don't match its PRN), Windows' colour engine (it refuses this version 4 profile, so Maintop can't be using it), the relative and saturation intents, and Adobe RGB as the source. Still off: 90 % grey (yellow 16 % high), which falls on a steep part of the yellow curve. As before, these are ink amounts in the file, not colours on film; a print and scan would confirm them.
+
 ## Checkpoint 4: a real job
 
 ### What this tests
