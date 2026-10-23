@@ -117,6 +117,12 @@ mod tests {
     }
 
     #[test]
+    fn uses_atools_job_port_9100_and_never_4000() {
+        // 4000 is the port ATools' own board link once used; the app must not touch it.
+        assert_eq!(ATOOLS_PORT, 9100);
+    }
+
+    #[test]
     fn refuses_other_files_and_explains_an_unreachable_atools() {
         let d = tempfile::tempdir().unwrap();
         let not_prn = d.path().join("x.png");
