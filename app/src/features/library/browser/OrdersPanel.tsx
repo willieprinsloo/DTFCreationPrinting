@@ -4,7 +4,7 @@ import type { OrderSummary } from '../../../api/types'
 import { DEFAULT_ORDER_PREFS, type OrderDateFilter, type OrderPrefs, type OrderSort, type OrderStatusFilter } from '../../../state/libraryPrefs'
 import { getSheetStore } from '../../../state/sheetStore'
 import { getViewportStore } from '../../canvas/useViewport'
-import { fileCount, formatDate, statusLabel } from '../format'
+import { fileCount, fileTypes, formatDate, statusLabel, typeLabel } from '../format'
 import { downloadOrderFiles, orderFileKey, type OrderFileRef } from '../orderFileItems'
 import { useOrderDetails } from '../queries/useOrderDetails'
 import { MAX_ORDER_LIMIT, useOrdersQuery } from '../queries/useOrdersQuery'
@@ -114,6 +114,7 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
         </>
       ),
       checked: keys.length > 0 && picked === keys.length ? true : picked > 0 ? 'mixed' : false,
+      type: files ? fileTypes(files) : undefined,
       cells: [o.orderNumber, name, formatDate(o.createdAt), statusLabel(o.status), files ? fileCount(files.length) : '…'],
       expand: { expanded: expanded.has(o.id), label: `Files of ${o.orderNumber}`, onToggle: () => toggleExpanded(o) },
       onVisible: () => details.prefetch(o),
@@ -125,6 +126,7 @@ export function OrdersPanel({ onAdded }: { onAdded(): void }) {
               label: `${o.orderNumber} ${file.sizeLabel}`,
               thumb: client.absoluteUrl(file.printFileUrl),
               caption: file.sizeLabel,
+              type: typeLabel(file.productType),
               checked: selection.has(key),
               cells: [file.sizeLabel, '', '', file.productType, ''],
             }

@@ -11,6 +11,24 @@ export const statusLabel = (status: string) => {
   return s ? s[0].toUpperCase() + s.slice(1) : ''
 }
 
+/** A type from the server for showing under a picture: "t_shirt" → "T shirt", "dtf" → "DTF"; names already written for people are kept. */
+export const typeLabel = (raw: string | undefined) => {
+  const s = (raw ?? '').trim()
+  if (!s) return ''
+  if (/[A-Z ]/.test(s)) return s
+  const words = s
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .map((w) => (ABBREVIATIONS.has(w) ? w.toUpperCase() : w))
+    .join(' ')
+  return words[0].toUpperCase() + words.slice(1)
+}
+
+const ABBREVIATIONS = new Set(['dtf', 'dtg', 'uv', 'a3', 'a4', 'a5', 'a6'])
+
+/** The different types among an order's files, e.g. "T shirt, Mug". */
+export const fileTypes = (files: { productType: string }[]) => [...new Set(files.map((f) => typeLabel(f.productType)).filter(Boolean))].join(', ')
+
 export const fileCount = (n: number) => (n === 1 ? '1 file' : `${n} files`)
 
 /**

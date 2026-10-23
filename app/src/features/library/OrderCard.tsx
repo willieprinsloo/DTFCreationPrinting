@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import type { OrderFile, OrderSummary } from '../../api/types'
-import { fileCount, formatDate, statusLabel } from './format'
+import { fileCount, fileTypes, formatDate, statusLabel } from './format'
 import { useOnVisible } from './useOnVisible'
 import { thumbSrc as thumbUrl } from '../../platform/tauri'
 
@@ -28,6 +28,7 @@ export function OrderCard({ order, name, files, thumbSrc, expanded, onVisible, o
       {date && <span className="muted">{date}</span>}
       <span className="muted">{statusLabel(order.status)}</span>
       {files && <span className="muted">{fileCount(files.length)}</span>}
+      {files && fileTypes(files) && <span className="thumb-type">{fileTypes(files)}</span>}
     </button>
   )
 }

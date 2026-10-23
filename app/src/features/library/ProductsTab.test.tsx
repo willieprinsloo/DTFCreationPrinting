@@ -46,6 +46,13 @@ describe('ProductsTab', () => {
     expect(vi.mocked(client.listProducts).mock.calls.filter((c) => c[0].search === 'tee')).toHaveLength(1)
   })
 
+  it('shows each product type under its picture', async () => {
+    const client = fakeClient({ listProductCategories: vi.fn(async () => [{ id: '3', name: 'T-Shirts' }]), listProducts: list() })
+    render(<ProductsTab />, { wrapper: withClient(client) })
+    const btn = await screen.findByRole('button', { name: 'Tee' })
+    await waitFor(() => expect(within(btn).getByText('T-Shirts')).toBeInTheDocument())
+  })
+
   it('Type filter lists product categories and passes categoryId', async () => {
     const client = fakeClient({ listProductCategories: vi.fn(async () => [{ id: '3', name: 'T-Shirts' }]), listProducts: list() })
     render(<ProductsTab />, { wrapper: withClient(client) })

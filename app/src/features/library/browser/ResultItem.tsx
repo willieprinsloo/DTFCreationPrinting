@@ -14,6 +14,8 @@ export interface ResultRow {
   cells: ReactNode[]
   /** Grid-view caption under the thumbnail. */
   caption?: ReactNode
+  /** Grid view: what it is, e.g. "T-Shirt", under the caption. */
+  type?: string
   checked: boolean | 'mixed'
   expand?: { expanded: boolean; label: string; onToggle(): void }
   sub?: ResultRow[]
@@ -85,6 +87,7 @@ export function ResultItem({ row, view, isSub, onToggle }: Props) {
     >
       {thumb}
       <span className="lib-card-caption">{row.caption ?? row.label}</span>
+      {row.type && <span className="thumb-type">{row.type}</span>}
       {expandBtn}
     </div>
   )

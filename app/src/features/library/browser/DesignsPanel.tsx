@@ -4,7 +4,7 @@ import type { GalleryDesign } from '../../../api/types'
 import { DEFAULT_DESIGN_PREFS, type DesignPrefs, type DesignSort } from '../../../state/libraryPrefs'
 import { AddDesignDialog } from '../AddDesignDialog'
 import { CustomerPicker } from '../CustomerPicker'
-import { formatDate } from '../format'
+import { formatDate, typeLabel } from '../format'
 import { useDesignsQuery } from '../queries/useDesignsQuery'
 import { useLookup } from '../queries/useLookup'
 import { useDebounced } from '../useDebounced'
@@ -46,6 +46,7 @@ export function DesignsPanel({ onAdded }: { onAdded(): void }) {
     label: d.name,
     thumb: client.absoluteUrl(d.thumbnailUrl ?? d.imageUrl),
     checked: selection.has(d.id),
+    type: typeLabel(d.designType),
     cells: [d.name, [customer?.name, categoryName(d.galleryCategoryId)].filter(Boolean).join(' / '), d.designType, formatDate(d.createdAt)],
   }))
 

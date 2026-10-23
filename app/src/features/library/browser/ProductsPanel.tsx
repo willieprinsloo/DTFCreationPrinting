@@ -59,6 +59,7 @@ export function ProductsPanel({ onAdded }: { onAdded(): void }) {
     badge: sources.hasNoDesign(p.id) ? 'No design file' : undefined,
     onVisible: () => sources.prefetch(p.id),
     checked: selection.has(p.id),
+    type: typeName(p),
     cells: [p.name, typeName(p), p.sizes.join(', '), formatDate(p.createdAt)],
   }))
 

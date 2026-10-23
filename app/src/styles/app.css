@@ -649,6 +649,17 @@ button.link-btn:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* What the item is (T-Shirt, Mug…), under its caption. */
+.thumb-type {
+  display: block;
+  max-width: 100%;
+  font-size: var(--font-size-small);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .thumb.selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent);

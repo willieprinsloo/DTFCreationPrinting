@@ -6,7 +6,7 @@ import { getSheetStore } from '../../state/sheetStore'
 import { OrderCard } from './OrderCard'
 import { Thumb } from './Thumb'
 import { beginLibraryDrag } from './dragAdd'
-import { fileCount } from './format'
+import { fileCount, typeLabel } from './format'
 import { downloadOrderFiles, orderFileKey, type OrderFileRef } from './orderFileItems'
 import { useOrderDetails } from './queries/useOrderDetails'
 import { useOrdersQuery } from './queries/useOrdersQuery'
@@ -148,6 +148,7 @@ export function GangSheetsTab() {
                       src={client.absoluteUrl(f.printFileUrl)}
                       label={`${o.orderNumber} ${f.sizeLabel}`}
                       caption={f.sizeLabel}
+                      type={typeLabel(f.productType)}
                       selected={selected.includes(k)}
                       onToggle={() => toggle(k)}
                       onPointerDown={(e) => {

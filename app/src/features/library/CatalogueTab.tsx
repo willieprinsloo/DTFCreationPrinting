@@ -4,6 +4,7 @@ import type { Customer, GalleryDesign } from '../../api/types'
 import { AddDesignDialog } from './AddDesignDialog'
 import { CustomerPicker } from './CustomerPicker'
 import { Thumb } from './Thumb'
+import { typeLabel } from './format'
 import { beginLibraryDrag } from './dragAdd'
 import { useDesignsQuery } from './queries/useDesignsQuery'
 import { useLookup } from './queries/useLookup'
@@ -77,6 +78,7 @@ export function CatalogueTab() {
             key={d.id}
             src={client.absoluteUrl(d.thumbnailUrl ?? d.imageUrl)}
             label={d.name}
+            type={typeLabel(d.designType)}
             selected={selected.includes(d.id)}
             onToggle={() => toggle(d.id)}
             onPointerDown={(e) => {

@@ -95,6 +95,7 @@ export function ProductsTab() {
             badge={sources.hasNoDesign(d.id) ? 'No design file' : undefined}
             onVisible={() => sources.prefetch(d.id)}
             label={d.name}
+            type={categories.find((c) => c.id === d.categoryId)?.name}
             selected={selected.includes(d.id)}
             onToggle={() => toggle(d.id)}
             onPointerDown={(e) => {
