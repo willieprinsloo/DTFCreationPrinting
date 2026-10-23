@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_PRINT_SIZES, ONE_SIZE, defaultWidthMm, estimateWidthMm, pickSize, sanitizePrintSizes } from './printSizes'
+import { DEFAULT_PRINT_SIZES, ONE_SIZE, defaultWidthMm, estimateWidthMm, pickSize, resolveWidthMm, sanitizePrintSizes } from './printSizes'
 
 describe('pickSize', () => {
   it('returns the preferred size when available (case-insensitive)', () => {
@@ -27,6 +27,23 @@ describe('defaultWidthMm', () => {
     expect(defaultWidthMm(table, '4', null)).toBe(90)
     expect(defaultWidthMm(table, '3', 'L')).toBeUndefined()
     expect(defaultWidthMm(table, '9', 'M')).toBeUndefined()
+  })
+})
+
+describe('resolveWidthMm', () => {
+  const ps = (row: Record<string, number>, oneSizeOnly = false) => ({ ...DEFAULT_PRINT_SIZES, byType: { tee: row }, oneSizeOnly: { tee: oneSizeOnly } })
+  it('uses the one width a type has for every size', () => {
+    expect(resolveWidthMm(ps({ [ONE_SIZE]: 280 }), 'tee', 'M')).toBe(280)
+    expect(resolveWidthMm(ps({ [ONE_SIZE]: 280 }), 'tee', null)).toBe(280)
+    expect(resolveWidthMm(ps({ L: 300 }), 'tee', 'S')).toBe(300)
+  })
+  it('keeps per-size widths, and leaves a missing size unset when a type has several', () => {
+    const several = ps({ S: 240, M: 270, [ONE_SIZE]: 250 })
+    expect(resolveWidthMm(several, 'tee', 'S')).toBe(240)
+    expect(resolveWidthMm(several, 'tee', 'XL')).toBeUndefined()
+    expect(resolveWidthMm(ps({ S: 240, [ONE_SIZE]: 250 }, true), 'tee', 'S')).toBe(250)
+    expect(resolveWidthMm(ps({}), 'tee', 'M')).toBeUndefined()
+    expect(resolveWidthMm(ps({ M: 270 }), 'mug', 'M')).toBeUndefined()
   })
 })
 

@@ -56,9 +56,15 @@ export function widthKey(ps: PrintSizes, categoryId: string, size: string | null
   return ps.oneSizeOnly?.[categoryId] ? null : size
 }
 
-/** Default print width (mm) for a type and garment size, honouring the type's one-size-only flag. */
+/**
+ * Default print width (mm) for a type and garment size, honouring the type's one-size-only flag.
+ * A type with only one width set (e.g. just One size) uses it for every size.
+ */
 export function resolveWidthMm(ps: PrintSizes, categoryId: string, size: string | null): number | undefined {
-  return defaultWidthMm(ps.byType, categoryId, widthKey(ps, categoryId, size))
+  const exact = defaultWidthMm(ps.byType, categoryId, widthKey(ps, categoryId, size))
+  if (exact !== undefined) return exact
+  const widths = Object.values(ps.byType[categoryId] ?? {})
+  return widths.length === 1 ? widths[0] : undefined
 }
 
 export const isValidWidth = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0

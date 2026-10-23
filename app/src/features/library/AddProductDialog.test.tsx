@@ -121,6 +121,7 @@ describe('AddProductDialog', () => {
 
   it('prefills each size row from Print sizes (native width otherwise), editable per row, with per-row dpi', async () => {
     await getSettingsStore().getState().setPrintWidth('3', 'M', 280)
+    await getSettingsStore().getState().setPrintWidth('3', 'XL', 300)
     vi.mocked(cacheAsset).mockResolvedValue(asset)
     render(<AddProductDialog product={product} onClose={vi.fn()} />, { wrapper: withClient(fakeClient(source(['S', 'M']))) })
     const s = await screen.findByLabelText('Width S (cm)')

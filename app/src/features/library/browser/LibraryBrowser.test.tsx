@@ -319,8 +319,19 @@ describe('LibraryBrowser', () => {
       expect([it.widthMm, it.source.size, it.source.label]).toEqual([260, 'M', 'Tee — M'])
     })
 
+    it('a type with only one width uses it for any size, with no notice', async () => {
+      await getSettingsStore().getState().setPrintSizes({ byType: { '3': { 'One size': 250 } } })
+      open(client())
+      const dlg = await popOut()
+      await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
+      await userEvent.click(within(dlg).getByRole('button', { name: 'Add 1 to sheet' }))
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Library browser' })).toBeNull())
+      expect(getSheetStore().getState().sheet.items[0].widthMm).toBe(250)
+      expect(screen.queryByText(/No default print size/)).toBeNull()
+    })
+
     it('missing default: adds anyway and the drawer shows the Print sizes notice', async () => {
-      await getSettingsStore().getState().setPrintSizes({ byType: { '3': { S: 250 } } })
+      await getSettingsStore().getState().setPrintSizes({ byType: { '3': { S: 250, L: 290 } } })
       open(client())
       const dlg = await popOut()
       await userEvent.click(await within(dlg).findByRole('checkbox', { name: 'Tee' }))
