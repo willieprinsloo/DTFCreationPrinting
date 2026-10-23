@@ -2,9 +2,10 @@
 //!
 //! The webview asks for `thumb://localhost/<url-encoded image URL>` (`http://thumb.localhost/…`
 //! on Windows). The first time, the image is downloaded, shrunk to `THUMB_MAX_SIDE` and saved
-//! in the app cache; after that it is read from disk, and the webview keeps it too (the
-//! response says it never changes).
+//! in the app cache; after that it is read from disk, and remade only when the server says the
+//! image changed (see `remote`).
 use crate::assets::{cache_dir, cache_file_name, read_dimensions};
+use crate::remote;
 use image::ImageReader;
 use image::imageops::FilterType;
 use std::fs;
@@ -108,13 +109,15 @@ fn with_slot<T>(f: impl FnOnce() -> T) -> T {
     out
 }
 
-fn download(url: &str, to: &Path) -> Result<(), String> {
-    let client = reqwest::blocking::Client::builder()
+fn client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(300))
         .build()
-        .map_err(|e| format!("Download failed: {e}"))?;
-    let resp = client.get(url).send().map_err(|e| format!("Download failed: {e}"))?;
+        .map_err(|e| format!("Download failed: {e}"))
+}
+
+fn download(resp: reqwest::blocking::Response, to: &Path) -> Result<(), String> {
     if !resp.status().is_success() {
         return Err(format!("Download failed (HTTP {})", resp.status().as_u16()));
     }
@@ -126,12 +129,53 @@ fn download(url: &str, to: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The cached thumbnail for `url` in `dir`, made first if needed. A design already downloaded
-/// for the canvas (in `assets`) is shrunk from disk instead of downloaded again.
+/// Makes `thumb` from a download, keeping the server's fingerprint of the image with it.
+fn thumb_from(resp: reqwest::blocking::Response, thumb: &Path) -> Result<(), String> {
+    let fingerprint = remote::Fingerprint::of(&resp);
+    let tmp = tmp_path(&thumb.with_extension("download"));
+    let made = download(resp, &tmp).and_then(|_| make_thumb(&tmp, thumb, THUMB_MAX_SIDE));
+    let _ = fs::remove_file(&tmp);
+    made.map(|_| remote::write_fingerprint(thumb, &fingerprint))
+}
+
+/// The thumbnails folder next to the designs cache `assets`.
+fn dir_for(assets: &Path) -> Option<PathBuf> {
+    Some(assets.parent()?.join("thumbs"))
+}
+
+/// Drops `url`'s thumbnail (its design changed on the server), so it is made again.
+pub fn forget(assets: &Path, url: &str) {
+    if let Some(dir) = dir_for(assets) {
+        let thumb = dir.join(cache_file_name(url.as_bytes(), "png"));
+        let _ = fs::remove_file(remote::fingerprint_path(&thumb));
+        let _ = fs::remove_file(thumb);
+    }
+}
+
+/// The cached thumbnail for `url` in `dir`, made first if needed, and made again when the
+/// server says the image changed. A design already downloaded for the canvas (in `assets`) is
+/// shrunk from disk instead of downloaded again.
 pub fn thumbnail(dir: &Path, assets: &Path, url: &str) -> Result<PathBuf, String> {
     let thumb = dir.join(cache_file_name(url.as_bytes(), "png"));
     if thumb.exists() {
-        return Ok(thumb);
+        if remote::recently_checked(url) {
+            return Ok(thumb);
+        }
+        return with_slot(|| {
+            if remote::recently_checked(url) {
+                return Ok(thumb.clone()); // another request checked it while this one waited
+            }
+            match remote::check(&client()?, url, None, &thumb, false) {
+                remote::Check::Changed(r) => {
+                    // Keep showing the old one if the new one can't be made.
+                    let _ = thumb_from(r, &thumb);
+                    remote::mark_checked(url);
+                }
+                remote::Check::Unchanged => remote::mark_checked(url),
+                remote::Check::Unknown => {}
+            }
+            Ok(thumb.clone())
+        });
     }
     if let Some(local) = ["png", "jpg", "jpeg", "tif", "tiff"]
         .iter()
@@ -139,22 +183,25 @@ pub fn thumbnail(dir: &Path, assets: &Path, url: &str) -> Result<PathBuf, String
         .find(|p| p.exists())
     {
         make_thumb(&local, &thumb, THUMB_MAX_SIDE)?;
+        if let Some(f) = remote::read_fingerprint(&local) {
+            remote::write_fingerprint(&thumb, &f);
+        }
         return Ok(thumb);
     }
     with_slot(|| {
         if thumb.exists() {
             return Ok(thumb.clone()); // another request made it while this one waited
         }
-        let tmp = tmp_path(&thumb.with_extension("download"));
-        let made = download(url, &tmp).and_then(|_| make_thumb(&tmp, &thumb, THUMB_MAX_SIDE));
-        let _ = fs::remove_file(&tmp);
-        made.map(|_| thumb.clone())
+        let resp = client()?.get(url).send().map_err(|e| format!("Download failed: {e}"))?;
+        thumb_from(resp, &thumb)?;
+        remote::mark_checked(url);
+        Ok(thumb.clone())
     })
 }
 
 fn thumbs_dir(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let assets = cache_dir(app)?;
-    let dir = assets.parent().ok_or("No cache dir")?.join("thumbs");
+    let dir = dir_for(&assets).ok_or("No cache dir")?;
     fs::create_dir_all(&dir).map_err(|e| format!("Could not create cache dir: {e}"))?;
     Ok((dir, assets))
 }
@@ -176,8 +223,9 @@ pub fn respond(app: &tauri::AppHandle, path: &str) -> Response<Vec<u8>> {
     };
     let made = thumbs_dir(app).and_then(|(dir, assets)| thumbnail(&dir, &assets, &url));
     match made.and_then(|p| fs::read(p).map_err(|e| e.to_string())) {
-        // The address names the image, and the image behind an address doesn't change.
-        Ok(png) => reply(StatusCode::OK, "image/png", "public, max-age=31536000, immutable", png),
+        // The webview asks again each time, so a changed image shows; the answer comes from disk,
+        // and the server is only asked every `remote::RECHECK_AFTER`.
+        Ok(png) => reply(StatusCode::OK, "image/png", "no-cache", png),
         Err(e) => reply(StatusCode::BAD_GATEWAY, "text/plain", "no-store", e.into_bytes()),
     }
 }
@@ -218,8 +266,38 @@ mod tests {
         assert_eq!(image::open(&t).unwrap().to_rgba8().get_pixel(0, 0)[3], 128);
         // Second time: read from the thumbnail cache, even with the design gone.
         fs::remove_file(assets.join(cache_file_name(url.as_bytes(), "png"))).unwrap();
+        remote::mark_checked(url); // (keeps this test off the network)
         assert_eq!(thumbnail(&thumbs, &assets, url).unwrap(), t);
         assert_eq!(fs::read_dir(&thumbs).unwrap().count(), 1, "no temporary files left");
+    }
+
+    fn png_bytes(w: u32, h: u32) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::new(w, h).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn a_thumbnail_is_made_again_when_its_image_changes_on_the_server() {
+        use std::sync::Arc;
+        let d = tempfile::tempdir().unwrap();
+        let (thumbs, assets) = (d.path().join("thumbs"), d.path().join("assets"));
+        fs::create_dir_all(&thumbs).unwrap();
+        let (body, tag) = (Arc::new(Mutex::new(png_bytes(400, 400))), Arc::new(Mutex::new("\"a\"".to_string())));
+        let (url, sent) = remote::tests::serve(body.clone(), tag.clone());
+        let t = thumbnail(&thumbs, &assets, &url).unwrap();
+        assert_eq!(read_dimensions(&t).unwrap(), (320, 320));
+        remote::tests::forget_check(&url);
+        thumbnail(&thumbs, &assets, &url).unwrap();
+        assert_eq!(*sent.lock().unwrap(), 1, "unchanged: not downloaded again");
+        *body.lock().unwrap() = png_bytes(640, 320);
+        *tag.lock().unwrap() = "\"b\"".into();
+        remote::tests::forget_check(&url);
+        thumbnail(&thumbs, &assets, &url).unwrap();
+        assert_eq!(read_dimensions(&t).unwrap(), (320, 160));
+        // A design replaced in the designs cache drops its thumbnail.
+        forget(&assets, &url);
+        assert!(!t.exists() && !remote::fingerprint_path(&t).exists());
     }
 
     #[test]

@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::path::{Path, PathBuf};
 use dtf_engine::pdf;
 use tauri::Manager;
+use crate::remote;
 
 pub const PREVIEW_MAX_SIDE: u32 = 2048;
 
@@ -213,31 +214,72 @@ fn validate_image(path: &Path) -> Result<(), String> {
 }
 
 /// Downloads `url` into the cache as `<sha256(url)>.<ext>`. With `ext` None (the URL has no usable
-/// extension) the type is read from the downloaded bytes.
+/// extension) the type is read from the downloaded bytes. A cached copy is used again once the
+/// server confirms it hasn't changed (see `remote`), and replaced when it has.
 fn download_into(dir: &Path, url: &str, bearer: Option<&str>, ext: Option<&str>) -> Result<PathBuf, String> {
     let cached = |e: &str| dir.join(cache_file_name(url.as_bytes(), e));
-    match ext {
-        Some(e) if cached(e).exists() => return Ok(cached(e)),
-        None => {
-            if let Some(hit) = ["png", "jpg", "tif", "pdf"].iter().map(|e| cached(e)).find(|p| p.exists()) {
-                return Ok(hit);
-            }
-        }
-        _ => {}
+    let hit = match ext {
+        Some(e) => Some(cached(e)).filter(|p| p.exists()),
+        None => ["png", "jpg", "tif", "pdf"].iter().map(|e| cached(e)).find(|p| p.exists()),
+    };
+    if let Some(h) = hit.as_ref().filter(|_| remote::recently_checked(url)) {
+        return Ok(h.clone());
     }
     let client = reqwest::blocking::Client::builder()
         .timeout(None)
         .connect_timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| format!("Download failed: {e}"))?;
-    let mut req = client.get(url);
-    if let Some(t) = bearer {
-        req = req.bearer_auth(t);
+    let resp = match &hit {
+        Some(h) => match remote::check(&client, url, bearer, h, true) {
+            remote::Check::Changed(r) => r,
+            remote::Check::Unchanged => {
+                remote::mark_checked(url);
+                return Ok(h.clone());
+            }
+            remote::Check::Unknown => return Ok(h.clone()),
+        },
+        None => {
+            let mut req = client.get(url);
+            if let Some(t) = bearer {
+                req = req.bearer_auth(t);
+            }
+            let resp = req.send().map_err(|e| format!("Download failed: {e}"))?;
+            if !resp.status().is_success() {
+                return Err(format!("Download failed (HTTP {})", resp.status().as_u16()));
+            }
+            resp
+        }
+    };
+    let saved = save_download(dir, url, resp, ext);
+    let dest = match (saved, hit) {
+        (Ok(dest), old) => {
+            if let Some(old) = old.filter(|o| o != &dest) {
+                let _ = fs::remove_file(remote::fingerprint_path(&old));
+                let _ = fs::remove_file(old); // the file changed type on the server
+            }
+            forget_derived(dir, url, &dest);
+            dest
+        }
+        // The new version couldn't be saved (not an image, or the old one is in use): keep the old.
+        (Err(_), Some(old)) => old,
+        (Err(e), None) => return Err(e),
+    };
+    remote::mark_checked(url);
+    Ok(dest)
+}
+
+/// Previews and thumbnails made from an older version of `url`'s file.
+fn forget_derived(dir: &Path, url: &str, file: &Path) {
+    if let Some(stem) = file.file_stem().and_then(|s| s.to_str()) {
+        let _ = fs::remove_file(file.with_file_name(format!("{stem}.preview.png")));
     }
-    let mut resp = req.send().map_err(|e| format!("Download failed: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Download failed (HTTP {})", resp.status().as_u16()));
-    }
+    crate::thumbs::forget(dir, url);
+}
+
+/// Saves a download as `<sha256(url)>.<ext>` (replacing an older copy) with its fingerprint.
+fn save_download(dir: &Path, url: &str, mut resp: reqwest::blocking::Response, ext: Option<&str>) -> Result<PathBuf, String> {
+    let fingerprint = remote::Fingerprint::of(&resp);
     let tmp = dir.join(format!("{}.tmp", cache_file_name(url.as_bytes(), "download")));
     let result = (|| {
         let mut f = fs::File::create(&tmp).map_err(|e| format!("Could not save download: {e}"))?;
@@ -257,8 +299,12 @@ fn download_into(dir: &Path, url: &str, bearer: Option<&str>, ext: Option<&str>)
             return Err(e);
         }
     };
-    let dest = cached(&ext);
-    fs::rename(&tmp, &dest).map_err(|e| format!("Could not save download: {e}"))?;
+    let dest = dir.join(cache_file_name(url.as_bytes(), &ext));
+    fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("Could not save download: {e}")
+    })?;
+    remote::write_fingerprint(&dest, &fingerprint);
     Ok(dest)
 }
 
@@ -376,6 +422,49 @@ mod tests {
                 (got, w) => panic!("{got:?} vs {w:?}"),
             }
         }
+    }
+
+    fn png_bytes(w: u32, h: u32) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::new(w, h).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn a_cached_design_is_used_until_the_server_changes_it_then_replaced() {
+        use std::sync::{Arc, Mutex};
+        let d = tempfile::tempdir().unwrap();
+        let assets = d.path().join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let (body, tag) = (Arc::new(Mutex::new(png_bytes(4, 4))), Arc::new(Mutex::new("\"v1\"".to_string())));
+        let (url, sent) = remote::tests::serve(body.clone(), tag.clone());
+        let f = download_into(&assets, &url, None, Some("png")).unwrap();
+        let preview = build_info(&f).unwrap().preview_path;
+        assert_eq!(remote::read_fingerprint(&f).unwrap().etag.as_deref(), Some("\"v1\""));
+        // Unchanged on the server: asked, not downloaded again.
+        remote::tests::forget_check(&url);
+        assert_eq!(download_into(&assets, &url, None, Some("png")).unwrap(), f);
+        assert_eq!(*sent.lock().unwrap(), 1);
+        // Changed: replaced, with its old preview gone, and asked about only once in a while.
+        *body.lock().unwrap() = png_bytes(8, 2);
+        *tag.lock().unwrap() = "\"v2\"".into();
+        assert_eq!(download_into(&assets, &url, None, Some("png")).unwrap(), f, "checked recently, so not asked");
+        assert_eq!(read_dimensions(&f).unwrap(), (4, 4));
+        remote::tests::forget_check(&url);
+        assert_eq!(download_into(&assets, &url, None, Some("png")).unwrap(), f);
+        assert_eq!(read_dimensions(&f).unwrap(), (8, 2));
+        assert!(!Path::new(&preview).exists(), "old preview dropped");
+        assert_eq!(build_info(&f).unwrap().width_px, 8);
+        // The server is gone or sends something that isn't the design: the cached copy is kept.
+        *body.lock().unwrap() = b"<html>login</html>".to_vec();
+        *tag.lock().unwrap() = "\"v3\"".into();
+        remote::tests::forget_check(&url);
+        assert_eq!(download_into(&assets, &url, None, Some("png")).unwrap(), f);
+        assert_eq!(read_dimensions(&f).unwrap(), (8, 2));
+        let gone = "http://127.0.0.1:9/f.png";
+        let cached = assets.join(cache_file_name(gone.as_bytes(), "png"));
+        fs::copy(&f, &cached).unwrap();
+        assert_eq!(download_into(&assets, gone, None, Some("png")).unwrap(), cached);
     }
 
     #[test]

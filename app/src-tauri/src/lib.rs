@@ -5,6 +5,7 @@ mod credentials;
 // "prn" is a reserved device name on Windows, so the file can't be prn.rs.
 #[path = "prn_jobs.rs"]
 mod prn;
+mod remote;
 mod sheet_files;
 mod thumbs;
 mod upscale;
