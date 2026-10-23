@@ -6,6 +6,7 @@ mod credentials;
 #[path = "prn_jobs.rs"]
 mod prn;
 mod remote;
+mod send;
 mod sheet_files;
 mod thumbs;
 mod upscale;
@@ -43,6 +44,7 @@ pub fn run() {
             prn::create_chart_prn,
             prn::cancel_prn,
             prn::reveal_in_folder,
+            send::send_prn,
             sheet_files::write_sheet_file,
             sheet_files::read_sheet_file,
             upscale::upscale_asset,

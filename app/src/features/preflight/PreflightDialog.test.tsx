@@ -11,9 +11,13 @@ import type { SourceRef } from '../../domain/types'
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: vi.fn().mockResolvedValue('/out/x.prn'), open: vi.fn() }))
 vi.mock('../../platform/tauri', () => {
   class PrnCancelledError extends Error {}
-  return { createPrn: vi.fn(), revealInFolder: vi.fn().mockResolvedValue(undefined), PrnCancelledError, writeSheetFile: vi.fn(), readSheetFile: vi.fn() }
+  class SendCancelledError extends Error {}
+  return {
+    createPrn: vi.fn(), revealInFolder: vi.fn().mockResolvedValue(undefined), PrnCancelledError, writeSheetFile: vi.fn(), readSheetFile: vi.fn(),
+    sendPrn: vi.fn(), SendCancelledError, LOCAL_PRINT_HOST: '127.0.0.1',
+  }
 })
-import { createPrn, revealInFolder, PrnCancelledError } from '../../platform/tauri'
+import { createPrn, revealInFolder, PrnCancelledError, sendPrn } from '../../platform/tauri'
 
 const STATS = { lines: 100, bytes: 1.2e9, millis: 9000 }
 
@@ -130,6 +134,40 @@ describe('PreflightDialog', () => {
     expect(await screen.findByText('Saved x.prn (1.2 GB, 9 s)')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Show in folder' }))
     expect(revealInFolder).toHaveBeenCalledWith('/out/x.prn')
+  })
+
+  it('Send to printer streams the PRN to ATools on this computer and says when it is done', async () => {
+    const job = controlledJob()
+    let finish!: (n: number) => void
+    vi.mocked(sendPrn).mockImplementation((_path, _host, onProgress) => {
+      onProgress(0.5)
+      return { promise: new Promise<number>((res) => (finish = res)), cancel: vi.fn() }
+    })
+    addItem(3000)
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    await userEvent.click(await screen.findByRole('button', { name: 'Send to printer' }))
+    expect(sendPrn).toHaveBeenCalledWith('/out/x.prn', '127.0.0.1', expect.any(Function))
+    expect(screen.getByRole('progressbar', { name: 'Sending to printer' })).toHaveValue(0.5)
+    expect(screen.getByRole('button', { name: 'Send to printer' })).toBeDisabled()
+    act(() => finish(1000))
+    expect(await screen.findByText('Sent to the printing software (ATools) on this computer.')).toBeInTheDocument()
+  })
+
+  it('sends to the computer set on the printer, and shows why it could not', async () => {
+    getSettingsStore().setState({ profiles: [{ ...DEFAULT_PROFILE, printHost: 'print-pc' }] })
+    const job = controlledJob()
+    vi.mocked(sendPrn).mockReturnValue({ promise: Promise.reject(new Error('Could not reach the printing software (ATools) at print-pc')), cancel: vi.fn() })
+    addItem(3000)
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('progressbar')
+    act(() => job.resolve(STATS))
+    await userEvent.click(await screen.findByRole('button', { name: 'Send to printer' }))
+    expect(vi.mocked(sendPrn).mock.lastCall?.[1]).toBe('print-pc')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the printing software (ATools) at print-pc')
   })
 
   it('marks each distinct order In production after success when the box is ticked (default)', async () => {

@@ -6,7 +6,7 @@ import { describeColour } from '../../domain/engineSettings'
 import { preflight } from '../../domain/preflight'
 import { dpiLabel, effectiveDpi } from '../../domain/dpi'
 import { InvalidSheetError } from '../../domain/geometry'
-import { createPrn, PrnCancelledError, revealInFolder, type PrnJob, type PrnStats } from '../../platform/tauri'
+import { createPrn, LOCAL_PRINT_HOST, PrnCancelledError, revealInFolder, SendCancelledError, sendPrn, type PrnJob, type PrnStats } from '../../platform/tauri'
 import { defaultPrnName, folderOf } from '../sheets/sheetFiles'
 import { useDtfClient } from '../../api/DtfClientContext'
 import { AuthRequiredError, type DtfClient } from '../../api/dtfClient'
@@ -85,6 +85,10 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
   const [ordersSkipped, setOrdersSkipped] = useState<string[]>([])
   const [updatingOrders, setUpdatingOrders] = useState(false)
   const job = useRef<PrnJob | null>(null)
+  const [sendProgress, setSendProgress] = useState<number | null>(null)
+  const [sent, setSent] = useState<string | null>(null)
+  const sendJob = useRef<PrnJob<number> | null>(null)
+  useEffect(() => () => sendJob.current?.cancel(), [])
   /** Orders already set to In production (or found past Confirmed) from this dialog (never sent again). */
   const markedOrders = useRef(new Set<string>())
   useEffect(() => () => job.current?.cancel(), [])
@@ -92,6 +96,25 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
 
   const profile = profiles.find((p) => p.id === sheet.profileId) ?? profiles.find((p) => p.id === activeId) ?? DEFAULT_PROFILE
   const colour = describeColour(profile)
+  const printHost = profile.printHost?.trim() || LOCAL_PRINT_HOST
+
+  /** Streams the finished PRN to ATools, which starts printing while it arrives. */
+  const send = async (path: string) => {
+    setError(null)
+    setSent(null)
+    setSendProgress(0)
+    const j = sendPrn(path, printHost, setSendProgress)
+    sendJob.current = j
+    try {
+      await j.promise
+      setSent(`Sent to the printing software (ATools) on ${printHost === LOCAL_PRINT_HOST ? 'this computer' : printHost}.`)
+    } catch (e) {
+      if (!(e instanceof SendCancelledError)) setError(errorText(e))
+    } finally {
+      sendJob.current = null
+      setSendProgress(null)
+    }
+  }
   const result = useMemo(() => {
     try {
       return preflight(sheet, profile, thresholds)
@@ -231,9 +254,20 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
         {done && (
           <p role="status">
             Saved {fileName(done.path)} ({formatBytes(done.stats.bytes)}, {Math.max(1, Math.round(done.stats.millis / 1000))} s){' '}
-            <button type="button" onClick={() => void revealInFolder(done.path).catch((e) => setError(errorText(e)))}>Show in folder</button>
+            <button type="button" onClick={() => void revealInFolder(done.path).catch((e) => setError(errorText(e)))}>Show in folder</button>{' '}
+            <button type="button" className="primary" disabled={sendProgress !== null} onClick={() => void send(done.path)}>
+              Send to printer
+            </button>
           </p>
         )}
+        {sendProgress !== null && (
+          <div className="prn-progress">
+            <progress aria-label="Sending to printer" value={sendProgress} max={1} />
+            <span>{Math.round(sendProgress * 100)}%</span>
+            <button type="button" onClick={() => sendJob.current?.cancel()}>Stop sending</button>
+          </div>
+        )}
+        {sent && <p role="status">{sent}</p>}
         {updatingOrders && <p role="status">Updating orders in DTF Creations…</p>}
         {ordersSkipped.length > 0 && (
           <div>

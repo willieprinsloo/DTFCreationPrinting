@@ -38,6 +38,19 @@ describe('Settings › Printers', () => {
     expect(screen.getByRole('button', { name: 'Add printer' })).toBeInTheDocument()
   })
 
+  it('saves the computer running ATools for Send to printer, trimmed, and refuses spaces', async () => {
+    render(<SettingsDialog onClose={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: `Edit ${DEFAULT_PROFILE.name}` }))
+    const host = screen.getByLabelText('Computer running ATools')
+    await userEvent.type(host, 'print pc')
+    await userEvent.click(screen.getByRole('button', { name: 'Save printer' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('cannot contain spaces')
+    await userEvent.clear(host)
+    await userEvent.type(host, ' 192.168.1.20 ')
+    await userEvent.click(screen.getByRole('button', { name: 'Save printer' }))
+    expect(store().profiles.find((p) => p.id === DEFAULT_PROFILE.id)?.printHost).toBe('192.168.1.20')
+  })
+
   it('explains margins that leave no room to print', async () => {
     render(<SettingsDialog onClose={() => {}} />)
     await userEvent.click(screen.getByRole('button', { name: `Edit ${DEFAULT_PROFILE.name}` }))

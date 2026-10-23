@@ -43,7 +43,7 @@ export function clearCredentials(): Promise<void> {
 }
 
 export interface PrnStats { lines: number; bytes: number; millis: number }
-export interface PrnJob { promise: Promise<PrnStats>; cancel(): void }
+export interface PrnJob<T = PrnStats> { promise: Promise<T>; cancel(): void }
 
 /** The PRN run was cancelled by the user (not a failure). */
 export class PrnCancelledError extends Error {}
@@ -119,6 +119,38 @@ export function createChartPrn(kind: 'white' | 'colour', profile: PrinterProfile
   return invoke<PrnStats>('create_chart_prn', { kind, profileJson: JSON.stringify(profile), outPath }).catch((e) => {
     throw e instanceof Error ? e : new Error(String(e))
   })
+}
+
+/** Sending to the printer was cancelled by the user (not a failure). */
+export class SendCancelledError extends Error {}
+
+/** This computer: ATools running next to the app. */
+export const LOCAL_PRINT_HOST = '127.0.0.1'
+
+/** Sends a finished PRN to ATools on `host` (port 9100); resolves to the bytes sent. */
+export function sendPrn(path: string, host: string, onProgress: (fraction: number) => void): PrnJob<number> {
+  const jobId = crypto.randomUUID()
+  let settled = false
+  const promise = (async () => {
+    const unlisten = await listen<{ jobId: string; fraction: number }>('send-progress', (e) => {
+      if (e.payload.jobId === jobId) onProgress(e.payload.fraction)
+    })
+    try {
+      return await invoke<number>('send_prn', { path, host, jobId })
+    } catch (e) {
+      if (e === CANCELLED) throw new SendCancelledError(CANCELLED)
+      throw e instanceof Error ? e : new Error(String(e))
+    } finally {
+      settled = true
+      unlisten()
+    }
+  })()
+  return {
+    promise,
+    cancel() {
+      if (!settled) void invoke('cancel_prn', { jobId }).catch(() => {})
+    },
+  }
 }
 
 /** Opens Finder / Explorer with the file selected. */

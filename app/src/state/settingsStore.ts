@@ -28,8 +28,9 @@ export const DEFAULT_PROFILE: PrinterProfile = { ...BASE_PROFILE, ...MAINTOP_DEF
 
 /** Fills engine settings missing from older saved profiles and repairs bad ones. */
 export function sanitizeProfile(p: PrinterProfile): PrinterProfile {
-  const { iccProfilePath: _icc, ...rest } = p
-  return { ...rest, ...sanitizeEngineSettings(p) }
+  const { iccProfilePath: _icc, printHost, ...rest } = p
+  const host = typeof printHost === 'string' && printHost.trim() ? { printHost: printHost.trim() } : {}
+  return { ...rest, ...host, ...sanitizeEngineSettings(p) }
 }
 
 export const clampDrawerHeight = (px: number) => Math.min(480, Math.max(120, Math.round(px)))

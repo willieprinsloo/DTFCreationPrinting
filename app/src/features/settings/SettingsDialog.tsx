@@ -40,8 +40,9 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
     if (!(p.xDpi > 0 && p.yDpi > 0)) return setError('Resolution must be more than 0 dpi')
     if ([m.topMm, m.rightMm, m.bottomMm, m.leftMm, p.defaultGapMm].some((v) => !(v >= 0))) return setError('Margins and spacing cannot be negative')
     if (p.widthMm - m.leftMm - m.rightMm <= 0) return setError('The left and right margins leave no room to print')
+    if (/\s/.test((p.printHost ?? '').trim())) return setError('The ATools computer name or address cannot contain spaces')
     try {
-      await getSettingsStore().getState().upsertProfile({ ...p, name: p.name.trim() })
+      await getSettingsStore().getState().upsertProfile({ ...p, name: p.name.trim(), printHost: p.printHost?.trim() || undefined })
       onDone()
     } catch (e) {
       setError(`Could not save: ${errorText(e)}`)
@@ -89,6 +90,13 @@ function ProfileEditor({ profile, canRemove, onDone }: { profile: PrinterProfile
         {field('Space between designs (mm)', p.defaultGapMm, (v) => setP({ ...p, defaultGapMm: num(v) }))}
       </div>
       <Help>Margins keep designs away from the film edges. You can still change both on each sheet.</Help>
+
+      <h4>Send to printer</h4>
+      <label className="dialog-field">
+        Computer running ATools
+        <input type="text" value={p.printHost ?? ''} placeholder="This computer" onChange={(e) => setP({ ...p, printHost: e.target.value })} />
+      </label>
+      <Help>Leave empty when ATools runs on this computer. Otherwise enter that computer's name or IP address, e.g. 192.168.1.20. ATools must be open to take the print.</Help>
 
       {error && (
         <p className="inline-error" role="alert">

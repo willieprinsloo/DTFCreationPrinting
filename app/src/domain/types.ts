@@ -28,7 +28,17 @@ export interface EngineSettings {
   /** Convert through a table of the colour profile with this many points per axis, as Maintop does (26); 0 = exact. */
   iccGridPoints: number
 }
-export interface PrinterProfile extends EngineSettings { id: string; name: string; widthMm: number; xDpi: number; yDpi: number; defaultMargins: Margins; defaultGapMm: number }
+export interface PrinterProfile extends EngineSettings {
+  id: string
+  name: string
+  widthMm: number
+  xDpi: number
+  yDpi: number
+  defaultMargins: Margins
+  defaultGapMm: number
+  /** The computer running ATools, for "Send to printer" (missing on older profiles = this computer). */
+  printHost?: string
+}
 export interface SheetSettings { widthMm: number; margins: Margins; gapMm: number; lengthMode: 'auto' | 'fixed'; fixedLengthMm: number; mirror: boolean; whiteEnabled: boolean; allowRotate: boolean }
 /**
  * A cached design file. `kind` is missing on older sheets (= raster). PDFs are vector: `widthMm`/`heightMm`
