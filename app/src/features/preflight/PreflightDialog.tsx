@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { save } from '@tauri-apps/plugin-dialog'
 import { getSheetStore, useSheet } from '../../state/sheetStore'
 import { DEFAULT_PROFILE, getSettingsStore, useSettings } from '../../state/settingsStore'
+import { describeColour } from '../../domain/engineSettings'
 import { preflight } from '../../domain/preflight'
 import { dpiLabel, effectiveDpi } from '../../domain/dpi'
 import { InvalidSheetError } from '../../domain/geometry'
@@ -90,6 +91,7 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
   const { client, requireLogin } = useDtfClient()
 
   const profile = profiles.find((p) => p.id === sheet.profileId) ?? profiles.find((p) => p.id === activeId) ?? DEFAULT_PROFILE
+  const colour = describeColour(profile)
   const result = useMemo(() => {
     try {
       return preflight(sheet, profile, thresholds)
@@ -172,6 +174,10 @@ export function PreflightDialog({ onClose }: { onClose(): void }) {
         </p>
         <p>Printed length: {(result.printedLengthMm / 10).toFixed(1)} cm</p>
         <p>Estimated file size: {formatBytes(result.estimatedPrnBytes)}</p>
+        <p>
+          Printer {profile.name}: {colour.text}
+        </p>
+        {colour.warning && <p className="inline-error">{colour.warning}</p>}
         {result.itemCount === 0 && <p className="inline-error">Add at least one design first.</p>}
         {result.problems.length > 0 && (
           <p className="inline-error">
